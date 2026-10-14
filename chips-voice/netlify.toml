@@ -1,0 +1,18 @@
+# NOT ACTIVE inside VirtuaHost: Netlify only reads the repository root's netlify.toml.
+# It documents how the Chips Voice UI would be built (a separate Netlify site with this base directory).
+# Builds only the web UI (googleTextToSpeech1/tts-ui). The backend runs on the VPS.
+# Set VUE_APP_API in the Netlify site settings to the backend's public https URL.
+[build]
+  base = "chips-voice/googleTextToSpeech1/tts-ui"
+  command = "NODE_OPTIONS=--openssl-legacy-provider npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# Single-page app: serve index.html for every route.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

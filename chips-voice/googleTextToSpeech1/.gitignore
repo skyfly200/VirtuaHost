@@ -1,0 +1,13 @@
+node_modules
+build
+npm-debug.log
+.env
+.DS_Store
+ccrn-site-ede8a5074d2e.json
+tts-creds.json
+*.mp3
+*.ogg
+package-lock.json.*
+package.json.*
+clips
+data
