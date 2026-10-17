@@ -12,8 +12,20 @@ Set `TTS_PROVIDER` to one name, or a comma list that is tried in order, for exam
 |------|-------|-------|
 | `google` | `GOOGLE_APPLICATION_CREDENTIALS` | SSML, pitch, speed and gain. The default. |
 | `openai` | `OPENAI_API_KEY` | Speed only. No SSML. Also works with any server that implements `/audio/speech` through `OPENAI_BASE_URL`. |
-| `elevenlabs` | `ELEVENLABS_API_KEY`, a voice id | MP3 only. No SSML or speed. |
+| `elevenlabs` | `ELEVENLABS_API_KEY`, voices in `ELEVENLABS_VOICES` | Your voice clones, audio tags (`[softly]`), and multi-voice dialogue (see below). MP3 only. No SSML or speed. |
+| `openrouter` | `OPENROUTER_API_KEY`, `OPENROUTER_TTS_MODEL`, `OPENROUTER_TTS_VOICES` | OpenRouter's speech models (OpenAI-compatible `/audio/speech`). MP3. Not ElevenLabs, so no clones. |
 | `piper` | the `piper` program and `PIPER_MODELS` (.onnx files) | Free and offline. WAV output. Speed only. A voice on the VPS needs about 60 MB of disk per model. |
+
+Enabled providers can be chosen per request with `provider` (the UI shows a picker when more than one is
+enabled); a chosen provider is used alone, with no fallback. `GET /providers` lists them with their capabilities,
+`GET /tts/voices?provider=` the voices, `GET /tts/models?provider=` the models where the provider has a list.
+
+**ElevenLabs dialogue.** Send `turns: [{ "voice": "Rocky", "text": "..." }, ...]` (up to 60 lines, 10 voices, 10,000
+characters, see `MAX_DIALOGUE_CHARS`) instead of `text`. Voices are names from `ELEVENLABS_VOICES` or raw voice ids.
+The UI has a Dialogue mode. Scripts over the API's 2,000-character limit are split and joined with ffmpeg.
+
+**Receiving audio from elsewhere.** `POST /ingest` (audio bytes) and `POST /ingest/url` (a link) accept finished
+audio, for example from VirtuaHost. See [docs/INTEGRATION.md](../../docs/INTEGRATION.md).
 
 The UI asks the server for the voice list and hides the controls a provider does
 not support (SSML, pitch, speed, gain), so the form always matches the active

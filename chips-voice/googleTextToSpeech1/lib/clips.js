@@ -9,7 +9,29 @@ const clamp = (n, lo, hi, fallback) => (Number.isFinite(Number(n)) ? Math.min(hi
 
 class SpecError extends Error {}
 
-function normalizeSpec(raw = {}, { maxText = 500, maxSsml = 2000 } = {}) {
+// Multi-voice scripts: [{ voice, text }, ...]. Total length is capped separately from single-voice text.
+function normalizeTurns(raw, { maxDialogue = 10000 }) {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  if (raw.length > 60) throw new SpecError('a dialogue can have at most 60 lines');
+  const turns = raw.map((t) => ({ voice: String((t && t.voice) || '').trim().slice(0, 200), text: String((t && t.text) || '').trim() }));
+  if (turns.some((t) => !t.voice || !t.text)) throw new SpecError('every dialogue line needs a voice and text');
+  if (turns.some((t) => t.text.length > 1500)) throw new SpecError('a dialogue line is too long (max 1500 characters)');
+  if (new Set(turns.map((t) => t.voice)).size > 10) throw new SpecError('a dialogue can use at most 10 different voices');
+  if (turns.reduce((n, t) => n + t.text.length, 0) > maxDialogue) throw new SpecError(`dialogue is too long (max ${maxDialogue} characters in total)`);
+  return turns;
+}
+
+function normalizeSpec(raw = {}, { maxText = 500, maxSsml = 2000, maxDialogue = 10000 } = {}) {
+  const provider = raw.provider ? String(raw.provider).toLowerCase() : '';
+  if (provider && !/^[a-z0-9_-]{1,40}$/.test(provider)) throw new SpecError('invalid provider');
+  const turns = normalizeTurns(raw.turns, { maxDialogue });
+  if (turns) {
+    const format = FORMATS.includes(raw.format) ? raw.format : 'OGG_OPUS';
+    return {
+      ssmlMode: false, text: turns.map((t) => t.text).join(' '), ssml: '', turns, voice: '', language: '', gender: undefined,
+      format, rate: 1, pitch: 0, gain: 3, provider: provider || undefined,
+    };
+  }
   const ssmlMode = raw.ssmlMode === true;
   const content = String(ssmlMode ? raw.ssml || '' : raw.text || '').trim();
   if (!content) throw new SpecError(ssmlMode ? 'ssml is required' : 'text is required');
@@ -30,11 +52,12 @@ function normalizeSpec(raw = {}, { maxText = 500, maxSsml = 2000 } = {}) {
     rate: clamp(raw.rate, 0.25, 4, 1),
     pitch: clamp(raw.pitch, -20, 20, 0),
     gain: clamp(raw.gain, -96, 16, 3),
+    provider: provider || undefined,
   };
 }
 
 function specId(spec, provider) {
-  const key = JSON.stringify([spec.ssmlMode, spec.text || spec.ssml, spec.voice, spec.format, spec.rate, spec.pitch, spec.gain, provider]);
+  const key = JSON.stringify([spec.ssmlMode, spec.text || spec.ssml, spec.voice, spec.format, spec.rate, spec.pitch, spec.gain, spec.turns || null, provider]);
   return crypto.createHash('sha256').update(key).digest('hex').slice(0, 24);
 }
 
@@ -57,7 +80,7 @@ function createClips({ store, tts, dir, maxBytes = 500e6, now = Date.now }) {
     let used = usedBytes();
     if (used <= maxBytes) return [];
     const victims = Object.values(clips)
-      .filter((c) => c.id !== keepId && !c.favorite && exists(c))
+      .filter((c) => c.id !== keepId && !c.favorite && !c.external && exists(c))
       .sort((a, b) => (a.lastPlayedAt || a.createdAt) - (b.lastPlayedAt || b.createdAt));
     const evicted = [];
     for (const clip of victims) {
@@ -106,13 +129,37 @@ function createClips({ store, tts, dir, maxBytes = 500e6, now = Date.now }) {
     // Returns { clip, reused }. A catalogue hit with its file still on disk costs nothing.
     async getOrCreate(rawSpec, limits) {
       const spec = normalizeSpec(rawSpec, limits);
-      const id = specId(spec, tts.names ? tts.names[0] : 'tts');
+      if (spec.provider && tts.has && !tts.has(spec.provider)) {
+        throw new SpecError(`speech provider "${spec.provider}" is not enabled (enabled: ${tts.names.join(', ')})`);
+      }
+      const id = specId(spec, spec.provider || (tts.names ? tts.names[0] : 'tts'));
       const existing = clips[id];
       if (existing && exists(existing)) return { clip: existing, reused: true };
       if (!inflight.has(id)) {
         inflight.set(id, generate(spec, id).finally(() => inflight.delete(id)));
       }
       return { clip: await inflight.get(id), reused: false };
+    },
+
+    // Audio made elsewhere (for example by the Netlify generator). It is stored as-is and cannot be regenerated,
+    // so it is never evicted. The id is a hash of the audio, so sending the same file twice reuses the entry.
+    addExternal({ buffer, ext, title, text, source }) {
+      const id = crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 24);
+      const existing = clips[id];
+      if (existing && exists(existing)) return { clip: existing, reused: true };
+      const file = `${id}.${ext}`;
+      fs.writeFileSync(path.join(dir, file), buffer);
+      const said = String(text || title || 'Imported clip').trim();
+      clips[id] = {
+        id, title: String(title || said).trim().slice(0, 120) || 'Imported clip', text: said.slice(0, 2000),
+        spec: null, external: true, provider: 'import', source: String(source || '').slice(0, 60),
+        ext, file, bytes: buffer.length, tags: (existing && existing.tags) || [], favorite: !!(existing && existing.favorite),
+        createdAt: (existing && existing.createdAt) || now(), lastPlayedAt: (existing && existing.lastPlayedAt) || 0,
+        playCount: (existing && existing.playCount) || 0, cloud: existing && existing.cloud,
+      };
+      store.save();
+      evict(id);
+      return { clip: clips[id], reused: false };
     },
 
     get: (id) => clips[id] || null,

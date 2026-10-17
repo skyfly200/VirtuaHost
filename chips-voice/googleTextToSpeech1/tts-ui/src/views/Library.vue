@@ -23,6 +23,8 @@
             .said {{ c.text }}
             .meta
               v-chip(x-small label) {{ c.provider }}
+              v-chip(v-if="c.external && c.source" x-small label) from {{ c.source }}
+              v-chip(v-if="c.spec && c.spec.turns" x-small label color="secondary") dialogue
               v-chip(x-small label) {{ c.playCount }} plays
               v-chip(x-small label) {{ size(c.bytes) }}
               v-chip(v-if="!c.available" x-small label color="warning") will regenerate

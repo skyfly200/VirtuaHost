@@ -3,7 +3,11 @@ import api from './api';
 
 export interface Info {
   loaded: boolean;
-  tts: { names: string[]; capabilities: { ssml: boolean; pitch: boolean; rate: boolean; gain: boolean } };
+  tts: {
+    names: string[];
+    capabilities: { ssml: boolean; pitch: boolean; rate: boolean; gain: boolean; dialogue?: boolean };
+    providers: Array<{ name: string; capabilities: { ssml: boolean; pitch: boolean; rate: boolean; gain: boolean; dialogue?: boolean }; defaultVoice: string }>;
+  };
   llm: { enabled: boolean; names: string[] };
   storage: { enabled: boolean; targets: Array<{ name: string; label: string }> };
   links: { enabled: boolean };
@@ -13,7 +17,7 @@ export interface Info {
 // What the server can do (speech provider, AI drafting, cloud sharing). Loaded after login.
 export const info: Info = Vue.observable({
   loaded: false,
-  tts: { names: [], capabilities: { ssml: true, pitch: true, rate: true, gain: true } },
+  tts: { names: [], capabilities: { ssml: true, pitch: true, rate: true, gain: true }, providers: [] },
   llm: { enabled: false, names: [] },
   storage: { enabled: false, targets: [] },
   links: { enabled: false },

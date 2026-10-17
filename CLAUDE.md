@@ -8,8 +8,10 @@ An AI DJ audio-generation pipeline for an online radio station, deployed as
 Netlify Functions with Netlify Blobs for storage. Google Gemini both writes
 DJ script lines and synthesizes them to speech. This is deliberately just
 the generation/storage core — a webhook (e.g. WhatsApp via Twilio),
-scheduling, and injecting clips into a live Icecast/Liquidsoap stream are
-future work that will call `POST /api/generate`, not part of this repo yet.
+scheduling are future work that will call `POST /api/generate`. Getting clips onto a live
+Icecast/Liquidsoap stream is handled by the separate Chips Voice server in `chips-voice/`:
+`lib/handoff.ts` posts each generated clip to its `/ingest` endpoint (see `docs/INTEGRATION.md`).
+`krap-station/` holds the KRAP ElevenLabs voice scripts and RadioDJ helper.
 
 ## Commands
 
@@ -37,6 +39,7 @@ lib/handlers/*.ts         request handling logic, framework-agnostic (Request ->
         |
 lib/gemini.ts             Gemini client: writeDjLine() (text model), synthesizeSpeech() (TTS model)
 lib/wav.ts                 wraps Gemini's raw PCM in a WAV header
+lib/handoff.ts             optional push of each generated clip to the station server (Chips Voice /ingest)
 lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
 ```
 
@@ -72,3 +75,8 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   open to anyone who can reach the deployed site — the eventual WhatsApp
   allowlist was scoped for the command layer, not this core, so don't
   assume request authentication exists when reading this code.
+- **Station hand-off is optional and never fails a generation.** When `STATION_URL` and
+  `STATION_INGEST_TOKEN` are set, `handleGenerate` posts the WAV to the station after
+  `saveClip`. A station error is reported in the response's `handoff` field but the request
+  still returns `201`, because the clip is already generated and stored. Requests can set
+  `play`, `preempt` or `handoff: false`.

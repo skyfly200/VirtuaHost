@@ -101,9 +101,15 @@ function createScheduler({ store, clips, play, now = Date.now, tickMs = 5000, gr
       s.lastRunAt = now();
       s.runs += 1;
       try {
-        const spec = s.clipId ? (clips.get(s.clipId) || {}).spec : s.spec;
-        if (!spec) throw new Error('clip was deleted');
-        const { clip } = await clips.getOrCreate(spec, limits);
+        const saved = s.clipId ? clips.get(s.clipId) : null;
+        if (s.clipId && !saved) throw new Error('clip was deleted');
+        let clip;
+        if (saved && saved.external) {            // imported audio cannot be regenerated
+          if (!clips.exists(saved)) throw new Error('imported audio file is missing');
+          clip = saved;
+        } else {
+          ({ clip } = await clips.getOrCreate(saved ? saved.spec : s.spec, limits));
+        }
         const result = await play(clip, { preempt: s.preempt });
         s.lastResult = result && result.played === false ? `skipped: ${result.reason}` : 'played';
       } catch (err) {

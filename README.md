@@ -4,10 +4,11 @@ Generates and stores AI DJ audio clips for an online radio station, built on
 Netlify Functions (compute) and Netlify Blobs (storage), with Google Gemini
 doing both the script writing and the text-to-speech.
 
-This is the core pipeline only. Triggering it from WhatsApp, scheduling
-announcements, and injecting clips into a live Icecast/Liquidsoap stream are
-deliberately not built yet — they're expected to call `POST /api/generate`
-once they exist.
+This is the core pipeline. Triggering it from WhatsApp and scheduling
+announcements are not built yet — they're expected to call `POST /api/generate`.
+Getting clips onto a live Icecast/Liquidsoap stream is done by the Chips Voice
+server in `chips-voice/`: set `STATION_URL` and `STATION_INGEST_TOKEN` and each
+generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 ## Setup
 

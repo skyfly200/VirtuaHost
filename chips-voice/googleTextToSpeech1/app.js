@@ -17,6 +17,7 @@ const { createStorage } = require('./lib/storage');
 const { createTts } = require('./lib/providers/tts');
 const { createLlm } = require('./lib/providers/llm');
 const { createApi } = require('./routes/api');
+const { createIngest } = require('./lib/ingest');
 
 const sleep = promisify(setTimeout);
 
@@ -77,6 +78,7 @@ const limits = {
   maxText: parseInt(process.env.MAX_TEXT_CHARS || '500', 10),
   maxSsml: parseInt(process.env.MAX_SSML_CHARS || '2000', 10),
   maxPrompt: parseInt(process.env.MAX_PROMPT_CHARS || '1000', 10),
+  maxDialogue: parseInt(process.env.MAX_DIALOGUE_CHARS || '10000', 10),
 };
 const tts = createTts(process.env);
 const llm = createLlm(process.env);
@@ -99,8 +101,18 @@ process.on('SIGINT', () => { store.flush(); process.exit(0); });
 
 // Signing key for audio links: its own secret if set, otherwise derived from the login secret.
 const STREAM_SECRET = process.env.STREAM_SECRET || process.env.SESSION_SECRET || process.env.API_KEY || '';
+const ingest = createIngest({
+  clips,
+  maxBytes: parseFloat(process.env.INGEST_MAX_MB || '25') * 1e6,
+  allowedHosts: (process.env.INGEST_ALLOWED_HOSTS || '').split(',').map((h) => h.trim()).filter(Boolean),
+  transcode: process.env.INGEST_TRANSCODE !== 'false',
+});
 const api = createApi({
   clips, tts, llm, storage, scheduler, play: playClip, limits,
+  ingest,
+  ingestToken: process.env.INGEST_TOKEN || '',
+  authenticate: auth.requireAuth,
+  ingestMaxBytes: parseFloat(process.env.INGEST_MAX_MB || '25') * 1e6,
   streamSecret: STREAM_SECRET,
   publicUrl: process.env.PUBLIC_URL,
   rateLimit: { max: parseInt(process.env.RATE_LIMIT_PER_MIN || '30', 10) },
@@ -126,6 +138,7 @@ app.use(express.json({ limit: '100kb' }));
 // cors() answers preflight requests itself, so only real requests reach the lines below.
 app.set('trust proxy', 'loopback'); // behind nginx on the same machine: req.ip is the real client
 app.use(api.publicRouter);          // signed audio links work without a login
+app.use(api.ingestRouter);          // audio hand-off: INGEST_TOKEN or a normal login
 app.post('/auth/login', auth.login);
 app.use(auth.requireAuth);
 app.get('/auth/me', (req, res) => res.json({ ok: true }));
