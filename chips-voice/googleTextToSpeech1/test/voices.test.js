@@ -90,11 +90,11 @@ test('openrouter speech: model and voice are sent, models are listed, setup erro
   api.close();
 });
 
-test('choosing a provider per request: used alone, no fallback; unknown provider is refused; dialogue needs support', async () => {
+test('choosing a provider per request: used alone, no fallback; unknown provider is refused; dialogue without ffmpeg needs a native provider', async () => {
   const calls = [];
   const fake = (name, extra = {}) => ({ name, capabilities: {}, defaultVoice: `${name}-v`, listVoices: async () => [{ id: name }],
     synthesize: async (r) => { calls.push([name, r.voice]); if (extra.fail) throw new Error('down'); return { audio: Buffer.from(name), ext: 'mp3' }; }, ...extra });
-  const tts = createTts({ TTS_PROVIDER: 'google,openai,elevenlabs' }, { google: fake('google', { fail: true }), openai: fake('openai'), elevenlabs: fake('elevenlabs', { synthesizeDialogue: async () => ({ audio: Buffer.from('dlg'), ext: 'mp3' }) }) });
+  const tts = createTts({ TTS_PROVIDER: 'google,openai,elevenlabs' }, { google: fake('google', { fail: true }), openai: fake('openai'), elevenlabs: fake('elevenlabs', { synthesizeDialogue: async () => ({ audio: Buffer.from('dlg'), ext: 'mp3' }) }) }, { ffmpegAvailable: () => false });
   assert.strictEqual((await tts.synthesize({ text: 'x', voice: 'g-voice' })).provider, 'openai');            // google failed, fell back
   assert.deepStrictEqual(calls, [['google', 'g-voice'], ['openai', undefined]]);                              // voice id not sent to the fallback
   assert.strictEqual((await tts.synthesize({ text: 'x', provider: 'elevenlabs', voice: 'e' })).provider, 'elevenlabs');
@@ -129,4 +129,59 @@ test('clip specs: dialogue turns are validated, provider is part of the clip id'
   assert.deepStrictEqual([c.reused, c2.reused, calls.length], [false, true, 3]);
   assert.deepStrictEqual(calls[2].turns.map((t) => t.voice), ['Rocky', 'Britta']);
   await assert.rejects(clips.getOrCreate({ text: 'x', provider: 'piper' }), /not enabled/);
+});
+
+test('dialogue works with any provider by voicing each line and joining the parts', async () => {
+  const lines = [];
+  const plain = { name: 'plain', capabilities: { rate: true }, defaultVoice: 'a', listVoices: async () => [],
+    synthesize: async (r) => { lines.push([r.voice, r.text, r.format]); return { audio: Buffer.from(`[${r.voice}:${r.text}]`), ext: r.voice === 'wavvoice' ? 'wav' : 'mp3' }; } };
+  const converted = [];
+  const deps = { ffmpegAvailable: () => true, toMp3: async (b) => { converted.push(b.toString()); return Buffer.from(`mp3(${b})`); },
+    concatMp3: async (parts, gap) => Buffer.from(`${parts.map(String).join('+')}@${gap}`) };
+  const tts = createTts({ TTS_PROVIDER: 'plain' }, { plain }, deps);
+  assert.deepStrictEqual([tts.capabilities.dialogue, tts.capabilities.dialogueNative], [true, false]);
+  const out = await tts.synthesize({ turns: [{ voice: 'v1', text: 'Hi' }, { voice: 'wavvoice', text: 'Yo' }], rate: 1.1 });
+  assert.deepStrictEqual([out.ext, out.provider, out.audio.toString()], ['mp3', 'plain', '[v1:Hi]+mp3([wavvoice:Yo])@0.35']);
+  assert.deepStrictEqual(lines, [['v1', 'Hi', 'MP3'], ['wavvoice', 'Yo', 'MP3']]);        // each line asked for MP3 so parts join cleanly
+  assert.deepStrictEqual(converted, ['[wavvoice:Yo]']);                                   // non-MP3 parts are converted first
+  const native = createTts({ TTS_PROVIDER: 'el' }, { el: { name: 'el', capabilities: {}, defaultVoice: '', listVoices: async () => [], synthesizeDialogue: async () => ({ audio: Buffer.from('n'), ext: 'mp3' }) } }, deps);
+  assert.deepStrictEqual([native.capabilities.dialogue, native.capabilities.dialogueNative], [true, true]);
+  const noFfmpeg = createTts({ TTS_PROVIDER: 'plain' }, { plain }, { ffmpegAvailable: () => false });
+  assert.strictEqual(noFfmpeg.capabilities.dialogue, false);
+  await assert.rejects(noFfmpeg.synthesize({ turns: [{ voice: 'a', text: 'b' }] }), /needs ffmpeg/);
+});
+
+test('written scripts become dialogue turns; speakers map to voices', () => {
+  const spec = normalizeSpec({ script: 'R: Britta, what are we listening to?\nB: [laughs] No idea: that is the beauty.\n\nNarrator: Pirate radio.', voices: { R: 'Rocky', B: 'Britta' } });
+  assert.deepStrictEqual(spec.turns, [
+    { voice: 'Rocky', text: 'Britta, what are we listening to?' },
+    { voice: 'Britta', text: '[laughs] No idea: that is the beauty.' },     // only the first colon splits speaker from text
+    { voice: 'Narrator', text: 'Pirate radio.' },                            // unmapped speaker is used as the voice itself
+  ]);
+  assert.throws(() => normalizeSpec({ script: 'Rocky: ok\nthis line has no speaker' }), /line 2 needs a speaker/);
+  assert.deepStrictEqual(normalizeSpec({ turns: [{ voice: 'a', text: 'b' }], script: 'x: y' }).turns, [{ voice: 'a', text: 'b' }]);   // explicit turns win
+  assert.ok(Object.keys(normalizeSpec({ script: '__proto__: hi', voices: {} }).turns[0]).length === 2);
+});
+
+test('effects are part of the clip: validated, hashed, applied after speech, and reusable as processed copies', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fxclip-'));
+  const applied = [];
+  const fakeFx = { apply: async (buf, settings) => { applied.push(settings.preset); return Buffer.from(`fx(${settings.preset}):${buf}`); } };
+  const tts = { names: ['x'], synthesize: async () => ({ audio: Buffer.from('raw'), ext: 'ogg', provider: 'x' }) };
+  const clips = createClips({ store: createStore(path.join(dir, 'db.json'), { clips: {} }), tts, dir: path.join(dir, 'a'), fx: fakeFx });
+  const plain = await clips.getOrCreate({ text: 'Same words' });
+  const robot = await clips.getOrCreate({ text: 'Same words', fx: 'robot' });
+  const again = await clips.getOrCreate({ text: 'Same words', fx: { preset: 'robot' } });
+  assert.notStrictEqual(plain.clip.id, robot.clip.id);                                   // effect changes the clip id
+  assert.deepStrictEqual([again.reused, robot.clip.ext, plain.clip.ext], [true, 'mp3', 'ogg']);
+  assert.strictEqual(fs.readFileSync(clips.fileOf(robot.clip), 'utf8'), 'fx(robot):raw');
+  assert.strictEqual(robot.clip.spec.fx.preset, 'robot');
+  await assert.rejects(clips.getOrCreate({ text: 'x', fx: 'nonsense' }), /unknown effect/);
+  // a processed copy of an existing clip
+  const copy = await clips.applyFx(plain.clip.id, { preset: 'deep' });
+  assert.deepStrictEqual([copy.clip.title, copy.clip.derivedFrom, copy.clip.external, copy.clip.source], ['Same words (deep)', plain.clip.id, true, 'fx:deep']);
+  assert.strictEqual(fs.readFileSync(clips.fileOf(copy.clip), 'utf8'), 'fx(deep):raw');
+  assert.ok(clips.get(plain.clip.id) && clips.exists(plain.clip));                         // original kept
+  await assert.rejects(clips.applyFx(plain.clip.id, {}), /choose an effect/);
+  assert.strictEqual(await clips.applyFx('nope', 'robot'), null);
 });

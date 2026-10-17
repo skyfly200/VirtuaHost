@@ -8,7 +8,7 @@ This is the core pipeline. Triggering it from WhatsApp and scheduling
 announcements are not built yet — they're expected to call `POST /api/generate`.
 Getting clips onto a live Icecast/Liquidsoap stream is done by the Chips Voice
 server in `chips-voice/`: set `STATION_URL` and `STATION_INGEST_TOKEN` and each
-generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTEGRATION.md).
+generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTEGRATION.md). Working on the KRAP side? Start with [docs/FOR-SYLVIA.md](docs/FOR-SYLVIA.md).
 
 ## Setup
 

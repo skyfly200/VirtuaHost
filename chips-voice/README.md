@@ -88,6 +88,10 @@ Everything except `/auth/login` and signed `/a/...` links needs a login token (o
 | GET | `/tts/voices`, `/llm/models` | Voices for the active speech provider; models for the active AI provider. |
 | POST | `/announcements/draft` | `{ prompt, tone }` returns drafted text from the AI provider. |
 | GET | `/tts/models` | Models for the active provider (OpenRouter speech). |
+| GET | `/fx/presets` | Audio effects and voice-changer presets (needs ffmpeg). |
+| POST | `/clips/:id/fx` | A processed copy of a clip with an effect. |
+| GET, PUT | `/host` | The server-side virtual host: status and settings. |
+| POST | `/host/say` | One host link now (`dryRun` writes the line only). |
 | POST | `/ingest` | Receive finished audio (WAV, MP3, Ogg) from another system. `INGEST_TOKEN`, `?play=true&preempt=true`. |
 | POST | `/ingest/url` | Same, but the server fetches a link from a host in `INGEST_ALLOWED_HOSTS`. |
 | POST | `/synth` | Generate a clip without playing it (reuses an identical one). |
@@ -104,7 +108,7 @@ Everything except `/auth/login` and signed `/a/...` links needs a login token (o
 | POST | `/music/skip`, `/music/volume`, `/music/playlist` | Liquidsoap mode controls. |
 | GET | `/midi`, `/learnmute`, `/learnfade` | VLC mode MIDI helpers. |
 
-Speech body fields: `text` or `ssml` with `ssmlMode` (or `turns` for multi-voice dialogue), `provider`, `voice`, `format`
+Speech body fields: `text` or `ssml` with `ssmlMode` (or `turns`, or a `script` with `voices`, for multi-voice dialogue), `provider`, `fx`, `voice`, `format`
 (`OGG_OPUS`, `MP3`, `LINEAR16`), `rate`, `pitch`, `gain`. Providers, drafting,
 the library, links and cloud sharing are described in
 [docs/CLOUD-AND-AI.md](docs/CLOUD-AND-AI.md); all settings are in

@@ -28,6 +28,12 @@
         v-btn(text small color="primary" @click="addTurn")
           v-icon(left small) mdi-plus
           | Add line
+        v-btn(text small @click="pasting = !pasting" class="ml-2")
+          v-icon(left small) mdi-text-box-outline
+          | Paste a script
+        div(v-if="pasting" class="mt-2")
+          v-textarea(v-model="scriptText" outlined dense auto-grow rows="4" label="One line per turn: Name: what they say" hide-details placeholder="Rocky: Britta, what are we listening to?\nBritta: [laughs] No idea.")
+          v-btn(small depressed color="primary" class="mt-2" :disabled="!scriptText.trim()" @click="applyScript") Use this script
       v-btn(v-if="info.llm.enabled && mode === 'text'" text small color="secondary" class="mt-2" @click="drafting = true")
         v-icon(left small) mdi-creation
         | Draft with AI
@@ -42,7 +48,10 @@
           v-expansion-panel-content
             v-select(v-if="info.tts.providers.length > 1" v-model="provider" :items="providerItems" label="Speech provider" outlined dense class="mb-2" hint="Automatic uses the first provider and falls back to the next if it fails" persistent-hint)
             v-combobox(v-if="mode !== 'dialogue'" v-model="voice" :items="voices" item-text="label" item-value="id" :return-object="false" label="Voice" outlined dense :loading="loadingVoices" hint="Pick a voice or type a voice id" persistent-hint class="mb-2")
-            v-select(v-model="format" :items="formats" label="Format" outlined dense)
+            v-select(v-model="format" :items="formats" label="Format" outlined dense v-if="!fxOn")
+            template(v-if="info.fx.available")
+              v-switch(v-model="fxOn" label="Effects and voice changer" inset hide-details dense class="mt-0 mb-3")
+              FxFields(v-if="fxOn" v-model="fx")
             v-slider(v-if="caps.rate" v-model="speed" label="Speed" min="0.25" max="4" step="0.05" thumb-label="always" :thumb-size="28")
               template(v-slot:thumb-label="{ value }") {{ Number(value).toFixed(2) }}
             v-slider(v-if="caps.pitch" v-model="pitch" label="Pitch" min="-20" max="20" step="1" thumb-label="always" :thumb-size="28")
@@ -106,6 +115,7 @@
   import { notify } from '../notify';
   import { info } from '../providers';
   import ShareDialog from './ShareDialog.vue';
+import FxFields from './FxFields.vue';
   import ScheduleDialog from './ScheduleDialog.vue';
 
   interface Entry { id: number; text: string; clipId: string; when: string; note: string; color: string; icon: string; }
@@ -118,7 +128,7 @@
 
   export default Vue.extend({
     name: 'Composer',
-    components: { ShareDialog, ScheduleDialog },
+    components: { ShareDialog, ScheduleDialog, FxFields },
 
     data: () => ({
       info,
@@ -128,6 +138,10 @@
       voice: '',
       provider: '',
       turns: [{ voice: '', text: '' }, { voice: '', text: '' }] as Array<{ voice: string; text: string }>,
+      pasting: false,
+      scriptText: '',
+      fxOn: false,
+      fx: { preset: 'none', pitch: 0, speed: 1, tighten: false },
       voices: [] as Array<{ id: string; label: string }>,
       loadingVoices: false,
       format: 'OGG_OPUS',
@@ -192,6 +206,13 @@
         .catch(() => { this.voices = []; })
         .then(() => { this.loadingVoices = false; });
       },
+      applyScript() {
+        const lines = this.scriptText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const parsed = lines.map((l) => { const m = l.match(/^([^:]{1,40}):\s*(.+)$/); return m ? { voice: m[1].trim(), text: m[2].trim() } : null; });
+        if (parsed.some((t) => !t)) { notify('Every line needs a speaker, like "Rocky: Hello there."', 'warning'); return; }
+        this.turns = parsed as Array<{ voice: string; text: string }>;
+        this.pasting = false;
+      },
       addTurn() {
         const last = this.turns[this.turns.length - 1];
         const other = this.voices.find((v) => !last || v.id !== last.voice);
@@ -200,6 +221,7 @@
       payload() {
         return {
           provider: this.provider || undefined,
+          fx: this.fxOn && info.fx.available ? this.fx : undefined,
           turns: this.mode === 'dialogue' ? this.turns : undefined,
           text: this.text,
           ssml: this.ssml,

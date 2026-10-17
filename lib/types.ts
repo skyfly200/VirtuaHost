@@ -10,6 +10,8 @@ export interface GenerateRequest {
   preempt?: boolean;
   /** Set false to skip sending the clip to the station at all. */
   handoff?: boolean;
+  /** Audio treatment or voice changer the station applies on arrival. Defaults to STATION_FX. */
+  fx?: string | { preset?: string; pitch?: number; speed?: number; tighten?: boolean };
 }
 
 export interface ClipMetadata {

@@ -25,6 +25,8 @@
               v-chip(x-small label) {{ c.provider }}
               v-chip(v-if="c.external && c.source" x-small label) from {{ c.source }}
               v-chip(v-if="c.spec && c.spec.turns" x-small label color="secondary") dialogue
+              v-chip(v-if="c.spec && c.spec.fx" x-small label color="secondary") {{ c.spec.fx.preset !== 'none' ? c.spec.fx.preset : 'edited' }}
+              v-chip(v-if="c.derivedFrom" x-small label color="secondary") processed copy
               v-chip(x-small label) {{ c.playCount }} plays
               v-chip(x-small label) {{ size(c.bytes) }}
               v-chip(v-if="!c.available" x-small label color="warning") will regenerate
@@ -42,6 +44,9 @@
             v-btn(text small @click="scheduleFor = c")
               v-icon(left small) mdi-clock-outline
               | Schedule
+            v-btn(v-if="info.fx.available" text small @click="fxFor = c")
+              v-icon(left small) mdi-account-voice
+              | Effects
             v-spacer
             v-btn(icon small @click="edit(c)" aria-label="Edit")
               v-icon(small) mdi-pencil-outline
@@ -60,6 +65,7 @@
           v-btn(color="primary" depressed @click="saveEdit") Save
 
     ShareDialog(:clip="share" @close="share = null" @changed="load")
+    FxDialog(:clip="fxFor" @close="fxFor = null" @done="load")
     ScheduleDialog(:open="!!scheduleFor" :source="scheduleSource" @close="scheduleFor = null" @saved="$emit('scheduled')")
 </template>
 
@@ -69,10 +75,12 @@
   import { notify } from '../notify';
   import ShareDialog from '../components/ShareDialog.vue';
   import ScheduleDialog from '../components/ScheduleDialog.vue';
+import FxDialog from '../components/FxDialog.vue';
+import { info } from '../providers';
 
   export default Vue.extend({
     name: 'Library',
-    components: { ShareDialog, ScheduleDialog },
+    components: { ShareDialog, ScheduleDialog, FxDialog },
 
     data: () => ({
       clips: [] as any[],
@@ -80,7 +88,9 @@
       favoritesOnly: undefined as boolean | undefined,
       loading: true,
       playing: '',
+      info,
       share: null as any,
+      fxFor: null as any,
       scheduleFor: null as any,
       editing: false,
       draft: null as any,

@@ -11,6 +11,7 @@ export interface Info {
   llm: { enabled: boolean; names: string[] };
   storage: { enabled: boolean; targets: Array<{ name: string; label: string }> };
   links: { enabled: boolean };
+  fx: { available: boolean; presets: Array<{ name: string; label: string; description: string }> };
   limits: { maxText: number; maxSsml: number; maxPrompt: number };
 }
 
@@ -21,6 +22,7 @@ export const info: Info = Vue.observable({
   llm: { enabled: false, names: [] },
   storage: { enabled: false, targets: [] },
   links: { enabled: false },
+  fx: { available: false, presets: [] },
   limits: { maxText: 500, maxSsml: 2000, maxPrompt: 1000 },
 });
 
@@ -28,5 +30,11 @@ export async function loadInfo() {
   try {
     const { data } = await api.get('/providers');
     Object.assign(info, data, { loaded: true });
+    // The server only says whether effects are available; the preset list is a separate call.
+    info.fx = { available: false, presets: [] };
+    if (data.fx && data.fx.available) {
+      const presets = (await api.get('/fx/presets')).data.presets;
+      info.fx = { available: true, presets };
+    }
   } catch (e) { /* the pages still work with defaults */ }
 }

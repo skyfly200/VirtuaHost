@@ -7,11 +7,13 @@ const { ScheduleError } = require('../lib/scheduler');
 const { verify, signedUrl } = require('../lib/signing');
 const { createLimiter } = require('../lib/ratelimit');
 const { IngestError } = require('../lib/ingest');
+const fxLib = require('../lib/fx');
+const audio = require('../lib/audio');
 const crypto = require('crypto');
 
 const MIME = { ogg: 'audio/ogg', mp3: 'audio/mpeg', wav: 'audio/wav' };
 
-function createApi({ clips, tts, llm, storage, scheduler, play, streamSecret, publicUrl, limits = {}, rateLimit = {}, ingest, ingestToken = '', authenticate = (req, res, next) => next(), ingestMaxBytes = 25e6 }) {
+function createApi({ host, clips, tts, llm, storage, scheduler, play, streamSecret, publicUrl, limits = {}, rateLimit = {}, ingest, ingestToken = '', authenticate = (req, res, next) => next(), ingestMaxBytes = 25e6 }) {
   const maxText = limits.maxText || 500;
   const maxPrompt = limits.maxPrompt || 1000;
   const costly = createLimiter({ windowMs: rateLimit.windowMs || 60000, max: rateLimit.max || 30 });
@@ -22,12 +24,14 @@ function createApi({ clips, tts, llm, storage, scheduler, play, streamSecret, pu
     } catch (err) {
       if (err instanceof SpecError || err instanceof ScheduleError) return res.status(400).json({ error: err.message });
       if (err instanceof IngestError) return res.status(err.status).json({ error: err.message });
+      if (err instanceof fxLib.FxError) return res.status(400).json({ error: err.message });
       if (tts.ProviderError && err instanceof tts.ProviderError) return res.status(400).json({ error: err.message });
       console.error(`${req.method} ${req.path}:`, err.message);
       res.status(502).json({ error: err.message });
     }
   };
 
+  const fxAvailable = audio.ffmpegAvailable();
   const view = (clip) => clip && ({ ...clip, available: clips.exists(clip) });
 
   // Make sure the clip's audio is on disk; an evicted clip is regenerated from its saved settings.
@@ -68,6 +72,7 @@ function createApi({ clips, tts, llm, storage, scheduler, play, streamSecret, pu
     llm: { enabled: llm.enabled, names: llm.names },
     storage: { enabled: storage.enabled, targets: storage.targets },
     links: { enabled: !!streamSecret },
+    fx: { available: fxAvailable },
     limits: { maxText, maxSsml: limits.maxSsml || 2000, maxPrompt },
   }));
 
@@ -83,6 +88,13 @@ function createApi({ clips, tts, llm, storage, scheduler, play, streamSecret, pu
   router.get('/tts/models', wrap(async (req, res) => res.json(await tts.listModels(req.query.provider))));
 
   router.get('/llm/models', wrap(async (req, res) => res.json(await llm.listModels())));
+
+  // Audio treatment and voice-changer effects (needs ffmpeg on the server).
+  router.get('/fx/presets', (req, res) => res.json({
+    available: fxAvailable,
+    presets: fxLib.describe(),
+    ranges: { pitch: [-12, 12], speed: [0.5, 2] },
+  }));
 
   router.post('/announcements/draft', costly, wrap(async (req, res) => {
     const prompt = String((req.body || {}).prompt || '').trim();
@@ -143,6 +155,14 @@ function createApi({ clips, tts, llm, storage, scheduler, play, streamSecret, pu
     res.json({ ...link, expiresInHours: hours });
   }));
 
+  // A processed copy of a clip, for example { "fx": { "preset": "robot", "pitch": 2 } }. The original is kept.
+  router.post('/clips/:id/fx', costly, wrap(async (req, res) => {
+    if (!fxAvailable) return res.status(503).json({ error: 'effects need ffmpeg installed on the server' });
+    const made = await clips.applyFx(req.params.id, (req.body || {}).fx);
+    if (!made) return res.status(404).json({ error: 'clip not found' });
+    res.status(made.reused ? 200 : 201).json({ clip: view(made.clip), reused: made.reused });
+  }));
+
   // Upload to the configured cloud (Google Drive via rclone, ownCloud, ...) and return a share link.
   router.post('/clips/:id/share', wrap(async (req, res) => {
     const found = clips.get(req.params.id);
@@ -152,6 +172,18 @@ function createApi({ clips, tts, llm, storage, scheduler, play, streamSecret, pu
     clips.setCloud(clip.id, { ...shared, at: Date.now() });
     res.json(shared);
   }));
+
+  // ---- virtual host: links between songs (a server-side replication of the KRAP virtual_host.py) ----
+  if (host) {
+    router.get('/host', (req, res) => res.json(host.status()));
+    router.put('/host', wrap(async (req, res) => res.json(host.update(req.body || {}))));
+    // Like `virtual_host.py --say ARTIST TITLE [--dry-run]`.
+    router.post('/host/say', costly, wrap(async (req, res) => {
+      const b = req.body || {};
+      if (!b.title) return res.status(400).json({ error: 'title is required' });
+      res.json(await host.say({ artist: b.artist, title: b.title, dryRun: b.dryRun === true, play: b.play === true }));
+    }));
+  }
 
   router.get('/schedules', (req, res) => res.json(scheduler.list()));
   router.post('/schedules', wrap(async (req, res) => res.status(201).json(scheduler.add(req.body || {}))));
@@ -192,6 +224,7 @@ function createApi({ clips, tts, llm, storage, scheduler, play, streamSecret, pu
         const header = (n) => (req.get(n) ? decodeURIComponent(req.get(n)) : undefined);
         const result = await ingest.importBuffer(req.body, {
           title: q.title || header('x-title'), text: q.text || header('x-text'), source: q.source || header('x-source'),
+          fx: fxLib.fxFromQuery(q),
         });
         await finishIngest(res, result, { play: asBool(q.play || req.get('x-play')), preempt: q.preempt || req.get('x-preempt') });
       }));
@@ -201,7 +234,7 @@ function createApi({ clips, tts, llm, storage, scheduler, play, streamSecret, pu
       const body = req.body || {};
       if (!body.url) throw new IngestError('url is required', 400);
       const buffer = await ingest.fetchAudio(body.url);
-      const result = await ingest.importBuffer(buffer, { title: body.title, text: body.text, source: body.source || 'link' });
+      const result = await ingest.importBuffer(buffer, { title: body.title, text: body.text, source: body.source || 'link', fx: fxLib.normalizeFx(body.fx) });
       await finishIngest(res, result, { play: asBool(body.play), preempt: body.preempt });
     }));
   }

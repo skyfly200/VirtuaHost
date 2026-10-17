@@ -155,3 +155,15 @@ test('pull by link through the API', async (t) => {
   assert.strictEqual((await s.post('/ingest/url', JSON.stringify({}), json)).status, 400);
   assert.strictEqual((await s.post('/ingest/url', JSON.stringify({ url: `http://${host}/x` }), { 'Content-Type': 'application/json' })).status, 401);
 });
+
+test('ingest can apply an effect on the way in (real ffmpeg)', { skip: !audio.ffmpegAvailable() && 'ffmpeg not installed' }, async (t) => {
+  const s = await boot(); t.after(() => s.close());
+  const plain = await s.post('/ingest?title=Plain', WAV, AUTH);
+  const robot = await s.post('/ingest?title=Robot&fx=robot&pitch=2', WAV, AUTH);
+  assert.deepStrictEqual([robot.status, robot.json.clip.ext, robot.json.clip.id === plain.json.clip.id], [201, 'mp3', false]);
+  assert.strictEqual(sniff(fs.readFileSync(s.clips.fileOf(s.clips.get(robot.json.clip.id)))), 'mp3');
+  const bad = await s.post('/ingest?fx=bogus', WAV, AUTH);
+  assert.deepStrictEqual([bad.status, /unknown effect/.test(bad.json.error)], [400, true]);
+  const viaUrl = await s.post('/ingest/url', JSON.stringify({ url: 'http://127.0.0.1:1/x', fx: 'bogus' }), { ...AUTH, 'Content-Type': 'application/json' });
+  assert.ok([400, 403].includes(viaUrl.status));
+});

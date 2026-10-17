@@ -39,6 +39,7 @@
               v-row
                 v-col(cols="12" md="5")
                   NowPlaying
+                  HostCard
                 v-col(cols="12" md="7")
                   Composer(@scheduled="tab = 2")
             v-tab-item
@@ -54,6 +55,7 @@
 import Vue from 'vue';
 import Login from './views/Login.vue';
 import NowPlaying from './components/NowPlaying.vue';
+import HostCard from './components/HostCard.vue';
 import Composer from './components/Composer.vue';
 import Library from './views/Library.vue';
 import Schedule from './views/Schedule.vue';
@@ -64,7 +66,7 @@ import { toast } from './notify';
 export default Vue.extend({
   name: 'App',
 
-  components: { Login, NowPlaying, Composer, Library, Schedule },
+  components: { Login, NowPlaying, HostCard, Composer, Library, Schedule },
 
   data: () => ({ toast, tab: 0 }),
 

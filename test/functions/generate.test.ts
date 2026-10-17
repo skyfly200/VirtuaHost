@@ -153,6 +153,16 @@ describe("handleGenerate", () => {
       expect(mockedPushToStation.mock.calls[1][1]).toMatchObject({ play: false, preempt: false });
     });
 
+    it("passes the request's effect, falling back to the station-wide default", async () => {
+      mockedHandoffDefaults.mockReturnValue({ play: false, preempt: false, fx: "underground" });
+
+      await handleGenerate(jsonRequest("POST", { mode: "say", text: "a" }));
+      expect(mockedPushToStation.mock.calls[0][1].fx).toBe("underground");
+
+      await handleGenerate(jsonRequest("POST", { mode: "say", text: "b", fx: { preset: "robot", pitch: 2 } }));
+      expect(mockedPushToStation.mock.calls[1][1].fx).toEqual({ preset: "robot", pitch: 2 });
+    });
+
     it("sends the written script, not the prompt, in ai mode", async () => {
       mockedWriteDjLine.mockResolvedValue("Here comes the weekend.");
       await handleGenerate(jsonRequest("POST", { mode: "ai", prompt: "hype friday" }));

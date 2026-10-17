@@ -27,10 +27,10 @@ describe("handoff", () => {
   });
 
   it("reads the autoplay and preempt defaults from the environment", () => {
-    expect(handoffDefaults()).toEqual({ play: false, preempt: false });
+    expect(handoffDefaults()).toEqual({ play: false, preempt: false, fx: undefined });
     vi.stubEnv("STATION_AUTOPLAY", "true");
     vi.stubEnv("STATION_PREEMPT", "true");
-    expect(handoffDefaults()).toEqual({ play: true, preempt: true });
+    expect(handoffDefaults()).toEqual({ play: true, preempt: true, fx: undefined });
   });
 
   it("posts the WAV to /ingest with the token, play flag and percent-encoded title and text", async () => {
@@ -59,6 +59,26 @@ describe("handoff", () => {
 
     await pushToStation(WAV, { ...OPTIONS, play: false, preempt: true });
     expect(fetchMock.mock.calls[1][0]).toBe("https://radio.example.com/ingest?source=virtuahost");
+  });
+
+  it("passes an effect preset and voice-changer settings to the station as query parameters", async () => {
+    const fetchMock = stationReply(201, { clip: { id: "x" } });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await pushToStation(WAV, { ...OPTIONS, play: false, fx: "underground" });
+    expect(fetchMock.mock.calls[0][0]).toBe("https://radio.example.com/ingest?source=virtuahost&fx=underground");
+
+    await pushToStation(WAV, { ...OPTIONS, play: false, fx: { preset: "robot", pitch: -3, speed: 1.1, tighten: true } });
+    expect(fetchMock.mock.calls[1][0]).toBe("https://radio.example.com/ingest?source=virtuahost&fx=robot&pitch=-3&speed=1.1&tighten=true");
+
+    await pushToStation(WAV, { ...OPTIONS, play: false, fx: { pitch: 2 } });
+    expect(fetchMock.mock.calls[2][0]).toBe("https://radio.example.com/ingest?source=virtuahost&pitch=2");
+  });
+
+  it("reads the station-wide effect from STATION_FX", () => {
+    expect(handoffDefaults().fx).toBeUndefined();
+    vi.stubEnv("STATION_FX", "underground");
+    expect(handoffDefaults().fx).toBe("underground");
   });
 
   it("reports when the station skipped playback because a live DJ is on air", async () => {

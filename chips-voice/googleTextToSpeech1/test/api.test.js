@@ -1,4 +1,5 @@
 const test = require('node:test');
+const audio = require('../lib/audio');
 const assert = require('node:assert');
 const express = require('express');
 const fs = require('fs');
@@ -28,7 +29,7 @@ async function boot(extra = {}) {
   const llm = { enabled: true, names: ['openrouter'], listModels: async () => [{ id: 'm' }],
     generate: async (r) => { llmCalls.push(r); return { text: 'Draft text. '.repeat(100), provider: 'openrouter', model: 'm' }; } };
   const storage = { enabled: true, targets: [{ name: 'owncloud', label: 'ownCloud' }], share: async (clip, file, target) => ({ target: target || 'owncloud', url: 'https://c/s/T', directUrl: 'https://c/s/T/download', file }) };
-  const { router, publicRouter } = createApi({ clips, tts, llm, storage, scheduler, play, streamSecret: 'sec', publicUrl: 'https://radio.test', ...extra });
+  const { router, publicRouter } = createApi({ host: extra.host, clips, tts, llm, storage, scheduler, play, streamSecret: 'sec', publicUrl: 'https://radio.test', ...extra });
   const app = express();
   app.set('trust proxy', true);
   app.use(express.json());
@@ -139,5 +140,35 @@ test('provider failures come back as errors, not crashes; rate limit protects co
   assert.strictEqual((await t.call('POST', '/synth', { text: 'third' })).status, 200);
   assert.strictEqual((await t.call('POST', '/synth', { text: 'fourth' })).status, 429);
   assert.strictEqual((await t.call('GET', '/clips')).status, 200);   // reads are not limited
+  t.close();
+});
+
+test('effects API: presets are listed, processed copies are made, and bad requests are refused', async () => {
+  const t = await boot();
+  const presets = (await t.call('GET', '/fx/presets')).json;
+  assert.ok(presets.presets.some((p) => p.name === 'underground') && presets.presets.some((p) => p.name === 'robot'));
+  assert.deepStrictEqual(presets.ranges, { pitch: [-12, 12], speed: [0.5, 2] });
+  assert.strictEqual(typeof (await t.call('GET', '/providers')).json.fx.available, 'boolean');
+  const bad = await t.call('POST', '/synth', { text: 'hi', fx: 'not-a-preset' });
+  assert.deepStrictEqual([bad.status, /unknown effect/.test(bad.json.error)], [400, true]);
+  const none = await t.call('POST', '/clips/nope/fx', { fx: 'robot' });
+  assert.strictEqual(none.status, audio.ffmpegAvailable() ? 404 : 503);
+  t.close();
+});
+
+test('host API: status, settings, and a dry-run say', async () => {
+  const { createHost } = require('../lib/host');
+  const hostStore = createStore(null, {});
+  const h = createHost({ store: hostStore, clips: { getOrCreate: async (s) => ({ clip: { id: 'h1', text: s.text }, reused: false }), get: () => ({ id: 'h1', text: 'x' }) },
+    play: async () => ({ played: true }), nowPlaying: async () => ({ artist: '', title: '' }), rng: () => 0 });
+  const t = await boot({ host: h });
+  assert.strictEqual((await t.call('GET', '/host')).json.running, false);
+  const upd = await t.call('PUT', '/host', { enabled: true, every: 3, voice: 'Rocky' });
+  assert.deepStrictEqual([upd.json.running, upd.json.settings.every, upd.json.settings.voice], [true, 3, 'Rocky']);
+  const dry = await t.call('POST', '/host/say', { artist: 'Band', title: 'Tune', dryRun: true });
+  assert.deepStrictEqual([dry.status, dry.json.dryRun, /Band with Tune/.test(dry.json.text)], [200, true, true]);
+  assert.strictEqual((await t.call('POST', '/host/say', { artist: 'Band' })).status, 400);
+  await t.call('PUT', '/host', { enabled: false });
+  h.stop();
   t.close();
 });

@@ -5,12 +5,18 @@
 //   STATION_INGEST_TOKEN  the station's INGEST_TOKEN (it can only deliver audio, nothing else)
 //   STATION_AUTOPLAY      "true" to put every generated clip on air unless the request says play:false
 //   STATION_PREEMPT       "true" to let those clips interrupt a live DJ unless the request says otherwise
+//   STATION_FX            an effect preset the station applies to every clip it receives (for example
+//                         "underground"); a request can override it with its own `fx`
+
+/** Audio treatment the station applies on arrival: a preset name, or a preset with voice-changer settings. */
+export type FxSetting = string | { preset?: string; pitch?: number; speed?: number; tighten?: boolean };
 
 export interface HandoffOptions {
   title: string;
   text: string;
   play: boolean;
   preempt: boolean;
+  fx?: FxSetting;
 }
 
 export interface HandoffResult {
@@ -25,10 +31,11 @@ export function handoffConfigured(): boolean {
   return Boolean(process.env.STATION_URL && process.env.STATION_INGEST_TOKEN);
 }
 
-export function handoffDefaults(): { play: boolean; preempt: boolean } {
+export function handoffDefaults(): { play: boolean; preempt: boolean; fx?: FxSetting } {
   return {
     play: process.env.STATION_AUTOPLAY === "true",
     preempt: process.env.STATION_PREEMPT === "true",
+    fx: process.env.STATION_FX || undefined,
   };
 }
 
@@ -62,6 +69,13 @@ export async function pushToStation(wav: Buffer, options: HandoffOptions): Promi
   const query = new URLSearchParams({ source: "virtuahost" });
   if (options.play) query.set("play", "true");
   if (options.play && options.preempt) query.set("preempt", "true");
+  if (options.fx) {
+    const fx = typeof options.fx === "string" ? { preset: options.fx } : options.fx;
+    if (fx.preset) query.set("fx", fx.preset);
+    if (fx.pitch !== undefined) query.set("pitch", String(fx.pitch));
+    if (fx.speed !== undefined) query.set("speed", String(fx.speed));
+    if (fx.tighten) query.set("tighten", "true");
+  }
 
   try {
     const res = await fetch(`${base}/ingest?${query.toString()}`, {

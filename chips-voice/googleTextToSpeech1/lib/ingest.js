@@ -1,5 +1,6 @@
 // Receiving finished audio from another system (the Netlify generator): pushed bytes or a link to fetch.
 const audio = require('./audio');
+const fxLib = require('./fx');
 
 class IngestError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -30,7 +31,7 @@ async function readLimited(res, maxBytes) {
   return Buffer.concat(chunks);
 }
 
-function createIngest({ clips, maxBytes = 25e6, allowedHosts = [], allowHttp = false, transcode = true, fetchImpl = fetch, toMp3 = audio.toMp3, canTranscode = audio.ffmpegAvailable }) {
+function createIngest({ clips, maxBytes = 25e6, allowedHosts = [], allowHttp = false, transcode = true, fetchImpl = fetch, toMp3 = audio.toMp3, canTranscode = audio.ffmpegAvailable, fx = fxLib }) {
   const hosts = allowedHosts.map((h) => h.toLowerCase());
   const shrink = transcode && canTranscode();
 
@@ -40,9 +41,16 @@ function createIngest({ clips, maxBytes = 25e6, allowedHosts = [], allowHttp = f
     let ext = sniff(buffer);
     if (!ext) throw new IngestError('unsupported audio (send WAV, MP3 or Ogg)', 415);
     let data = buffer;
-    // WAV from Gemini is about 3 MB a minute; MP3 at the stream bitrate is about 1 MB.
-    if (shrink && ext !== 'mp3') { data = await toMp3(buffer); ext = 'mp3'; }
-    return clips.addExternal({ buffer: data, ext, title: meta.title, text: meta.text, source: meta.source });
+    if (meta.fx) {
+      // An effect or voice change was asked for; the result is MP3 at the stream bitrate.
+      data = await fx.apply(buffer, meta.fx);
+      ext = 'mp3';
+    } else if (shrink && ext !== 'mp3') {
+      // WAV from Gemini is about 3 MB a minute; MP3 at the stream bitrate is about 1 MB.
+      data = await toMp3(buffer);
+      ext = 'mp3';
+    }
+    return clips.addExternal({ buffer: data, ext, title: meta.title, text: meta.text, source: meta.source, tags: meta.tags });
   }
 
   async function fetchAudio(rawUrl) {

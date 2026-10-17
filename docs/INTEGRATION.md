@@ -119,11 +119,33 @@ AI drafting use `LLM_PROVIDER=openrouter` as before.
 - **`virtual_host.py` (the live link host).** Still Sylvia's, for RadioDJ on Windows. Replacing it with a server-side version
   (read now-playing from Icecast, an LLM writes the link, Liquidsoap plays it over the music) is the next step and is not built.
 
+## 4. Effects and voice changer
+
+Chips Voice post-processes audio with ffmpeg: the KRAP `underground` sound (the exact filter chain from `gen.py`), telephone, radio, walkie-talkie,
+megaphone, robot, whisper, cave, underwater, chorus, chipmunk, deep, alien and demon, plus `pitch` (-12..12 semitones), `speed` (0.5..2)
+and `tighten` (trim long pauses, as in `process.py`). Ask for it on any speech request (`"fx": "underground"` or
+`"fx": {"preset":"robot","pitch":2}`), on an existing clip (`POST /clips/:id/fx`, which makes a processed copy), or on arrival from VirtuaHost
+(`STATION_FX=underground` or `"fx"` in the generate request, which becomes `?fx=` on `/ingest`). Needs ffmpeg on the station.
+
+## 5. Conversational dialogue
+
+`turns: [{ "voice": "Rocky", "text": "..." }, ...]`, or a written `script` ("Rocky: ...", one line per turn) with a `voices` map, on `/speak` and `/synth`.
+ElevenLabs voices it natively as one conversation; every other provider voices each line and joins them with ffmpeg. The UI has a Dialogue mode with a
+"Paste a script" box.
+
+## 6. The server-side virtual host
+
+A copy of `krap-station/host/virtual_host.py` that follows Icecast instead of RadioDJ (the original is untouched): it writes a link about each song from the
+same templates, voices it as Rocky, finishes it with `underground`, and plays it as the next song starts, ducked over the music. It stays quiet for spots and
+live DJs. Off by default: turn it on in the UI ("Virtual host" card) or `PUT /host {"enabled": true}`. Settings, differences from the script, and the cost
+controls are in [FOR-SYLVIA.md](FOR-SYLVIA.md). Environment defaults: `HOST_VOICE=Rocky`, `HOST_FX=underground`, `HOST_EVERY`, `HOST_LINES`, `HOST_SKIP_ARTISTS`, `HOST_PERSONA`.
+
 ## What was and was not verified
 
 Run here, against local stand-ins for the outside services:
 
-- Both test suites (VirtuaHost 33 tests; Chips Voice backend tests and a clean UI build), including real ffmpeg conversion and joining.
+- Both test suites (VirtuaHost 36 tests; Chips Voice backend 83 tests and a clean UI build), including real ffmpeg conversion, effects and joining.
+- The virtual host end to end: a link about one song was voiced, finished with `underground`, and pushed to a fake Liquidsoap when the next song began; a spot got nothing.
 - A real round trip: VirtuaHost's `handleGenerate` pushed a clip to a running Chips Voice server, which converted, stored and
   played it (through a fake Liquidsoap). A wrong token was refused.
 - The KRAP import against a mock ElevenLabs: 10 spots plus the 59-line talk (split into 4 requests and joined).

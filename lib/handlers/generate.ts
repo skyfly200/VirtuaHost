@@ -71,6 +71,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
       text: scriptText,
       play: body.play ?? defaults.play,
       preempt: body.preempt ?? defaults.preempt,
+      fx: body.fx ?? defaults.fx,
     });
   }
 

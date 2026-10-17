@@ -11,7 +11,10 @@ the generation/storage core — a webhook (e.g. WhatsApp via Twilio),
 scheduling are future work that will call `POST /api/generate`. Getting clips onto a live
 Icecast/Liquidsoap stream is handled by the separate Chips Voice server in `chips-voice/`:
 `lib/handoff.ts` posts each generated clip to its `/ingest` endpoint (see `docs/INTEGRATION.md`).
-`krap-station/` holds the KRAP ElevenLabs voice scripts and RadioDJ helper.
+`krap-station/` holds the KRAP ElevenLabs voice scripts and RadioDJ helper (Sylvia's; leave them as they are).
+
+**New to this repo, especially Sylvia: read `docs/FOR-SYLVIA.md` first.** It maps each KRAP script to the server-side feature
+that replicates it (virtual host, ElevenLabs dialogue, the "underground" audio treatment, spot import) and lists what is verified.
 
 ## Commands
 
