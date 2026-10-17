@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { writeDjLine, synthesizeSpeech, DEFAULT_VOICE } from "../gemini.js";
 import { pcmToWav } from "../wav.js";
 import { saveClip } from "../store.js";
+import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
 
 export async function handleGenerate(req: Request): Promise<Response> {
@@ -60,5 +61,22 @@ export async function handleGenerate(req: Request): Promise<Response> {
 
   await saveClip(id, wav, metadata);
 
-  return Response.json({ id, scriptText, audioUrl: `/api/clips/${id}` }, { status: 201 });
+  // Hand the clip to the station server when one is configured. A failure here is reported but does not
+  // fail the request: the clip is already generated and stored.
+  let handoff;
+  if (body.handoff !== false && handoffConfigured()) {
+    const defaults = handoffDefaults();
+    handoff = await pushToStation(wav, {
+      title: scriptText,
+      text: scriptText,
+      play: body.play ?? defaults.play,
+      preempt: body.preempt ?? defaults.preempt,
+      fx: body.fx ?? defaults.fx,
+    });
+  }
+
+  return Response.json(
+    { id, scriptText, audioUrl: `/api/clips/${id}`, ...(handoff ? { handoff } : {}) },
+    { status: 201 },
+  );
 }

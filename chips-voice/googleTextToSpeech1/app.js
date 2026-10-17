@@ -17,6 +17,8 @@ const { createStorage } = require('./lib/storage');
 const { createTts } = require('./lib/providers/tts');
 const { createLlm } = require('./lib/providers/llm');
 const { createApi } = require('./routes/api');
+const { createIngest } = require('./lib/ingest');
+const { createHost, parseNowPlaying } = require('./lib/host');
 
 const sleep = promisify(setTimeout);
 
@@ -77,6 +79,7 @@ const limits = {
   maxText: parseInt(process.env.MAX_TEXT_CHARS || '500', 10),
   maxSsml: parseInt(process.env.MAX_SSML_CHARS || '2000', 10),
   maxPrompt: parseInt(process.env.MAX_PROMPT_CHARS || '1000', 10),
+  maxDialogue: parseInt(process.env.MAX_DIALOGUE_CHARS || '10000', 10),
 };
 const tts = createTts(process.env);
 const llm = createLlm(process.env);
@@ -99,8 +102,40 @@ process.on('SIGINT', () => { store.flush(); process.exit(0); });
 
 // Signing key for audio links: its own secret if set, otherwise derived from the login secret.
 const STREAM_SECRET = process.env.STREAM_SECRET || process.env.SESSION_SECRET || process.env.API_KEY || '';
+const ingest = createIngest({
+  clips,
+  maxBytes: parseFloat(process.env.INGEST_MAX_MB || '25') * 1e6,
+  allowedHosts: (process.env.INGEST_ALLOWED_HOSTS || '').split(',').map((h) => h.trim()).filter(Boolean),
+  transcode: process.env.INGEST_TRANSCODE !== 'false',
+});
+// Server-side virtual host (a replication of krap-station/host/virtual_host.py; see docs/FOR-SYLVIA.md).
+// It reads what is playing from Icecast, so it needs PLAYER=liquidsoap (or any Icecast stream at STREAM_MOUNT).
+async function nowPlayingFromIcecast() {
+  const source = (await icecastSources()).find((x) => (x.listenurl || '').endsWith(STREAM_MOUNT));
+  return parseNowPlaying(source);
+}
+const hostDefaults = {};
+if (process.env.HOST_VOICE) hostDefaults.voice = process.env.HOST_VOICE;
+if (process.env.HOST_PROVIDER) hostDefaults.provider = process.env.HOST_PROVIDER;
+if (process.env.HOST_FX !== undefined) hostDefaults.fx = process.env.HOST_FX;
+if (process.env.HOST_EVERY) hostDefaults.every = parseInt(process.env.HOST_EVERY, 10);
+if (process.env.HOST_LINES) hostDefaults.lines = process.env.HOST_LINES;
+if (process.env.HOST_SKIP_ARTISTS !== undefined) hostDefaults.skipArtists = process.env.HOST_SKIP_ARTISTS.split(',').map((a) => a.trim());
+if (process.env.HOST_PERSONA) hostDefaults.persona = process.env.HOST_PERSONA;
+const host = createHost({
+  store, clips, llm, play: playClip, limits, defaults: hostDefaults,
+  nowPlaying: nowPlayingFromIcecast, isLive: liveActive,
+  stationName: process.env.STATION_NAME || 'K.R.A.P. 97.7FM',
+});
+if (host.settings().enabled) host.start();
+
 const api = createApi({
+  host,
   clips, tts, llm, storage, scheduler, play: playClip, limits,
+  ingest,
+  ingestToken: process.env.INGEST_TOKEN || '',
+  authenticate: auth.requireAuth,
+  ingestMaxBytes: parseFloat(process.env.INGEST_MAX_MB || '25') * 1e6,
   streamSecret: STREAM_SECRET,
   publicUrl: process.env.PUBLIC_URL,
   rateLimit: { max: parseInt(process.env.RATE_LIMIT_PER_MIN || '30', 10) },
@@ -126,6 +161,7 @@ app.use(express.json({ limit: '100kb' }));
 // cors() answers preflight requests itself, so only real requests reach the lines below.
 app.set('trust proxy', 'loopback'); // behind nginx on the same machine: req.ip is the real client
 app.use(api.publicRouter);          // signed audio links work without a login
+app.use(api.ingestRouter);          // audio hand-off: INGEST_TOKEN or a normal login
 app.post('/auth/login', auth.login);
 app.use(auth.requireAuth);
 app.get('/auth/me', (req, res) => res.json({ ok: true }));

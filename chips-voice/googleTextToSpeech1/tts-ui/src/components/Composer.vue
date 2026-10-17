@@ -3,18 +3,37 @@
     v-card-title.title-row
       span New announcement
       v-spacer
-      v-btn-toggle(v-if="info.tts.capabilities.ssml" v-model="mode" mandatory dense rounded color="primary" borderless)
+      v-btn-toggle(v-if="caps.ssml || caps.dialogue" v-model="mode" mandatory dense rounded color="primary" borderless)
         v-btn(value="text" small) Text
-        v-btn(value="ssml" small) SSML
+        v-btn(v-if="caps.ssml" value="ssml" small) SSML
+        v-btn(v-if="caps.dialogue" value="dialogue" small) Dialogue
     v-card-text
       v-textarea(
         v-if="mode === 'text'" v-model="text" label="What should be announced?" outlined auto-grow rows="3"
         :counter="info.limits.maxText" :rules="[v => v.length <= info.limits.maxText || 'Too long']" hide-details="auto"
       )
       v-textarea(
-        v-else v-model="ssml" label="SSML" outlined auto-grow rows="3" class="mono" hide-details="auto"
+        v-else-if="mode === 'ssml'" v-model="ssml" label="SSML" outlined auto-grow rows="3" class="mono" hide-details="auto"
         hint="Wrap the content in <speak>...</speak>" persistent-hint
       )
+      .dialogue(v-else)
+        v-row(v-for="(line, i) in turns" :key="i" dense align="start" class="line")
+          v-col(cols="12" sm="4")
+            v-combobox(v-model="line.voice" :items="voices" item-text="label" item-value="id" :return-object="false" label="Voice" outlined dense hide-details)
+          v-col
+            v-textarea(v-model="line.text" label="Says" outlined dense auto-grow rows="1" hide-details placeholder="[softly] audio tags work with ElevenLabs v3")
+          v-col(cols="auto")
+            v-btn(icon small :disabled="turns.length < 2" @click="turns.splice(i, 1)" aria-label="Remove line")
+              v-icon(small) mdi-close
+        v-btn(text small color="primary" @click="addTurn")
+          v-icon(left small) mdi-plus
+          | Add line
+        v-btn(text small @click="pasting = !pasting" class="ml-2")
+          v-icon(left small) mdi-text-box-outline
+          | Paste a script
+        div(v-if="pasting" class="mt-2")
+          v-textarea(v-model="scriptText" outlined dense auto-grow rows="4" label="One line per turn: Name: what they say" hide-details placeholder="Rocky: Britta, what are we listening to?\nBritta: [laughs] No idea.")
+          v-btn(small depressed color="primary" class="mt-2" :disabled="!scriptText.trim()" @click="applyScript") Use this script
       v-btn(v-if="info.llm.enabled && mode === 'text'" text small color="secondary" class="mt-2" @click="drafting = true")
         v-icon(left small) mdi-creation
         | Draft with AI
@@ -25,14 +44,18 @@
             span
               v-icon(left small) mdi-tune-variant
               | Voice and delivery
-              span.provider  {{ info.tts.names.join(' → ') }}
+              span.provider  {{ provider || info.tts.names.join(' → ') }}
           v-expansion-panel-content
-            v-combobox(v-model="voice" :items="voices" item-text="label" item-value="id" :return-object="false" label="Voice" outlined dense :loading="loadingVoices" hint="Pick a voice or type a voice id" persistent-hint class="mb-2")
-            v-select(v-model="format" :items="formats" label="Format" outlined dense)
-            v-slider(v-if="info.tts.capabilities.rate" v-model="speed" label="Speed" min="0.25" max="4" step="0.05" thumb-label="always" :thumb-size="28")
+            v-select(v-if="info.tts.providers.length > 1" v-model="provider" :items="providerItems" label="Speech provider" outlined dense class="mb-2" hint="Automatic uses the first provider and falls back to the next if it fails" persistent-hint)
+            v-combobox(v-if="mode !== 'dialogue'" v-model="voice" :items="voices" item-text="label" item-value="id" :return-object="false" label="Voice" outlined dense :loading="loadingVoices" hint="Pick a voice or type a voice id" persistent-hint class="mb-2")
+            v-select(v-model="format" :items="formats" label="Format" outlined dense v-if="!fxOn")
+            template(v-if="info.fx.available")
+              v-switch(v-model="fxOn" label="Effects and voice changer" inset hide-details dense class="mt-0 mb-3")
+              FxFields(v-if="fxOn" v-model="fx")
+            v-slider(v-if="caps.rate" v-model="speed" label="Speed" min="0.25" max="4" step="0.05" thumb-label="always" :thumb-size="28")
               template(v-slot:thumb-label="{ value }") {{ Number(value).toFixed(2) }}
-            v-slider(v-if="info.tts.capabilities.pitch" v-model="pitch" label="Pitch" min="-20" max="20" step="1" thumb-label="always" :thumb-size="28")
-            v-slider(v-if="info.tts.capabilities.gain" v-model="volume" label="Gain (dB)" min="-16" max="16" step="0.5" thumb-label="always" :thumb-size="28")
+            v-slider(v-if="caps.pitch" v-model="pitch" label="Pitch" min="-20" max="20" step="1" thumb-label="always" :thumb-size="28")
+            v-slider(v-if="caps.gain" v-model="volume" label="Gain (dB)" min="-16" max="16" step="0.5" thumb-label="always" :thumb-size="28")
 
       v-switch(v-model="preempt" inset color="error" hide-details class="preempt")
         template(v-slot:label)
@@ -92,6 +115,7 @@
   import { notify } from '../notify';
   import { info } from '../providers';
   import ShareDialog from './ShareDialog.vue';
+import FxFields from './FxFields.vue';
   import ScheduleDialog from './ScheduleDialog.vue';
 
   interface Entry { id: number; text: string; clipId: string; when: string; note: string; color: string; icon: string; }
@@ -104,7 +128,7 @@
 
   export default Vue.extend({
     name: 'Composer',
-    components: { ShareDialog, ScheduleDialog },
+    components: { ShareDialog, ScheduleDialog, FxFields },
 
     data: () => ({
       info,
@@ -112,6 +136,12 @@
       text: '',
       ssml: '<speak>Hello world</speak>',
       voice: '',
+      provider: '',
+      turns: [{ voice: '', text: '' }, { voice: '', text: '' }] as Array<{ voice: string; text: string }>,
+      pasting: false,
+      scriptText: '',
+      fxOn: false,
+      fx: { preset: 'none', pitch: 0, speed: 1, tighten: false },
       voices: [] as Array<{ id: string; label: string }>,
       loadingVoices: false,
       format: 'OGG_OPUS',
@@ -133,28 +163,66 @@
     }),
 
     computed: {
-      content(): string { return (this.mode === 'ssml' ? this.ssml : this.text).trim(); },
-      ready(): boolean { return !!this.content && (this.mode === 'ssml' || this.text.length <= info.limits.maxText); },
+      caps(): any {
+        const p: any = info.tts.providers.find((x: any) => x.name === (this.provider || info.tts.names[0]));
+        return p ? p.capabilities : info.tts.capabilities;
+      },
+      providerItems(): Array<{ text: string; value: string }> {
+        return [{ text: 'Automatic', value: '' }, ...info.tts.providers.map((p: any) => ({ text: p.name, value: p.name }))];
+      },
+      content(): string {
+        if (this.mode === 'dialogue') return this.turns.map((t) => t.text).join(' ').trim();
+        return (this.mode === 'ssml' ? this.ssml : this.text).trim();
+      },
+      ready(): boolean {
+        if (this.mode === 'dialogue') return this.turns.length > 0 && this.turns.every((t) => t.voice && t.text.trim());
+        return !!this.content && (this.mode === 'ssml' || this.text.length <= info.limits.maxText);
+      },
       scheduleSource(): any { return this.scheduling ? { spec: this.payload() } : null; },
     },
 
-    mounted() {
+    watch: {
+      provider() { this.loadVoices(); },
+      caps(c: any) {
+        if (this.mode === 'ssml' && !c.ssml) this.mode = 'text';
+        if (this.mode === 'dialogue' && !c.dialogue) this.mode = 'text';
+      },
+    },
+
+    mounted() { this.loadVoices(); },
+
+    methods: {
+      loadVoices() {
       this.loadingVoices = true;
-      api.get('/tts/voices')
+      api.get('/tts/voices', { params: this.provider ? { provider: this.provider } : {} })
         .then(({ data }) => {
           this.voices = data.map((v: any) => ({
             id: v.id,
             label: [v.name || v.id, v.gender && `(${String(v.gender).toLowerCase()})`].filter(Boolean).join(' '),
           }));
-          if (!this.voice && this.voices.length) this.voice = this.voices[0].id;
+          if (!this.voices.some((v) => v.id === this.voice)) this.voice = this.voices.length ? this.voices[0].id : '';
+          this.turns.forEach((t, i) => { if (!t.voice && this.voices.length) t.voice = this.voices[Math.min(i, this.voices.length - 1)].id; });
         })
-        .catch(() => { /* free-text voice entry still works */ })
+        .catch(() => { this.voices = []; })
         .then(() => { this.loadingVoices = false; });
-    },
-
-    methods: {
+      },
+      applyScript() {
+        const lines = this.scriptText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const parsed = lines.map((l) => { const m = l.match(/^([^:]{1,40}):\s*(.+)$/); return m ? { voice: m[1].trim(), text: m[2].trim() } : null; });
+        if (parsed.some((t) => !t)) { notify('Every line needs a speaker, like "Rocky: Hello there."', 'warning'); return; }
+        this.turns = parsed as Array<{ voice: string; text: string }>;
+        this.pasting = false;
+      },
+      addTurn() {
+        const last = this.turns[this.turns.length - 1];
+        const other = this.voices.find((v) => !last || v.id !== last.voice);
+        this.turns.push({ voice: other ? other.id : '', text: '' });
+      },
       payload() {
         return {
+          provider: this.provider || undefined,
+          fx: this.fxOn && info.fx.available ? this.fx : undefined,
+          turns: this.mode === 'dialogue' ? this.turns : undefined,
           text: this.text,
           ssml: this.ssml,
           ssmlMode: this.mode === 'ssml',
@@ -243,5 +311,6 @@
 .preempt { margin-top: 4px; }
 .actions { padding: 8px 16px 16px; }
 .hint { font-size: 0.85rem; opacity: 0.7; margin-top: 8px; }
+.line { margin-bottom: 8px; }
 .mono ::v-deep textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; }
 </style>

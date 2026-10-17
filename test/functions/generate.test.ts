@@ -8,14 +8,23 @@ vi.mock("../../lib/gemini.js", () => ({
 vi.mock("../../lib/store.js", () => ({
   saveClip: vi.fn(),
 }));
+vi.mock("../../lib/handoff.js", () => ({
+  handoffConfigured: vi.fn(),
+  handoffDefaults: vi.fn(),
+  pushToStation: vi.fn(),
+}));
 
 import { writeDjLine, synthesizeSpeech } from "../../lib/gemini.js";
 import { saveClip } from "../../lib/store.js";
+import { handoffConfigured, handoffDefaults, pushToStation } from "../../lib/handoff.js";
 import { handleGenerate } from "../../lib/handlers/generate.js";
 
 const mockedWriteDjLine = vi.mocked(writeDjLine);
 const mockedSynthesizeSpeech = vi.mocked(synthesizeSpeech);
 const mockedSaveClip = vi.mocked(saveClip);
+const mockedHandoffConfigured = vi.mocked(handoffConfigured);
+const mockedHandoffDefaults = vi.mocked(handoffDefaults);
+const mockedPushToStation = vi.mocked(pushToStation);
 
 interface GenerateResponseBody {
   id: string;
@@ -36,6 +45,8 @@ describe("handleGenerate", () => {
     vi.clearAllMocks();
     mockedSynthesizeSpeech.mockResolvedValue({ pcm: Buffer.from([1, 2, 3]), mimeType: "audio/pcm" });
     mockedSaveClip.mockResolvedValue(undefined);
+    mockedHandoffConfigured.mockReturnValue(false);
+    mockedHandoffDefaults.mockReturnValue({ play: false, preempt: false });
   });
 
   it("rejects non-POST requests", async () => {
@@ -107,5 +118,70 @@ describe("handleGenerate", () => {
 
     expect(res.status).toBe(502);
     expect(mockedSaveClip).not.toHaveBeenCalled();
+  });
+
+  describe("station hand-off", () => {
+    beforeEach(() => {
+      mockedHandoffConfigured.mockReturnValue(true);
+      mockedPushToStation.mockResolvedValue({ sent: true, clipId: "st1", played: false });
+    });
+
+    it("sends nothing and adds no handoff field when no station is configured", async () => {
+      mockedHandoffConfigured.mockReturnValue(false);
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "hello" }));
+      expect(mockedPushToStation).not.toHaveBeenCalled();
+      expect(await res.json()).not.toHaveProperty("handoff");
+    });
+
+    it("pushes the generated WAV to the station and reports the result", async () => {
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "hello" }));
+
+      expect(res.status).toBe(201);
+      const [wav, options] = mockedPushToStation.mock.calls[0];
+      expect(wav.subarray(0, 4).toString()).toBe("RIFF");
+      expect(options).toEqual({ title: "hello", text: "hello", play: false, preempt: false });
+      expect(((await res.json()) as { handoff: unknown }).handoff).toEqual({ sent: true, clipId: "st1", played: false });
+    });
+
+    it("uses the environment defaults for play and preempt, which the request can override", async () => {
+      mockedHandoffDefaults.mockReturnValue({ play: true, preempt: true });
+
+      await handleGenerate(jsonRequest("POST", { mode: "say", text: "a" }));
+      expect(mockedPushToStation.mock.calls[0][1]).toMatchObject({ play: true, preempt: true });
+
+      await handleGenerate(jsonRequest("POST", { mode: "say", text: "b", play: false, preempt: false }));
+      expect(mockedPushToStation.mock.calls[1][1]).toMatchObject({ play: false, preempt: false });
+    });
+
+    it("passes the request's effect, falling back to the station-wide default", async () => {
+      mockedHandoffDefaults.mockReturnValue({ play: false, preempt: false, fx: "underground" });
+
+      await handleGenerate(jsonRequest("POST", { mode: "say", text: "a" }));
+      expect(mockedPushToStation.mock.calls[0][1].fx).toBe("underground");
+
+      await handleGenerate(jsonRequest("POST", { mode: "say", text: "b", fx: { preset: "robot", pitch: 2 } }));
+      expect(mockedPushToStation.mock.calls[1][1].fx).toEqual({ preset: "robot", pitch: 2 });
+    });
+
+    it("sends the written script, not the prompt, in ai mode", async () => {
+      mockedWriteDjLine.mockResolvedValue("Here comes the weekend.");
+      await handleGenerate(jsonRequest("POST", { mode: "ai", prompt: "hype friday" }));
+      expect(mockedPushToStation.mock.calls[0][1].text).toBe("Here comes the weekend.");
+    });
+
+    it("can be switched off per request", async () => {
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "hello", handoff: false }));
+      expect(mockedPushToStation).not.toHaveBeenCalled();
+      expect(await res.json()).not.toHaveProperty("handoff");
+    });
+
+    it("still succeeds and says so when the station could not be reached", async () => {
+      mockedPushToStation.mockResolvedValue({ sent: false, error: "could not reach the station: timeout" });
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "hello" }));
+
+      expect(res.status).toBe(201);
+      expect(mockedSaveClip).toHaveBeenCalledTimes(1);
+      expect(((await res.json()) as { handoff: { sent: boolean } }).handoff.sent).toBe(false);
+    });
   });
 });

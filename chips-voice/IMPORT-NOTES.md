@@ -22,3 +22,9 @@ integrated later. It is independent of the VirtuaHost code in the repository roo
 
 Natural first steps: a `gemini` adapter in `lib/providers/tts` and `llm`, and having Chips Voice call
 `POST /api/generate` (or share one clip store).
+
+## Update: the first integration steps are built
+
+See [../docs/INTEGRATION.md](../docs/INTEGRATION.md): the Netlify generator hands clips to this server (`/ingest`), ElevenLabs
+voice clones and multi-voice dialogue are supported, OpenRouter speech is an enabled provider, and the KRAP spots can be loaded
+with `scripts/import_krap_spots.py`. The overlap table above is otherwise unchanged.
