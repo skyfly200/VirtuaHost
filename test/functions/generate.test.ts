@@ -19,6 +19,9 @@ import { saveClip } from "../../lib/store.js";
 import { handoffConfigured, handoffDefaults, pushToStation } from "../../lib/handoff.js";
 import { handleGenerate } from "../../lib/handlers/generate.js";
 
+const TEST_KEY = "test-access-key-0123456789";
+vi.stubEnv("ACCESS_KEY", TEST_KEY);
+
 const mockedWriteDjLine = vi.mocked(writeDjLine);
 const mockedSynthesizeSpeech = vi.mocked(synthesizeSpeech);
 const mockedSaveClip = vi.mocked(saveClip);
@@ -36,7 +39,7 @@ function jsonRequest(method: string, body?: unknown): Request {
   return new Request("http://localhost/api/generate", {
     method,
     body: body === undefined ? undefined : JSON.stringify(body),
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-api-key": TEST_KEY },
   });
 }
 
@@ -55,7 +58,7 @@ describe("handleGenerate", () => {
   });
 
   it("rejects invalid JSON bodies", async () => {
-    const req = new Request("http://localhost/api/generate", { method: "POST", body: "not json" });
+    const req = new Request("http://localhost/api/generate", { method: "POST", body: "not json", headers: { "x-api-key": TEST_KEY } });
     const res = await handleGenerate(req);
     expect(res.status).toBe(400);
   });
