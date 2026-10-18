@@ -5,6 +5,8 @@
 //   SESSION_SECRET       random string used to sign session tokens
 //   SESSION_HOURS        token lifetime (default 12)
 //   API_KEY              optional static key for scripts (x-api-key / Bearer)
+//   internalKey          (not an env var) a random per-process key the server uses to call itself on loopback,
+//                        for the built-in chat and MCP features; it never leaves the process
 //
 // Tokens are "v1.<base64url payload>.<base64url HMAC-SHA256>"; nothing is stored on the server.
 const crypto = require('crypto');
@@ -38,6 +40,7 @@ function createAuth(options = {}) {
   const passwordHash = options.passwordHash || '';
   const secret = options.secret || '';
   const apiKey = options.apiKey || '';
+  const internalKey = options.internalKey || '';
   const ttlMs = (options.sessionHours || 12) * 3600 * 1000;
   const now = options.now || Date.now;
 
@@ -107,11 +110,12 @@ function createAuth(options = {}) {
 
   // Express middleware: a valid session token or the API key.
   function requireAuth(req, res, next) {
-    if (!enabled) return next();
     const bearer = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
     const key = req.get('x-api-key') || bearer;
+    if (!enabled) return next();
     if (verifyToken(bearer)) return next();
     if (apiKey && key && safeEqual(key, apiKey)) return next();
+    if (internalKey && key && safeEqual(key, internalKey)) return next();
     res.status(401).json({ error: 'login required' });
   }
 

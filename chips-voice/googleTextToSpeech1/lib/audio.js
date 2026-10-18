@@ -49,4 +49,13 @@ function toMp3(buffer, { bitrate = '128k' } = {}) {
   });
 }
 
-module.exports = { ffmpegAvailable, concatMp3, toMp3 };
+// Raw 16-bit mono PCM (what some speech APIs return instead of a file) to MP3. The sample rate must be known.
+function pcmToMp3(buffer, { rate = 24000, bitrate = '128k' } = {}) {
+  return withTempDir(async (dir) => {
+    fs.writeFileSync(path.join(dir, 'in.pcm'), buffer);
+    await run(['-f', 's16le', '-ar', String(rate), '-ac', '1', '-i', path.join(dir, 'in.pcm'), '-ar', '44100', '-ac', '1', '-c:a', 'libmp3lame', '-b:a', bitrate, path.join(dir, 'out.mp3')]);
+    return fs.readFileSync(path.join(dir, 'out.mp3'));
+  });
+}
+
+module.exports = { ffmpegAvailable, concatMp3, toMp3, pcmToMp3, withTempDir, run };

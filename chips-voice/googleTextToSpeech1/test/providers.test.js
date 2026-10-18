@@ -128,3 +128,18 @@ test('piper runs the local command; fallback chain drops the primary voice id', 
   await assert.rejects(onlyBad.synthesize({ text: 'x' }), /speech synthesis failed \(google: quota\)/);
   assert.throws(() => createTts({ TTS_PROVIDER: 'nope' }), /unknown TTS_PROVIDER/);
 });
+
+test('LLM: a request can pick another enabled model (for example a conversational or tone-aware one), and only an enabled one', async (t) => {
+  const api = await mock(() => ({ json: { choices: [{ message: { content: 'Rocky: Hi.' } }] } })); t.after(() => api.close());
+  const llm = createLlm({ LLM_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'k', OPENROUTER_BASE_URL: api.url,
+    OPENROUTER_MODEL: 'openai/gpt-4o-mini', OPENROUTER_LLM_MODELS: 'anthropic/claude-3.5-sonnet, meta-llama/llama-3.1-70b-instruct', OPENROUTER_FALLBACK_MODELS: 'openai/gpt-4o-mini' });
+  assert.deepStrictEqual(llm.models, [{ provider: 'openrouter', default: 'openai/gpt-4o-mini', models: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.1-70b-instruct'] }]);
+  const out = await llm.generate({ prompt: 'x', model: 'anthropic/claude-3.5-sonnet' });
+  assert.deepStrictEqual([out.model, out.provider], ['anthropic/claude-3.5-sonnet', 'openrouter']);
+  const body = JSON.parse(api.seen[0].body);
+  assert.deepStrictEqual([body.model, body.models], ['anthropic/claude-3.5-sonnet', ['anthropic/claude-3.5-sonnet', 'openai/gpt-4o-mini']]);
+  await assert.rejects(llm.generate({ prompt: 'x', model: 'evil/model' }), /not enabled on any provider/);
+  assert.strictEqual(api.seen.length, 1);
+  await llm.generate({ prompt: 'y' });
+  assert.strictEqual(JSON.parse(api.seen[1].body).model, 'openai/gpt-4o-mini');
+});

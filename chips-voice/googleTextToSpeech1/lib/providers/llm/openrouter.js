@@ -1,6 +1,8 @@
 // OpenRouter: one API key, hundreds of models.
 //   OPENROUTER_API_KEY, OPENROUTER_MODEL (default openai/gpt-4o-mini; any id from https://openrouter.ai/models),
 //   OPENROUTER_FALLBACK_MODELS (comma list tried in order if the first model fails),
+//   OPENROUTER_LLM_MODELS (comma list of further models a request may pick, for example a conversational or
+//   tone-aware one for drafting dialogue),
 //   OPENROUTER_REFERER and OPENROUTER_TITLE (optional attribution headers), OPENROUTER_BASE_URL.
 const { createChat } = require('./openai');
 const { request } = require('../http');
@@ -18,8 +20,10 @@ function create(env) {
       ...(env.OPENROUTER_REFERER ? { 'HTTP-Referer': env.OPENROUTER_REFERER } : {}),
       'X-Title': env.OPENROUTER_TITLE || 'Chips Voice',
     },
-    // OpenRouter routes through this list in order when the first model is unavailable.
-    extraBody: fallbacks.length ? { models: [model, ...fallbacks] } : {},
+    // OpenRouter routes through this list in order when the chosen model is unavailable.
+    fallbackModels: fallbacks,
+    // Models a request may choose with `model` (the default is always allowed).
+    allowedModels: (env.OPENROUTER_LLM_MODELS || '').split(',').map((s) => s.trim()).filter(Boolean),
   });
   return {
     ...chat,

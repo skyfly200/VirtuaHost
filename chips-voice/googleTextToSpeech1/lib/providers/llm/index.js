@@ -33,12 +33,18 @@ function createLlm(env = process.env, overrides = {}) {
     enabled: providers.length > 0,
     primary: providers[0],
 
+    // Every model a request may choose, by provider.
+    get models() { return providers.map((p) => ({ provider: p.name, default: p.model, models: p.models || [p.model].filter(Boolean) })); },
+
     async generate(req) {
       if (!providers.length) throw new Error('no LLM provider configured (set LLM_PROVIDER)');
       const errors = [];
-      for (const provider of providers) {
+      // A named model is used on the provider that has it enabled, and only there.
+      const chain = req.model ? providers.filter((p) => (p.models || []).includes(req.model)) : providers;
+      if (req.model && !chain.length) throw new Error(`model "${req.model}" is not enabled on any provider`);
+      for (const provider of chain) {
         try {
-          return { text: await provider.generate(req), provider: provider.name, model: provider.model };
+          return { text: await provider.generate(req), provider: provider.name, model: req.model || provider.model };
         } catch (err) {
           errors.push(`${provider.name}: ${err.message}`);
         }

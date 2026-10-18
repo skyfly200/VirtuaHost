@@ -9,7 +9,7 @@
         v-btn(v-if="caps.dialogue" value="dialogue" small) Dialogue
     v-card-text
       v-textarea(
-        v-if="mode === 'text'" v-model="text" label="What should be announced?" outlined auto-grow rows="3"
+        v-if="mode === 'text'" ref="text" v-model="text" label="What should be announced?" outlined auto-grow rows="3"
         :counter="info.limits.maxText" :rules="[v => v.length <= info.limits.maxText || 'Too long']" hide-details="auto"
       )
       v-textarea(
@@ -21,7 +21,8 @@
           v-col(cols="12" sm="4")
             v-combobox(v-model="line.voice" :items="voices" item-text="label" item-value="id" :return-object="false" label="Voice" outlined dense hide-details)
           v-col
-            v-textarea(v-model="line.text" label="Says" outlined dense auto-grow rows="1" hide-details placeholder="[softly] audio tags work with ElevenLabs v3")
+            v-textarea(v-model="line.text" label="Says" outlined dense auto-grow rows="1" hide-details placeholder="[softly] audio tags work with ElevenLabs v3" @focus="activeLine = i")
+            v-text-field(v-if="caps.tone" v-model="line.tone" label="Delivery (optional)" outlined dense hide-details class="mt-1" placeholder="dry, sleepy")
           v-col(cols="auto")
             v-btn(icon small :disabled="turns.length < 2" @click="turns.splice(i, 1)" aria-label="Remove line")
               v-icon(small) mdi-close
@@ -34,9 +35,21 @@
         div(v-if="pasting" class="mt-2")
           v-textarea(v-model="scriptText" outlined dense auto-grow rows="4" label="One line per turn: Name: what they say" hide-details placeholder="Rocky: Britta, what are we listening to?\nBritta: [laughs] No idea.")
           v-btn(small depressed color="primary" class="mt-2" :disabled="!scriptText.trim()" @click="applyScript") Use this script
-      v-btn(v-if="info.llm.enabled && mode === 'text'" text small color="secondary" class="mt-2" @click="drafting = true")
-        v-icon(left small) mdi-creation
-        | Draft with AI
+      .helpers
+        v-btn(v-if="info.llm.enabled && mode !== 'ssml'" text small color="secondary" class="mt-2" @click="drafting = true")
+          v-icon(left small) mdi-creation
+          | Draft with AI
+        v-menu(v-if="info.sfx.available && mode !== 'ssml'" offset-y max-height="320")
+          template(v-slot:activator="{ on }")
+            v-btn(text small class="mt-2" v-on="on")
+              v-icon(left small) mdi-music-note-plus
+              | Sound effect
+          v-list(dense)
+            v-list-item(v-for="e in info.sfx.effects" :key="e.name" @click="insertSfx(e.name)")
+              v-list-item-title {{ e.name }}
+            v-divider
+            v-list-item(@click="sounds = true")
+              v-list-item-title Manage sounds...
 
       v-expansion-panels.options(flat accordion)
         v-expansion-panel
@@ -47,6 +60,8 @@
               span.provider  {{ provider || info.tts.names.join(' → ') }}
           v-expansion-panel-content
             v-select(v-if="info.tts.providers.length > 1" v-model="provider" :items="providerItems" label="Speech provider" outlined dense class="mb-2" hint="Automatic uses the first provider and falls back to the next if it fails" persistent-hint)
+            v-select(v-if="modelItems.length > 1" v-model="model" :items="modelItems" label="Model" outlined dense class="mb-2" hint="Some models handle tone and conversation better than others" persistent-hint)
+            v-text-field(v-if="caps.tone" v-model="tone" label="Tone / delivery" outlined dense class="mb-2" placeholder="warm, slow, a little tired" hint="Direction for how it is said (models that support it)" persistent-hint :counter="300")
             v-combobox(v-if="mode !== 'dialogue'" v-model="voice" :items="voices" item-text="label" item-value="id" :return-object="false" label="Voice" outlined dense :loading="loadingVoices" hint="Pick a voice or type a voice id" persistent-hint class="mb-2")
             v-select(v-model="format" :items="formats" label="Format" outlined dense v-if="!fxOn")
             template(v-if="info.fx.available")
@@ -97,7 +112,10 @@
         v-card-title Draft with AI
         v-card-text
           v-textarea(v-model="brief" label="What is it about?" placeholder="Doors open at 7, last call at 11:30, mention the raffle" outlined auto-grow rows="3" :counter="info.limits.maxPrompt" autofocus)
-          v-select(v-model="tone" :items="tones" label="Tone" outlined dense hide-details)
+          v-select(v-model="draftTone" :items="tones" label="Tone" outlined dense hide-details)
+          v-switch(v-model="draftDialogue" label="A conversation between two voices" inset hide-details dense)
+          v-switch(v-if="draftDialogue && info.sfx.available" v-model="draftSfx" label="Include sound effects" inset hide-details dense class="mt-0")
+          v-select(v-if="draftModels.length > 1" v-model="draftModel" :items="draftModels" label="AI model" outlined dense hide-details class="mt-3")
           .hint(v-if="info.llm.names.length") Written by {{ info.llm.names.join(' → ') }}. Review the text before announcing.
         v-card-actions
           v-spacer
@@ -105,6 +123,7 @@
           v-btn(color="secondary" depressed :loading="writing" :disabled="!brief.trim()" @click="draft")
             v-icon(left small) mdi-creation
             | Write it
+    SfxDialog(:open="sounds" @close="sounds = false" @insert="insertSfx")
     ScheduleDialog(:open="scheduling" :source="scheduleSource" @close="scheduling = false" @saved="$emit('scheduled')")
     ShareDialog(:clip="shareClip" @close="shareClip = null")
 </template>
@@ -116,6 +135,7 @@
   import { info } from '../providers';
   import ShareDialog from './ShareDialog.vue';
 import FxFields from './FxFields.vue';
+import SfxDialog from './SfxDialog.vue';
   import ScheduleDialog from './ScheduleDialog.vue';
 
   interface Entry { id: number; text: string; clipId: string; when: string; note: string; color: string; icon: string; }
@@ -128,7 +148,7 @@ import FxFields from './FxFields.vue';
 
   export default Vue.extend({
     name: 'Composer',
-    components: { ShareDialog, ScheduleDialog, FxFields },
+    components: { ShareDialog, ScheduleDialog, FxFields, SfxDialog },
 
     data: () => ({
       info,
@@ -138,6 +158,14 @@ import FxFields from './FxFields.vue';
       voice: '',
       provider: '',
       turns: [{ voice: '', text: '' }, { voice: '', text: '' }] as Array<{ voice: string; text: string }>,
+      sounds: false,
+      activeLine: 0,
+      tone: '',
+      model: '',
+      draftTone: 'friendly',
+      draftDialogue: false,
+      draftSfx: true,
+      draftModel: '',
       pasting: false,
       scriptText: '',
       fxOn: false,
@@ -157,7 +185,6 @@ import FxFields from './FxFields.vue';
       drafting: false,
       writing: false,
       brief: '',
-      tone: 'friendly',
       tones: ['friendly', 'upbeat', 'calm', 'formal', 'playful', 'urgent'],
       history: loadHistory() as Entry[],
     }),
@@ -166,6 +193,14 @@ import FxFields from './FxFields.vue';
       caps(): any {
         const p: any = info.tts.providers.find((x: any) => x.name === (this.provider || info.tts.names[0]));
         return p ? p.capabilities : info.tts.capabilities;
+      },
+      modelItems(): Array<{ text: string; value: string }> {
+        const p: any = info.tts.providers.find((x: any) => x.name === (this.provider || info.tts.names[0]));
+        return p && p.models.length > 1 ? p.models.map((m: string) => ({ text: m, value: m })) : [];
+      },
+      draftModels(): Array<{ text: string; value: string }> {
+        const first: any = info.llm.models[0];
+        return first && first.models.length > 1 ? first.models.map((m: string) => ({ text: m + (m === first.default ? ' (default)' : ''), value: m === first.default ? '' : m })) : [];
       },
       providerItems(): Array<{ text: string; value: string }> {
         return [{ text: 'Automatic', value: '' }, ...info.tts.providers.map((p: any) => ({ text: p.name, value: p.name }))];
@@ -208,10 +243,33 @@ import FxFields from './FxFields.vue';
       },
       applyScript() {
         const lines = this.scriptText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-        const parsed = lines.map((l) => { const m = l.match(/^([^:]{1,40}):\s*(.+)$/); return m ? { voice: m[1].trim(), text: m[2].trim() } : null; });
+        const sfxOnly = /^(\[\s*sfx\s*:[^\]]*\]\s*)+$/i;
+        let last = '';
+        const parsed: any[] = lines.map((l) => {
+          if (sfxOnly.test(l)) return { voice: last, text: l, sfxOnly: true };
+          const m = l.match(/^([^:(]{1,40}?)\s*(?:\(([^)]{1,200})\))?\s*:\s*(.+)$/);
+          if (!m) return null;
+          last = m[1].trim();
+          return { voice: last, text: m[3].trim(), tone: m[2] ? m[2].trim() : '' };
+        });
         if (parsed.some((t) => !t)) { notify('Every line needs a speaker, like "Rocky: Hello there."', 'warning'); return; }
-        this.turns = parsed as Array<{ voice: string; text: string }>;
+        const firstVoice = (parsed.find((t) => !t.sfxOnly) || { voice: '' }).voice;
+        this.turns = parsed.map((t) => ({ voice: t.voice || firstVoice, text: t.text, tone: t.tone || '' })) as any;
         this.pasting = false;
+      },
+      insertSfx(name: string) {
+        const tag = `[sfx:${name}]`;
+        if (this.mode === 'dialogue') {
+          const line = this.turns[this.activeLine] || this.turns[this.turns.length - 1];
+          line.text = `${line.text}${line.text && !/\s$/.test(line.text) ? ' ' : ''}${tag}`;
+          return;
+        }
+        const area: any = this.$refs.text;
+        const el: HTMLTextAreaElement | null = area && area.$refs && area.$refs.input ? area.$refs.input : null;
+        const at = el && typeof el.selectionStart === 'number' ? el.selectionStart : this.text.length;
+        const before = this.text.slice(0, at);
+        const after = this.text.slice(at);
+        this.text = `${before}${before && !/\s$/.test(before) ? ' ' : ''}${tag}${after && !/^\s/.test(after) ? ' ' : ''}${after}`;
       },
       addTurn() {
         const last = this.turns[this.turns.length - 1];
@@ -222,7 +280,9 @@ import FxFields from './FxFields.vue';
         return {
           provider: this.provider || undefined,
           fx: this.fxOn && info.fx.available ? this.fx : undefined,
-          turns: this.mode === 'dialogue' ? this.turns : undefined,
+          tone: this.caps.tone && this.tone ? this.tone : undefined,
+          model: this.modelItems.length && this.model ? this.model : undefined,
+          turns: this.mode === 'dialogue' ? this.turns.map((t: any) => ({ voice: t.voice, text: t.text, tone: t.tone || undefined })) : undefined,
           text: this.text,
           ssml: this.ssml,
           ssmlMode: this.mode === 'ssml',
@@ -288,9 +348,12 @@ import FxFields from './FxFields.vue';
       async draft() {
         this.writing = true;
         try {
-          const { data } = await api.post('/announcements/draft', { prompt: this.brief, tone: this.tone });
-          this.text = data.text;
-          this.mode = 'text';
+          const speakers = this.voices.slice(0, 2).map((v) => v.id);
+          const { data } = await api.post('/announcements/draft', {
+            prompt: this.brief, tone: this.draftTone, model: this.draftModel || undefined,
+            format: this.draftDialogue ? 'dialogue' : 'text', speakers: speakers.length ? speakers : undefined, sfx: this.draftDialogue && this.draftSfx,
+          });
+          if (data.format === 'dialogue') { this.scriptText = data.text; this.applyScript(); this.mode = 'dialogue'; } else { this.text = data.text; this.mode = 'text'; }
           this.drafting = false;
           notify('Draft ready. Check it before announcing.', 'success');
         } catch (e) {
@@ -312,5 +375,6 @@ import FxFields from './FxFields.vue';
 .actions { padding: 8px 16px 16px; }
 .hint { font-size: 0.85rem; opacity: 0.7; margin-top: 8px; }
 .line { margin-bottom: 8px; }
+.helpers { display: flex; flex-wrap: wrap; gap: 4px; }
 .mono ::v-deep textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; }
 </style>

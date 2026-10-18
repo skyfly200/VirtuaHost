@@ -32,6 +32,7 @@ function createTts(env = process.env, overrides = {}, deps = {}) {
     for (const turn of req.turns) {
       const part = await provider.synthesize({
         text: turn.text, voice: turn.voice, format: 'MP3', rate: req.rate, pitch: req.pitch, gain: req.gain,
+        tone: turn.tone || req.tone, model: req.model,
       });
       parts.push(part.ext === 'mp3' ? part.audio : await audio.toMp3(part.audio));
     }
@@ -56,7 +57,7 @@ function createTts(env = process.env, overrides = {}, deps = {}) {
     ProviderError,
 
     // What the UI needs to build its pickers.
-    providers: providers.map((p) => ({ name: p.name, capabilities: withDialogue(p), defaultVoice: p.defaultVoice })),
+    providers: providers.map((p) => ({ name: p.name, capabilities: withDialogue(p), defaultVoice: p.defaultVoice, models: p.models || [] })),
     has: (name) => !!byName[name],
 
     listVoices: (name) => (pick(name) || primary).listVoices(),

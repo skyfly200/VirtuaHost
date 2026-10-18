@@ -120,6 +120,30 @@ describe("handleGenerate", () => {
     expect(mockedSaveClip).not.toHaveBeenCalled();
   });
 
+  describe("sound effect tags", () => {
+    it("removes [sfx:...] tags before speaking, because Gemini would read them aloud", async () => {
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "Welcome [sfx:ding] to the show [SFX: whoosh over vol=0.5] folks." }));
+
+      expect(res.status).toBe(201);
+      expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("Welcome to the show folks.");
+      const body = (await res.json()) as { scriptText: string; sfxTagsRemoved: boolean };
+      expect(body.scriptText).toBe("Welcome to the show folks.");
+      expect(body.sfxTagsRemoved).toBe(true);
+    });
+
+    it("leaves other bracketed text alone and does not flag it", async () => {
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "Hello [laughs] there" }));
+      expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("Hello [laughs] there");
+      expect(await res.json()).not.toHaveProperty("sfxTagsRemoved");
+    });
+
+    it("rejects text that is only tags", async () => {
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "[sfx:ding]" }));
+      expect(res.status).toBe(400);
+      expect(mockedSynthesizeSpeech).not.toHaveBeenCalled();
+    });
+  });
+
   describe("station hand-off", () => {
     beforeEach(() => {
       mockedHandoffConfigured.mockReturnValue(true);

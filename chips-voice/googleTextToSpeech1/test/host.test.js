@@ -145,3 +145,47 @@ test('settings are validated and kept; enabling starts the watcher and disabling
   assert.deepStrictEqual([st.settings.templates, st.settings.skipArtists, st.settings.preempt], [['{title} again'], ['Spot One'], false]);
   assert.strictEqual(s.host.update({ enabled: false }).running, false);
 });
+
+test('the CHIP persona preset swaps in its lines, tone, effect and time-of-day lines, and keeps the voice', async () => {
+  const { PERSONAS } = require('../lib/personas');
+  const s = setup({ rng: [0, 0.1] });                                  // first template, then the time line
+  s.host.update({ voice: 'Grumble', preset: 'chip' });
+  const st = s.host.status().settings;
+  assert.strictEqual(st.voice, 'Grumble');                              // a preset never picks the voice
+  assert.strictEqual(st.fx, 'hull');
+  assert.match(st.tone, /grumbly old sailor/);
+  s.clock.setHour(8);
+  s.setPlaying('Band', 'Tune'); await s.host.tick();
+  assert.strictEqual(s.made[0].text, PERSONAS.chip.templates[0].replace('{artist}', 'Band').replace('{title}', 'Tune') + PERSONAS.chip.timeLines.morning);
+  assert.doesNotMatch(s.made[0].text, /K\.R\.A\.P/);
+  assert.strictEqual(s.specs[0].tone, st.tone);                         // tone reaches the speech request
+  assert.strictEqual(s.specs[0].fx, 'hull');
+});
+
+test('settings sent with a preset win over it, and an unknown preset is refused', () => {
+  const s = setup();
+  assert.strictEqual(s.host.update({ preset: 'chip', fx: 'radio' }).settings.fx, 'radio');
+  assert.throws(() => s.host.update({ preset: 'nope' }), /unknown persona/);
+});
+
+test('every CHIP line fits the limits and uses only known sound effects', () => {
+  const { PERSONAS } = require('../lib/personas');
+  const { parseTags } = require('../lib/sfx');
+  const { BUILTIN } = require('../lib/sfx');
+  const p = PERSONAS.chip;
+  for (const t of p.templates) assert.ok(t.length <= 300, t);
+  assert.ok(p.persona.length <= 1000);
+  for (const text of [...p.templates, ...p.stationIds, ...Object.values(p.timeLines)]) {
+    for (const piece of parseTags(text)) if (piece.type !== 'speech') assert.ok(Object.keys(BUILTIN).includes(piece.name), `${piece.name} in "${text}"`);
+  }
+});
+
+test('a station ID comes from the active persona and can be played', async () => {
+  const s = setup();
+  await assert.rejects(() => s.host.stationId(), /no station IDs/);
+  s.host.update({ preset: 'chip' });
+  const id = await s.host.stationId({ play: true });
+  assert.match(id.text, /Way High Radio/);
+  assert.strictEqual(id.played, true);
+  assert.strictEqual(s.played.length, 1);
+});

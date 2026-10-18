@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const fxLib = require('./fx');
+const sfxLib = require('./sfx');
+const audioLib = require('./audio');
 
 const FORMATS = ['OGG_OPUS', 'MP3', 'LINEAR16'];
 const clamp = (n, lo, hi, fallback) => (Number.isFinite(Number(n)) ? Math.min(hi, Math.max(lo, Number(n))) : fallback);
@@ -14,7 +16,12 @@ class SpecError extends Error {}
 function normalizeTurns(raw, { maxDialogue = 10000 }) {
   if (!Array.isArray(raw) || raw.length === 0) return null;
   if (raw.length > 60) throw new SpecError('a dialogue can have at most 60 lines');
-  const turns = raw.map((t) => ({ voice: String((t && t.voice) || '').trim().slice(0, 200), text: String((t && t.text) || '').trim() }));
+  const turns = raw.map((t) => {
+    const turn = { voice: String((t && t.voice) || '').trim().slice(0, 200), text: String((t && t.text) || '').trim() };
+    const tone = String((t && t.tone) || '').trim().slice(0, 300);
+    if (tone) turn.tone = tone;          // per-line delivery direction ("whispering", "excited")
+    return turn;
+  });
   if (turns.some((t) => !t.voice || !t.text)) throw new SpecError('every dialogue line needs a voice and text');
   if (turns.some((t) => t.text.length > 1500)) throw new SpecError('a dialogue line is too long (max 1500 characters)');
   if (new Set(turns.map((t) => t.voice)).size > 10) throw new SpecError('a dialogue can use at most 10 different voices');
@@ -27,12 +34,24 @@ function normalizeTurns(raw, { maxDialogue = 10000 }) {
 function parseScript(script, voices) {
   const map = voices && typeof voices === 'object' && !Array.isArray(voices) ? voices : {};
   const lines = String(script).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  return lines.map((line, i) => {
-    const m = line.match(/^([^:]{1,40}):\s*(.+)$/);
+  const SFX_ONLY = /^(\[\s*sfx\s*:[^\]]*\]\s*)+$/i;
+  const turns = lines.map((line, i) => {
+    // A line holding only sound effect tags has no speaker; it is attached to the neighbouring speaker below.
+    if (SFX_ONLY.test(line)) return { sfxOnly: true, text: line };
+    // "Name: text" or "Name (delivery direction): text"
+    const m = line.match(/^([^:(]{1,40}?)\s*(?:\(([^)]{1,200})\))?\s*:\s*(.+)$/);
     if (!m) throw new SpecError(`script line ${i + 1} needs a speaker, like "Rocky: Hello there."`);
     const speaker = m[1].trim();
     const voice = Object.prototype.hasOwnProperty.call(map, speaker) ? String(map[speaker]) : speaker;
-    return { voice, text: m[2].trim() };
+    const turn = { voice, text: m[3].trim() };
+    if (m[2]) turn.tone = m[2].trim();
+    return turn;
+  });
+  const first = turns.find((t) => !t.sfxOnly);
+  let last = first && first.voice;
+  return turns.map((t) => {
+    if (!t.sfxOnly) { last = t.voice; return t; }
+    return { voice: last || '', text: t.text };
   });
 }
 
@@ -49,6 +68,9 @@ function normalizeSpec(raw = {}, { maxText = 500, maxSsml = 2000, maxDialogue = 
   const provider = raw.provider ? String(raw.provider).toLowerCase() : '';
   if (provider && !/^[a-z0-9_-]{1,40}$/.test(provider)) throw new SpecError('invalid provider');
   const fx = normalizeFxSpec(raw.fx);
+  const tone = String(raw.tone || '').trim().slice(0, 300) || undefined;
+  const model = raw.model ? String(raw.model).trim() : undefined;
+  if (model && !/^[A-Za-z0-9._:/-]{1,100}$/.test(model)) throw new SpecError('invalid model');
   const rawTurns = Array.isArray(raw.turns) && raw.turns.length ? raw.turns
     : (typeof raw.script === 'string' && raw.script.trim() ? parseScript(raw.script, raw.voices) : null);
   const turns = normalizeTurns(rawTurns, { maxDialogue });
@@ -56,7 +78,7 @@ function normalizeSpec(raw = {}, { maxText = 500, maxSsml = 2000, maxDialogue = 
     const format = FORMATS.includes(raw.format) ? raw.format : 'OGG_OPUS';
     return {
       ssmlMode: false, text: turns.map((t) => t.text).join(' '), ssml: '', turns, voice: '', language: '', gender: undefined,
-      format, rate: 1, pitch: 0, gain: 3, provider: provider || undefined, fx,
+      format, rate: 1, pitch: 0, gain: 3, provider: provider || undefined, fx, tone, model,
     };
   }
   const ssmlMode = raw.ssmlMode === true;
@@ -81,15 +103,17 @@ function normalizeSpec(raw = {}, { maxText = 500, maxSsml = 2000, maxDialogue = 
     gain: clamp(raw.gain, -96, 16, 3),
     provider: provider || undefined,
     fx,
+    tone,
+    model,
   };
 }
 
 function specId(spec, provider) {
-  const key = JSON.stringify([spec.ssmlMode, spec.text || spec.ssml, spec.voice, spec.format, spec.rate, spec.pitch, spec.gain, spec.turns || null, spec.fx || null, provider]);
+  const key = JSON.stringify([spec.ssmlMode, spec.text || spec.ssml, spec.voice, spec.format, spec.rate, spec.pitch, spec.gain, spec.turns || null, spec.fx || null, spec.tone || null, spec.model || null, provider]);
   return crypto.createHash('sha256').update(key).digest('hex').slice(0, 24);
 }
 
-function createClips({ store, tts, dir, maxBytes = 500e6, now = Date.now, fx = fxLib }) {
+function createClips({ store, tts, dir, maxBytes = 500e6, now = Date.now, fx = fxLib, sfx = null, audio = audioLib }) {
   if (!store.data.clips) store.data.clips = {};
   const clips = store.data.clips;
   const inflight = new Map();
@@ -122,8 +146,36 @@ function createClips({ store, tts, dir, maxBytes = 500e6, now = Date.now, fx = f
     return evicted;
   }
 
+  // Speech with sound effects: speak the pieces between the tags, then mix everything into one MP3.
+  async function synthesizeWithSfx(spec, plan) {
+    const items = [];
+    let provider;
+    for (const item of plan) {
+      if (item.kind === 'sfx') {
+        items.push({ kind: 'sfx', path: await sfx.file(item.name), vol: item.vol, over: item.over, wait: item.wait });
+        continue;
+      }
+      const piece = { ...spec, text: item.text || '', turns: item.turns, ssmlMode: false, ssml: '', fx: undefined };
+      const spoken = await tts.synthesize(piece);
+      provider = provider || spoken.provider;
+      items.push({ kind: 'speech', buffer: spoken.ext === 'mp3' ? spoken.audio : await audio.toMp3(spoken.audio) });
+    }
+    return { audio: await sfx.assemble(items), ext: 'mp3', provider };
+  }
+
+  function planFor(spec) {
+    if (!sfx) return null;
+    try {
+      return sfx.plan(spec);
+    } catch (err) {
+      if (err instanceof sfxLib.SfxError) throw new SpecError(err.message);
+      throw err;
+    }
+  }
+
   async function generate(spec, id) {
-    const result = await tts.synthesize(spec);
+    const plan = planFor(spec);
+    const result = plan ? await synthesizeWithSfx(spec, plan) : await tts.synthesize(spec);
     if (spec.fx) {                              // voice changer / audio treatment after the speech is made
       result.audio = await fx.apply(result.audio, spec.fx);
       result.ext = 'mp3';
@@ -131,7 +183,8 @@ function createClips({ store, tts, dir, maxBytes = 500e6, now = Date.now, fx = f
     const file = `${id}.${result.ext}`;
     fs.writeFileSync(path.join(dir, file), result.audio);
     const previous = clips[id] || {};
-    const text = spec.ssmlMode ? spec.ssml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : spec.text;
+    const shown = spec.ssmlMode ? spec.ssml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : spec.text;
+    const text = sfxLib.stripTags(shown);       // sound effect tags are not words
     const clip = {
       id,
       title: previous.title || text.slice(0, 60),
@@ -164,6 +217,7 @@ function createClips({ store, tts, dir, maxBytes = 500e6, now = Date.now, fx = f
       if (spec.provider && tts.has && !tts.has(spec.provider)) {
         throw new SpecError(`speech provider "${spec.provider}" is not enabled (enabled: ${tts.names.join(', ')})`);
       }
+      planFor(spec);                                   // unknown or malformed sound effects fail here, before any speech is paid for
       const id = specId(spec, spec.provider || (tts.names ? tts.names[0] : 'tts'));
       const existing = clips[id];
       if (existing && exists(existing)) return { clip: existing, reused: true };

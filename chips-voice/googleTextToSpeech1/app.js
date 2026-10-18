@@ -19,6 +19,12 @@ const { createLlm } = require('./lib/providers/llm');
 const { createApi } = require('./routes/api');
 const { createIngest } = require('./lib/ingest');
 const { createHost, parseNowPlaying } = require('./lib/host');
+const { createSfx } = require('./lib/sfx');
+const crypto = require('crypto');
+const { createStationClient } = require('./lib/station-client');
+const { createChat } = require('./lib/chat');
+const { createChatRoutes } = require('./routes/chat');
+const { createMcpRoutes } = require('./routes/mcp');
 
 const sleep = promisify(setTimeout);
 
@@ -39,11 +45,14 @@ const PREEMPT_LIVE_DEFAULT = process.env.PREEMPT_LIVE === 'true';
 
 // Authentication: a login (ADMIN_USER + ADMIN_PASSWORD_HASH + SESSION_SECRET) for the web UI,
 // and/or a static API_KEY for scripts. See auth.js.
+// A random key only this process knows. The built-in chat and MCP features use it to call the API on loopback.
+const INTERNAL_KEY = crypto.randomBytes(24).toString('hex');
 const auth = createAuth({
   user: process.env.ADMIN_USER,
   passwordHash: process.env.ADMIN_PASSWORD_HASH,
   secret: process.env.SESSION_SECRET,
   apiKey: process.env.API_KEY,
+  internalKey: INTERNAL_KEY,
   sessionHours: parseFloat(process.env.SESSION_HOURS || '12'),
 });
 if (!auth.enabled) {
@@ -85,8 +94,14 @@ const tts = createTts(process.env);
 const llm = createLlm(process.env);
 const storage = createStorage(process.env);
 const store = createStore(path.join(DATA_DIR, 'library.json'), { clips: {}, schedules: {} });
+// Sound effects scripts can tag as [sfx:name]: built-ins plus uploads in SFX_DIR (see lib/sfx.js).
+const sfx = createSfx({
+  dir: path.resolve(process.env.SFX_DIR || path.join(DATA_DIR, 'sfx')),
+  builtinDir: path.join(DATA_DIR, 'sfx-builtin'),
+  maxBytes: parseFloat(process.env.SFX_MAX_MB || '5') * 1e6,
+});
 const clips = createClips({
-  store, tts, dir: CLIPS_DIR,
+  store, tts, dir: CLIPS_DIR, sfx,
   maxBytes: parseFloat(process.env.CLIP_CACHE_MB || '500') * 1e6,
 });
 
@@ -129,8 +144,25 @@ const host = createHost({
 });
 if (host.settings().enabled) host.start();
 
+// Chat commands (WhatsApp/SMS via Twilio, Telegram, generic) and the built-in MCP endpoint call this server's own
+// API through the loopback client, so they get exactly the same validation as any other caller.
+const station = createStationClient({ baseUrl: `http://127.0.0.1:${process.env.PORT || 3000}`, key: INTERNAL_KEY });
+const chat = createChat({
+  client: station,
+  allowed: (process.env.CHAT_ALLOWED || '').split(',').map((x) => x.trim()).filter(Boolean),
+  confirm: process.env.CHAT_CONFIRM !== 'false',
+});
+const chatRoutes = createChatRoutes({
+  chat,
+  twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
+  publicUrl: process.env.PUBLIC_URL || '',
+  telegramToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramSecret: process.env.TELEGRAM_WEBHOOK_SECRET || '',
+});
+const mcpRoutes = createMcpRoutes({ clientFor: () => station, readOnly: process.env.MCP_READ_ONLY === 'true' });
+
 const api = createApi({
-  host,
+  host, sfx,
   clips, tts, llm, storage, scheduler, play: playClip, limits,
   ingest,
   ingestToken: process.env.INGEST_TOKEN || '',
@@ -157,16 +189,19 @@ app.use(cors(process.env.CORS_ORIGIN ? { origin: process.env.CORS_ORIGIN.split('
 
 app.use(logger('dev'));
 app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: false }));          // Twilio posts form data
 
 // cors() answers preflight requests itself, so only real requests reach the lines below.
 app.set('trust proxy', 'loopback'); // behind nginx on the same machine: req.ip is the real client
 app.use(api.publicRouter);          // signed audio links work without a login
 app.use(api.ingestRouter);          // audio hand-off: INGEST_TOKEN or a normal login
+app.use(chatRoutes.webhooks);       // chat webhooks check the sender's signature or secret, and the allowlist
 app.post('/auth/login', auth.login);
 app.use(auth.requireAuth);
 app.get('/auth/me', (req, res) => res.json({ ok: true }));
 app.use(api.router);
-app.use(express.urlencoded({ extended: false }));
+app.use(chatRoutes.router);        // POST /chat/message
+app.use(mcpRoutes);                // POST /mcp
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
