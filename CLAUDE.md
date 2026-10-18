@@ -74,10 +74,12 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   Gemini call itself fails (script generation or speech synthesis), and
   `400` for malformed/missing request fields — this distinguishes "your
   request was bad" from "the upstream model call failed" for callers.
-- **No auth yet.** `/api/generate`, `/api/clips`, and `index.html` are all
-  open to anyone who can reach the deployed site — the eventual WhatsApp
-  allowlist was scoped for the command layer, not this core, so don't
-  assume request authentication exists when reading this code.
+- **One shared access key.** `lib/auth.ts#checkAuth` guards `/api/generate` and `/api/clips[/:id]`
+  (called first in each handler, so adapters cannot skip it). The key is the `ACCESS_KEY` env var (16+ characters),
+  sent as `x-api-key` or `Authorization: Bearer`. With no key set the API answers 503 rather than being open;
+  `AUTH_DISABLED=true` is the explicit local-dev opt-out. `index.html` itself is public and holds no secrets:
+  it asks for the key, keeps it in `sessionStorage`, and plays audio via fetch (an `<audio src>` cannot send headers).
+  There are no per-user accounts, and the eventual WhatsApp allowlist is still scoped for the command layer.
 - **Station hand-off is optional and never fails a generation.** When `STATION_URL` and
   `STATION_INGEST_TOKEN` are set, `handleGenerate` posts the WAV to the station after
   `saveClip`. A station error is reported in the response's `handoff` field but the request

@@ -64,8 +64,8 @@ POST https://radio.example.com/ingest/url      Authorization: Bearer <INGEST_TOK
 ```
 
 Only https hosts listed in `INGEST_ALLOWED_HOSTS=your-site.netlify.app` are fetched, with no redirects and a size cap,
-so the endpoint cannot be used to reach other machines. VirtuaHost's `/api/clips/:id` is open to anyone who can reach the site
-(it has no auth yet), so a link to it is only as private as that site.
+so the endpoint cannot be used to reach other machines. VirtuaHost's `/api/clips/:id` now needs the `ACCESS_KEY`, and `/ingest/url`
+cannot send it, so this pull alternative no longer works against a protected VirtuaHost: use the push hand-off above (the default), which is unaffected.
 
 ## 2. Voices: Chips Voice speaking for you
 

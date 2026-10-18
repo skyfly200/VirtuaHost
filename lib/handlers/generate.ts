@@ -3,6 +3,7 @@ import { writeDjLine, synthesizeSpeech, DEFAULT_VOICE } from "../gemini.js";
 import { pcmToWav } from "../wav.js";
 import { saveClip } from "../store.js";
 import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
+import { checkAuth } from "../auth.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
 
 // Chips Voice scripts can contain [sfx:name] sound effect tags. This Gemini path cannot mix them, and Gemini
@@ -14,6 +15,9 @@ export function stripSfxTags(text: string): { text: string; removed: boolean } {
 }
 
 export async function handleGenerate(req: Request): Promise<Response> {
+  const denied = checkAuth(req);
+  if (denied) return denied;
+
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
   }

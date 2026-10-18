@@ -145,6 +145,12 @@
   <p class="subtitle">Test console for /api/generate and /api/clips.</p>
 
   <section>
+    <h2>Access key</h2>
+    <input type="password" id="access-key" placeholder="The ACCESS_KEY set on the site" autocomplete="off" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:6px;background:transparent;color:inherit;font:inherit" />
+    <div class="status" id="key-status">Kept in this browser tab only.</div>
+  </section>
+
+  <section>
     <h2>Generate a clip</h2>
     <div class="mode-toggle">
       <button type="button" id="mode-say" class="active">Say verbatim</button>
@@ -170,6 +176,22 @@
   const submitBtn = document.getElementById("submit-btn");
   const statusEl = document.getElementById("generate-status");
   const clipsListEl = document.getElementById("clips-list");
+  const keyEl = document.getElementById("access-key");
+  const keyStatusEl = document.getElementById("key-status");
+
+  // The key lives in sessionStorage (this tab only) and goes out as a header on every call.
+  try { keyEl.value = sessionStorage.getItem("accessKey") || ""; } catch { /* storage blocked */ }
+  const authHeaders = () => ({ "x-api-key": keyEl.value.trim() });
+  keyEl.addEventListener("change", () => {
+    try { sessionStorage.setItem("accessKey", keyEl.value.trim()); } catch { /* storage blocked */ }
+    loadClips();
+  });
+  function needKey(res) {
+    if (res.status !== 401) return false;
+    keyStatusEl.textContent = keyEl.value.trim() ? "That key was not accepted." : "Enter the access key first.";
+    keyStatusEl.classList.add("error");
+    return true;
+  }
 
   function setMode(next) {
     mode = next;
@@ -193,7 +215,13 @@
 
   async function loadClips() {
     try {
-      const res = await fetch("/api/clips");
+      const res = await fetch("/api/clips", { headers: authHeaders() });
+      if (needKey(res)) {
+        clipsListEl.innerHTML = '<p class="empty">Enter the access key above to see clips.</p>';
+        return;
+      }
+      keyStatusEl.classList.remove("error");
+      keyStatusEl.textContent = "Kept in this browser tab only.";
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const { clips } = await res.json();
 
@@ -212,13 +240,33 @@
             <span>${clip.voice}</span>
           </div>
           <div class="clip-script">${escapeHtml(clip.scriptText)}</div>
-          <audio controls preload="none" src="/api/clips/${clip.id}"></audio>
+          <button type="button" class="play" data-id="${escapeHtml(clip.id)}">Play</button>
         </div>
       `,
         )
         .join("");
+      clipsListEl.querySelectorAll("button.play").forEach((btn) => btn.addEventListener("click", () => playClip(btn)));
     } catch (err) {
       clipsListEl.innerHTML = `<p class="empty">Failed to load clips: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  // Audio needs the key too, and an <audio src> cannot send headers, so it is fetched and played from a blob.
+  async function playClip(btn) {
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/clips/${encodeURIComponent(btn.dataset.id)}`, { headers: authHeaders() });
+      if (needKey(res)) return;
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.src = URL.createObjectURL(await res.blob());
+      btn.replaceWith(audio);
+      audio.play().catch(() => {});
+    } catch (err) {
+      btn.textContent = `Failed: ${err.message}`;
+    } finally {
+      btn.disabled = false;
     }
   }
 
@@ -244,9 +292,10 @@
       const body = mode === "say" ? { mode: "say", text: value } : { mode: "ai", prompt: value };
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...authHeaders() },
         body: JSON.stringify(body),
       });
+      if (needKey(res)) throw new Error("Enter the access key above first.");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
 

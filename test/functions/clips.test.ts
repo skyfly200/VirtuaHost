@@ -9,11 +9,14 @@ import { getClip, listClips } from "../../lib/store.js";
 import { handleClips } from "../../lib/handlers/clips.js";
 import type { ClipMetadata } from "../../lib/types.js";
 
+const TEST_KEY = "test-access-key-0123456789";
+vi.stubEnv("ACCESS_KEY", TEST_KEY);
+
 const mockedGetClip = vi.mocked(getClip);
 const mockedListClips = vi.mocked(listClips);
 
 function getRequest(): Request {
-  return new Request("http://localhost/api/clips", { method: "GET" });
+  return new Request("http://localhost/api/clips", { method: "GET", headers: { "x-api-key": TEST_KEY } });
 }
 
 const sampleMetadata: ClipMetadata = {
@@ -33,7 +36,7 @@ describe("handleClips", () => {
   });
 
   it("rejects non-GET requests", async () => {
-    const req = new Request("http://localhost/api/clips", { method: "POST" });
+    const req = new Request("http://localhost/api/clips", { method: "POST", headers: { "x-api-key": TEST_KEY } });
     const res = await handleClips(req, undefined);
     expect(res.status).toBe(405);
   });

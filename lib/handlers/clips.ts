@@ -1,6 +1,10 @@
 import { getClip, listClips } from "../store.js";
+import { checkAuth } from "../auth.js";
 
 export async function handleClips(req: Request, id: string | undefined): Promise<Response> {
+  const denied = checkAuth(req);
+  if (denied) return denied;
+
   if (req.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405 });
   }
