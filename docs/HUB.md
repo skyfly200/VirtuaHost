@@ -86,6 +86,8 @@ live in its database, so the agent does not define or switch them (the hub shows
 
 ## 5. Deploy the web apps
 
+Step by step for Netlify (both sites, with every environment variable): [NETLIFY.md](NETLIFY.md).
+
 The apps are plain files in `chips-voice/web/` (`index.html`, `lab/`, `panel/`, `shared/`). Pick one:
 
 - **Hub serves them**: `HUB_STATIC=../web`. Open `https://hub.example.com/panel/`. Same origin, no CORS to set up.

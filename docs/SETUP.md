@@ -88,6 +88,10 @@ and say_on_air/play_clip/schedule/skip/volume/host_say (on air; their descriptio
 - HTTP: connect a client to `$URL/mcp` with header `x-api-key`. Stateless; JSON responses.
 - Safe mode: `MCP_READ_ONLY=true` (server env, applies to both) registers only read tools.
 
+## Deploying on Netlify
+
+See [NETLIFY.md](NETLIFY.md) for the two sites (VirtuaHost generator, and the Voice Lab / Control Panel) and the settings each needs.
+
 ## Persona: CHIP
 
 Way High Radio's computer DJ is a one-step preset on the virtual host: `PUT /host {"preset":"chip","voice":"<your voice>"}`. See [PERSONA-CHIP.md](PERSONA-CHIP.md).
