@@ -1,0 +1,8 @@
+{
+  "name": "chips-voice-agent-radiodj",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Station agent that lets the Chips Voice hub control RadioDJ on Windows",
+  "scripts": { "start": "node agent.js", "test": "node --test test/*.test.js" },
+  "engines": { "node": ">=18" }
+}

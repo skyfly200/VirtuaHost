@@ -35,6 +35,7 @@ const LIQUIDSOAP_HOST = process.env.LIQUIDSOAP_HOST || '127.0.0.1';
 const LIQUIDSOAP_PORT = parseInt(process.env.LIQUIDSOAP_PORT || '1234', 10);
 const CLIPS_DIR = path.resolve(process.env.CLIPS_DIR || path.join(__dirname, 'clips'));
 const MUSIC_DIR = path.resolve(process.env.MUSIC_DIR || '/srv/music');
+const library = require('./lib/library');
 const ICECAST_STATUS_URL = process.env.ICECAST_STATUS_URL || 'http://127.0.0.1:8000/status-json.xsl';
 const STREAM_MOUNT = process.env.STREAM_MOUNT || '/stream';
 const LIQUIDSOAP_QUEUE = process.env.LIQUIDSOAP_QUEUE || 'announce';
@@ -84,6 +85,7 @@ if (PLAYER !== 'liquidsoap') {
 
 // ---- Clip library, providers, scheduler (see lib/ and routes/api.js) ----
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
+const PLAYLIST_DIR = path.resolve(process.env.PLAYLIST_DIR || path.join(DATA_DIR, 'playlists'));
 const limits = {
   maxText: parseInt(process.env.MAX_TEXT_CHARS || '500', 10),
   maxSsml: parseInt(process.env.MAX_SSML_CHARS || '2000', 10),
@@ -188,6 +190,8 @@ app.set('view engine', 'pug');
 app.use(cors(process.env.CORS_ORIGIN ? { origin: process.env.CORS_ORIGIN.split(',') } : undefined));
 
 app.use(logger('dev'));
+// Playlist definitions from the hub can list thousands of tracks; everything else stays small.
+app.use((req, res, next) => (req.method === 'PUT' && req.path.startsWith('/music/playlists/') ? express.json({ limit: '3mb' })(req, res, next) : next()));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false }));          // Twilio posts form data
 
@@ -239,7 +243,8 @@ app.get("/learnfade", (req, res) => {
 app.get("/music/playlists", async (req, res) => {
   try {
     const entries = await promisify(fs.readdir)(MUSIC_DIR, { withFileTypes: true });
-    res.json(entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name));
+    // Folders, then playlists saved by the hub as "list:<name>".
+    res.json([...entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name), ...library.listPlaylists(PLAYLIST_DIR).map((n) => `list:${n}`)]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -278,6 +283,16 @@ app.post("/music/volume", async (req, res) => {
 // { "name": "<sub-directory of MUSIC_DIR>" } switches playlist; "" or "/" is the whole library.
 app.post("/music/playlist", async (req, res) => {
   const name = String(req.body.name || '').replace(/^\/+$/, '');
+  if (name.startsWith('list:')) {
+    const file = library.playlistFile(PLAYLIST_DIR, name.slice(5));
+    if (!file) return res.status(404).json({ error: 'no such saved playlist' });
+    try {
+      await liquidsoapCommand(`music.uri ${file}`);
+      return res.json({ playlist: name, reply: await liquidsoapCommand('music.reload') });
+    } catch (err) {
+      return res.status(502).json({ error: err.message });
+    }
+  }
   if (!/^[A-Za-z0-9 _.-]*$/.test(name) || name.startsWith('.')) {
     return res.status(400).json({ error: 'invalid playlist name' });
   }
@@ -289,6 +304,25 @@ app.post("/music/playlist", async (req, res) => {
     res.status(502).json({ error: err.message });
   }
 })
+
+// ---- Station-agent API: what the hub (chips-voice/hub) needs from every playback system ----
+app.get('/agent/info', (req, res) => res.json({
+  kind: PLAYER === 'liquidsoap' ? 'liquidsoap' : 'vlc',
+  name: process.env.STATION_NAME || 'station',
+  capabilities: { skip: PLAYER === 'liquidsoap', volume: PLAYER === 'liquidsoap', playlists: PLAYER === 'liquidsoap', library: true, definePlaylist: PLAYER === 'liquidsoap', clip: true, host: true },
+}));
+
+// Files in the music directory (paths only), so the hub can tell which tracks a playlist can use here.
+app.get('/music/library', (req, res) => res.json({ tracks: library.listTracks(MUSIC_DIR) }));
+
+// { "items": ["Artist/Track.mp3", ...] } saves a playlist from the tracks this station has; the rest are reported missing.
+app.put('/music/playlists/:name', (req, res) => {
+  try {
+    res.json(library.writePlaylist(PLAYLIST_DIR, MUSIC_DIR, req.params.name, (req.body || {}).items));
+  } catch (err) {
+    res.status(err instanceof library.LibraryError ? 400 : 500).json({ error: err.message });
+  }
+});
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

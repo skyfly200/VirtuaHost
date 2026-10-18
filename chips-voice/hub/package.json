@@ -1,0 +1,8 @@
+{
+  "name": "chips-voice-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Controls several stations (Liquidsoap/Icecast or RadioDJ) from one API: now playing, skip, volume, playlists, broadcasts and host settings",
+  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js" },
+  "engines": { "node": ">=18" }
+}
