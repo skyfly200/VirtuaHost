@@ -120,3 +120,9 @@ Playing the link exactly as the track ends (needs remaining time from Liquidsoap
 - **Tone and models**: `tone` and `model` fields (and `Name (direction): text` lines in pasted scripts) work with OpenRouter speech and OpenAI `gpt-4o-mini-tts`.
 - **Chat and MCP**: the station can be run from WhatsApp/Telegram/MCP assistants. On-air actions ask for a YES first.
 - Setup for all use cases: [SETUP.md](SETUP.md). Not verified live: OpenRouter native dialogue field names, real Twilio/Telegram delivery.
+
+## Added later: the hub, the RadioDJ agent and the two web apps
+
+- `chips-voice/agent-radiodj/agent.js` lets a hub put clips on RadioDJ the way your `virtual_host.py` does: write `current_link.mp3`, fire a cart with `PlayCartByNumber` (same REST commands as `radiodj_api.sh`). It does not touch your scripts.
+- Skip and volume for RadioDJ are off until the REST plugin's command names are set (`RADIODJ_CMD_SKIP`, `RADIODJ_CMD_VOLUME`); I could not confirm them. If you know them, that is the most useful thing to add.
+- Everything else (hub, Voice Lab, Control Panel, playlist sync): [HUB.md](HUB.md).

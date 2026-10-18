@@ -185,6 +185,14 @@ function createApi({ host, sfx, clips, tts, llm, storage, scheduler, play, strea
     res.json(await playAndRecord(clip, (req.body || {}).preempt));
   }));
 
+  // The audio itself, for the web UI's own player (needs the login or key, unlike the signed links below).
+  router.get('/clips/:id/audio', wrap(async (req, res) => {
+    const found = clips.get(req.params.id);
+    if (!found) return res.status(404).json({ error: 'clip not found' });
+    const clip = await ensureFile(found);
+    res.sendFile(clips.fileOf(clip), { headers: { 'Content-Type': MIME[clip.ext] || 'application/octet-stream', 'Cache-Control': 'private, max-age=300' } });
+  }));
+
   // A link a media player can stream: signed, expires, supports seeking (HTTP Range).
   router.post('/clips/:id/link', wrap(async (req, res) => {
     if (!streamSecret) return res.status(503).json({ error: 'set STREAM_SECRET (or SESSION_SECRET) to create audio links' });
