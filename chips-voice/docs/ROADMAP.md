@@ -3,7 +3,7 @@
 ## What exists
 
 ```
-Browser (Netlify / Vercel)                         VPS
+Browser (Netlify / Vercel)  [original UI; the Voice Lab and Control Panel in chips-voice/web are the newer ones]   VPS
 ┌──────────────────────────┐   HTTPS + login token   ┌─────────────────────────────────────────┐
 │ Vue 2 + Vuetify UI       │ ───────────────────>│ nginx (TLS) -> Express backend :3000     │
 │  Login screen            │
@@ -24,22 +24,27 @@ Browser (Netlify / Vercel)                         VPS
 
 ## Status
 
-Built (see [CLOUD-AND-AI.md](CLOUD-AND-AI.md)): swappable speech providers (Google, OpenAI,
-ElevenLabs, Piper) and AI providers (OpenRouter, Anthropic, OpenAI, Ollama) with fallback chains; the
+Built (see [CLOUD-AND-AI.md](CLOUD-AND-AI.md) and [../../docs/](../../docs/)): swappable speech providers (Google, OpenAI,
+ElevenLabs, OpenRouter, Piper) and AI providers (OpenRouter, Anthropic, OpenAI, Ollama) with fallback chains and per-request model and tone; the
 clip library with reuse, favorites, tags and a disk cap; schedules; signed stream links; sharing to Google Drive
-(rclone) and ownCloud; AI drafting; rate limits and length caps; login; 34 automated tests.
+(rclone) and ownCloud; AI drafting (text and conversations); rate limits and length caps; login and API keys; ffmpeg effects; sound effects
+(`[sfx:name]`); multi-voice dialogue; the server-side virtual host with personas (CHIP); hand-off from Netlify (`/ingest`); chat (Twilio, Telegram) and MCP control;
+the multi-station hub, the RadioDJ agent and the Voice Lab / Control Panel web apps ([../../docs/HUB.md](../../docs/HUB.md)).
+Automated tests: 135 (server), 15 (hub), 6 (RadioDJ agent), 39 (VirtuaHost root).
 
 Still open:
 
 | Area | Item |
 |------|------|
-| Blocker | Push access to `publicdata/chipsvoice`. |
-| Untested against real services | Liquidsoap script, Google, OpenRouter, ElevenLabs, Google Drive, ownCloud, Netlify/Vercel. |
+| Untested against real services | Liquidsoap script (including saved `list:` playlists), live RadioDJ (`/npjson`, skip and volume command names), Google, OpenRouter (native dialogue field names), ElevenLabs, Google Drive, ownCloud, Twilio and Telegram delivery, Netlify/Vercel deploys. |
+| RadioDJ | Skip and volume need the REST plugin command names (`RADIODJ_CMD_SKIP`, `RADIODJ_CMD_VOLUME`); playlists are not driven from the agent. |
+| Hub | Simultaneous start is "together" within network latency, not sample-accurate; timed broadcasts are held in the hub for at most 24 h; no per-user accounts (one hub key). |
 | Playback | VLC mode `fadeTo` bug; legacy `/hook`, `/midi`, `/learn*`. |
 | Accounts | One login only. |
 | Scheduling | No calendar view, no "run now", no time-of-day recurrence (only fixed intervals). |
 | Library | Evicted clips are regenerated, not restored from the cloud copy. |
 | Package | Still named `express-locallibrary-tutorial`. |
+| Old UI | The Vue UI in `tts-ui/` has not been changed to use the hub; the new static apps in `web/` are the multi-station and voice-tuning front ends. |
 
 The sections below are the original design notes; they now describe what was built.
 

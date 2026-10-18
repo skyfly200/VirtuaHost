@@ -10,6 +10,17 @@ Getting clips onto a live Icecast/Liquidsoap stream is done by the Chips Voice
 server in `chips-voice/`: set `STATION_URL` and `STATION_INGEST_TOKEN` and each
 generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTEGRATION.md). Working on the KRAP side? Start with [docs/FOR-SYLVIA.md](docs/FOR-SYLVIA.md).
 
+## Documentation
+
+| Read | For |
+|------|-----|
+| [docs/SETUP.md](docs/SETUP.md) | Setup paths: scripts, API, stream-server AutoDJ, chat and MCP, several stations |
+| [docs/FOR-SYLVIA.md](docs/FOR-SYLVIA.md) | Start here for the KRAP side: what replaces each script, what is verified |
+| [docs/INTEGRATION.md](docs/INTEGRATION.md) | Netlify to the station hand-off, voices, effects, dialogue, the virtual host |
+| [docs/HUB.md](docs/HUB.md) | The hub, the RadioDJ agent, and the Voice Lab and Control Panel web apps |
+| [docs/PERSONA-CHIP.md](docs/PERSONA-CHIP.md) | CHIP, the computer DJ persona of Way High Radio |
+| [chips-voice/README.md](chips-voice/README.md) | The Chips Voice server: API, playback backends, Icecast and Liquidsoap |
+
 ## Setup
 
 1. `npm install`
@@ -60,6 +71,6 @@ Returns the clip's audio as `audio/wav`.
 
 - `npm run dev` — `netlify dev`, runs the functions locally
 - `npm run build` — typecheck (`tsc --noEmit`)
-- `npm test` — run the unit tests (`vitest`); no credentials required, Gemini
-  and Blobs are mocked
+- `npm test` — run the unit tests (`vitest`, 39 tests); no credentials required, Gemini
+  and Blobs are mocked. The Chips Voice server, hub and RadioDJ agent have their own suites (see `chips-voice/README.md`)
 - `npm run lint` — `eslint .`

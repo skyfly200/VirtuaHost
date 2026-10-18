@@ -130,7 +130,7 @@ password. See [MUSIC-ROTATION.md](MUSIC-ROTATION.md).
 
 ## What was verified
 
-Unit and integration tests (`npm test`, 34 tests) cover the providers against
+Unit and integration tests (`npm test` in `googleTextToSpeech1/`, 135 tests) cover the providers against
 mock servers, the clip catalogue, the scheduler, both storage adapters against a
 mock rclone and a mock ownCloud server, signed links including range requests,
 and the API. The real vendors (Google, OpenRouter, ElevenLabs, Google Drive,

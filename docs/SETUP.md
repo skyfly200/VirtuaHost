@@ -54,7 +54,7 @@ callers may name; `OPENROUTER_FALLBACK_MODELS` is the retry order.
 
 ## C. Stream server AutoDJ (Icecast + Liquidsoap)
 
-Full walkthrough: `docs/DEPLOY-VPS.md` and `chips-voice/README.md` ("Option B"). Checklist:
+Full walkthrough: `chips-voice/docs/DEPLOY-VPS.md` and `chips-voice/README.md` ("Option B"). Checklist:
 
 1. Install on the VPS: `icecast2 liquidsoap ffmpeg nodejs(22)`. Mount `/stream` (music + announcements) and `/live` (live DJ).
 2. Put music in the folder `radio.liq` points at (rotation: `chips-voice/docs/MUSIC-ROTATION.md`). 128 kbps MP3 is the configured rate.
@@ -62,7 +62,7 @@ Full walkthrough: `docs/DEPLOY-VPS.md` and `chips-voice/README.md` ("Option B").
 4. Env: `STATION_PLAYBACK=liquidsoap`, the Liquidsoap host/port, `ICECAST_URL` (for now-playing), `API_KEY`, `SESSION_SECRET`, `PUBLIC_URL`.
 5. Virtual host: configure in the UI card or `PUT /host` (voice, effects, every N tracks, `template` or `llm` lines, skip list); `HOST_*` env sets defaults.
    Test without audio: `POST /host/say {"artist":"A","title":"T","dryRun":true}`.
-6. Run it under systemd (see DEPLOY-VPS.md) behind HTTPS (Caddy/nginx). `/mcp` and `/chat/*` must also be on HTTPS.
+6. Run it under systemd (see `chips-voice/docs/DEPLOY-VPS.md`) behind HTTPS (Caddy/nginx). `/mcp` and `/chat/*` must also be on HTTPS.
 7. Verify: `curl $URL/health`-style check via the UI "Now playing", `skip`, then `say` something and hear the music duck.
 
 ## D. Chat and MCP

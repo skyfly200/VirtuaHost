@@ -1,5 +1,18 @@
 # Chips Voice
 
+> **Status:** this started as the small tool described below and has grown into the station server of the VirtuaHost project: swappable speech and AI
+> providers (ElevenLabs, OpenRouter, Google, OpenAI), a clip library, effects and sound effects, dialogue, a server-side virtual host with personas (CHIP),
+> chat and MCP control, and a multi-station hub. Start with [../docs/SETUP.md](../docs/SETUP.md); this file keeps the original description and the API reference.
+> Tests: `node --test test/*.test.js` in `googleTextToSpeech1/` (135), `hub/` (15) and `agent-radiodj/` (6).
+
+```
+googleTextToSpeech1/        the server (Express): API, providers, library, host, chat, MCP (mcp/stdio.js)
+googleTextToSpeech1/tts-ui/ the original Vue 2 UI
+hub/                        controls several stations (zero dependencies)       docs/HUB.md
+agent-radiodj/              lets the hub control RadioDJ on Windows              docs/HUB.md
+web/                        Voice Lab and Control Panel (static, no build)       docs/HUB.md
+```
+
 A small text-to-speech announcement tool. A Vue UI lets you type text (or SSML),
 pick a Google Cloud voice, and either save the clip or play it immediately. When
 a clip plays, background music is faded down over MIDI and faded back up
@@ -104,12 +117,21 @@ Everything except `/auth/login` and signed `/a/...` links needs a login token (o
 | GET | `/a/:id/:name?exp&sig` | The signed audio link (no login; supports range requests). |
 | GET, POST | `/schedules` | List, create. Body: `{ clipId or text..., startAt, intervalSec, count, preempt }`. |
 | PATCH, DELETE | `/schedules/:id` | Enable or disable; delete. |
-| GET | `/music/playlists`, `/music/now` | Liquidsoap mode: playlists, now playing. |
+| GET | `/music/playlists`, `/music/now`, `/music/library` | Liquidsoap mode: playlists (folders, and saved lists as `list:<name>`), now playing, the files on disk. |
 | POST | `/music/skip`, `/music/volume`, `/music/playlist` | Liquidsoap mode controls. |
+| PUT | `/music/playlists/:name` | `{ items: [paths] }` saves a playlist from the tracks this station has; reports the rest as `missing`. |
+| GET | `/agent/info` | What this station can do, for the hub (`kind`, `capabilities`). |
+| GET | `/clips/:id/audio` | The clip's audio for a signed-in player (the web apps). |
+| GET, POST, DELETE | `/sfx`, `/sfx?name=`, `/sfx/:name` | Sound effects scripts can tag as `[sfx:name]`; upload your own. `GET /sfx/:name/audio` previews. |
+| GET | `/personas` | Host personas with their text, tone, effect, templates and station IDs. Apply with `PUT /host {"preset":"chip"}`. |
+| POST | `/host/station-id` | A station ID in the active persona's style; `{ "play": true }` puts it on air. |
+| POST | `/chat/twilio`, `/chat/telegram`, `/chat/message` | Chat control (WhatsApp/SMS, Telegram, generic). See ../docs/SETUP.md. |
+| POST | `/mcp` | MCP over HTTP (also `mcp/stdio.js`). Read-only with `MCP_READ_ONLY=true`. |
 | GET | `/midi`, `/learnmute`, `/learnfade` | VLC mode MIDI helpers. |
 
-Speech body fields: `text` or `ssml` with `ssmlMode` (or `turns`, or a `script` with `voices`, for multi-voice dialogue), `provider`, `fx`, `voice`, `format`
-(`OGG_OPUS`, `MP3`, `LINEAR16`), `rate`, `pitch`, `gain`. Providers, drafting,
+Speech body fields: `text` or `ssml` with `ssmlMode` (or `turns`, or a `script` with `voices`, for multi-voice dialogue; script lines may be
+`Name (direction): text`), `provider`, `model`, `tone`, `fx`, `voice`, `format` (`OGG_OPUS`, `MP3`, `LINEAR16`), `rate`, `pitch`, `gain`. Text may contain
+`[sfx:name]` tags (options `over`, `vol=`, `wait=`). Providers, drafting,
 the library, links and cloud sharing are described in
 [docs/CLOUD-AND-AI.md](docs/CLOUD-AND-AI.md); all settings are in
 `googleTextToSpeech1/.env.example`.

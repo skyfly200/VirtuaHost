@@ -144,7 +144,7 @@ controls are in [FOR-SYLVIA.md](FOR-SYLVIA.md). Environment defaults: `HOST_VOIC
 
 Run here, against local stand-ins for the outside services:
 
-- Both test suites (VirtuaHost 36 tests; Chips Voice backend 83 tests and a clean UI build), including real ffmpeg conversion, effects and joining.
+- Every test suite (VirtuaHost 39 tests; Chips Voice server 135; hub 15; RadioDJ agent 6) and a clean UI build, including real ffmpeg conversion, effects, sound effects and joining.
 - The virtual host end to end: a link about one song was voiced, finished with `underground`, and pushed to a fake Liquidsoap when the next song began; a spot got nothing.
 - A real round trip: VirtuaHost's `handleGenerate` pushed a clip to a running Chips Voice server, which converted, stored and
   played it (through a fake Liquidsoap). A wrong token was refused.
@@ -152,6 +152,10 @@ Run here, against local stand-ins for the outside services:
 
 Not run: real ElevenLabs, OpenRouter, Gemini, Liquidsoap, Icecast, or a Netlify deploy. Try each once with real credentials.
 
-## 7. Sound effects, chat and MCP
+## 7. Sound effects, chat, MCP and personas
 
-See [SETUP.md](SETUP.md) for the three setup paths (script, API, stream server AutoDJ) and the chat/MCP integrations.
+See [SETUP.md](SETUP.md) for the setup paths (script, API, stream server AutoDJ), sound effects, OpenRouter tone and models, and the chat/MCP integrations. The CHIP persona is in [PERSONA-CHIP.md](PERSONA-CHIP.md).
+
+## 8. Several stations
+
+One hub can control several Chips Voice/Liquidsoap servers and RadioDJ machines, start a broadcast on all of them together, share playlists and copy host settings; two web apps (Voice Lab, Control Panel) sit in front of it. See [HUB.md](HUB.md).

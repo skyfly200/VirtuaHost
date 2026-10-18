@@ -11,6 +11,11 @@ integrated later. It is independent of the VirtuaHost code in the repository roo
 - **`netlify.toml` here is not active.** Netlify reads only the root file. It records the build settings for hosting the
   Chips Voice UI as its own Netlify site.
 
+## Update: what lives here now
+
+Besides the server (`googleTextToSpeech1/`), this folder holds `hub/` (controls several stations), `agent-radiodj/` (RadioDJ on Windows) and `web/` (the Voice Lab and
+Control Panel), each with its own tests; see [../docs/HUB.md](../docs/HUB.md). `eslint.config.js` and `vitest.config.ts` still skip `chips-voice/`.
+
 ## Where the two overlap (for the integration)
 
 | VirtuaHost | Chips Voice |
