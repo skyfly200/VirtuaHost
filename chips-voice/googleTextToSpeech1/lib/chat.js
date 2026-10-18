@@ -16,6 +16,8 @@ draft <what it is about> - AI writes it, then YES to air
 clips [words] - recent clips; play <number> to air one
 host on|off|status - the virtual host
 host line Artist - Title - preview a host link
+host persona [chip] [as Voice] - list host personas, or switch (CHIP is Way High Radio's computer DJ)
+id - a station ID in the host persona's style (asks YES first)
 schedule 18:30 <text> or schedule in 2h every 1h <text>
 schedules, cancel <number>
 fx, sfx - list effects and sound effects
@@ -141,6 +143,19 @@ function createChat({ client, allowed = [], confirm = true, now = Date.now, ttlM
         const h = await client.hostUpdate({ enabled: s === 'on' });
         return `Virtual host is ${h.running ? 'on' : 'off'}.`;
       }
+      if (s === 'persona' || s === 'personas') {
+        const m = rest.join(' ').match(/^(\S+)(?:\s+as\s+(\S+))?$/i);
+        if (!m) {
+          const { personas } = await client.personas();
+          const h = await client.host();
+          return `Personas: ${personas.map((p) => p.name).join(', ')}.\nActive: ${h.settings && h.settings.preset ? h.settings.preset : 'none'}.\nSay "host persona ${personas[0] ? personas[0].name : 'chip'} as <Voice>" to switch.`;
+        }
+        const patch = { preset: m[1].toLowerCase() };
+        if (m[2]) patch.voice = m[2];
+        const h = await client.hostUpdate(patch);
+        const st = h.settings || {};
+        return `Host persona is now ${st.preset || patch.preset}${st.voice ? ` (voice ${st.voice})` : ''}, effect ${st.fx || 'none'}. ${h.running ? '' : 'The host is off; "host on" starts it.'}`.trim();
+      }
       if (s === 'line') {
         const m = rest.join(' ').match(/^(.+?)\s+-\s+(.+)$/);
         if (!m) throw new ChatError('Say "host line Artist - Title".');
@@ -152,6 +167,11 @@ function createChat({ client, allowed = [], confirm = true, now = Date.now, ttlM
         h.ready ? `Next link: "${clip(h.ready.text, 100)}"` : null, h.last ? `Last: "${clip(h.last.text, 100)}"${h.last.played ? '' : ` (skipped: ${h.last.reason})`}` : null,
         `${h.counters.played} played, ${h.counters.skipped} skipped, ${h.counters.failed} failed`, h.error ? `Problem: ${h.error}` : null].filter(Boolean).join('\n');
     },
+
+    id: async (from) => onAir(from, 'Play a station ID in the host persona\'s style', async () => {
+      const out = await client.stationId(true);
+      return out.played === false ? `Not played: ${out.reason}.` : `On air: "${clip(out.text, 120)}"`;
+    }),
 
     schedule: async (from, arg) => {
       const when = parseWhen(arg, now());

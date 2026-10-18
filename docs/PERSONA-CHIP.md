@@ -14,6 +14,12 @@ CHIP is a separate voice from Rocky and Britta, part of the same wider pirate cr
 3. Station IDs: `POST /host/station-id {"play":true}` picks one at random. Schedule them with the normal scheduler or from chat.
 4. `GET /personas` lists the presets. For AI-written links set `PUT /host {"lines":"llm"}`; the persona text is then given to the language model.
 
+## From chat and MCP
+
+- Chat: `host persona` (list and show the active one), `host persona chip as CHIP` (switch and set the voice), `id` (a station ID on air, asks YES first).
+  Also `say as CHIP: ...` for one-off lines.
+- MCP: `list_personas` (read), `host_configure` with `preset` and `voice`, `station_id` (with `play: true` it goes on the PUBLIC STREAM; read-only mode hides it).
+
 ## What the preset contains
 
 - **Persona text** for AI-written links (grumbly sailor, ship and signal words, calls listeners crew/shipmates/stowaways, never a real person, no claims about real regulators).

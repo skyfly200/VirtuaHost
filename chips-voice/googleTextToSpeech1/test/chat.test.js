@@ -15,8 +15,10 @@ function setup(opts = {}) {
   const client = {
     nowPlaying: rec('nowPlaying', opts.now || { title: 'Boards of Canada - Roygbiv', listeners: 7, live: false }),
     host: rec('host', opts.host || { running: true, ready: { text: 'That was Roygbiv.' }, current: { artist: 'A', title: 'T' }, counters: { played: 2, skipped: 1, failed: 0 }, last: { text: 'Hi', played: true } }),
-    hostUpdate: rec('hostUpdate', (p) => ({ running: p.enabled })),
+    hostUpdate: rec('hostUpdate', (p) => ({ running: p.enabled === undefined ? true : p.enabled, settings: { preset: p.preset, voice: p.voice, fx: p.preset === 'chip' ? 'hull' : 'none' } })),
     hostSay: rec('hostSay', { text: 'That was Tune by Band.' }),
+    personas: rec('personas', { personas: [{ name: 'chip' }] }),
+    stationId: rec('stationId', { text: 'Way High Radio. We are taking radio higher.', played: true }),
     skip: rec('skip', {}), setVolume: rec('setVolume', {}),
     speak: rec('speak', opts.speak || { played: true, reused: false }),
     draft: rec('draft', { text: 'Doors open at six, come early!' }),
@@ -265,4 +267,15 @@ test('generic /chat/message needs the API key and uses the trusted path', async 
   const ok = await post({ 'x-api-key': 'k' });
   assert.deepStrictEqual(await ok.json(), { reply: 'trusted:now' });
   assert.deepStrictEqual(s.sent[0], { from: 'api:slack:U1', text: 'now' });
+});
+
+test('CHIP: list personas, switch with a voice, and play a station ID after YES', async () => {
+  const s = setup({ host: { running: true, settings: { preset: '' }, counters: {} } });
+  assert.match(await s.say('host persona'), /Personas: chip\.\nActive: none\./);
+  assert.match(await s.say('host persona chip as Grumble'), /Host persona is now chip \(voice Grumble\), effect hull\./);
+  assert.deepStrictEqual(s.calls.filter((c) => c[0] === 'hostUpdate').pop()[1], { preset: 'chip', voice: 'Grumble' });
+  assert.match(await s.say('id'), /Reply YES/);
+  assert.strictEqual(s.calls.some((c) => c[0] === 'stationId'), false);                            // nothing on air before YES
+  assert.match(await s.say('yes'), /On air: "Way High Radio/);
+  assert.deepStrictEqual(s.calls.find((c) => c[0] === 'stationId').slice(1), [true]);
 });

@@ -69,7 +69,7 @@ Full walkthrough: `docs/DEPLOY-VPS.md` and `chips-voice/README.md` ("Option B").
 ### Chat (WhatsApp/SMS via Twilio, Telegram, or any bot)
 
 Commands (send `help` to see them): `now`, `skip`, `volume 40`, `say [as Rocky] [with underground] [tone dry]: text`, `draft <brief>`, `clips`,
-`play N`, `host on|off|status|<artist - title>`, `schedule 09:00 | in 2h | every 1h: text`, `schedules`, `cancel N`, `fx`, `sfx`.
+`play N`, `host on|off|status`, `host line <artist - title>`, `host persona [name] [as Voice]`, `id`, `schedule 09:00 | in 2h | every 1h: text`, `schedules`, `cancel N`, `fx`, `sfx`.
 Anything that goes on air or schedules asks you to reply `YES` within 2 minutes (`CHAT_CONFIRM=false` disables this; not recommended).
 
 1. `CHAT_ALLOWED=whatsapp:+15551234567,+15551234567,telegram:123456789` (comma list). Strangers get no reply at all. Empty list = nobody allowed.

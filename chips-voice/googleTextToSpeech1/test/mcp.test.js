@@ -36,7 +36,7 @@ function fakeClient(overrides = {}) {
   const calls = [];
   const rec = (name, result = { ok: true }) => async (...args) => { calls.push([name, ...args]); return typeof result === 'function' ? result(...args) : result; };
   const names = ['status', 'nowPlaying', 'voices', 'fxPresets', 'sfx', 'clips', 'schedules', 'host', 'hostSay', 'draft', 'synth', 'applyFx', 'updateClip', 'clipLink', 'shareClip',
-    'hostUpdate', 'speak', 'playClip', 'schedule', 'deleteSchedule', 'skip', 'setVolume', 'setPlaylist'];
+    'hostUpdate', 'personas', 'stationId', 'speak', 'playClip', 'schedule', 'deleteSchedule', 'skip', 'setVolume', 'setPlaylist'];
   const client = {};
   for (const n of names) client[n] = rec(n);
   Object.assign(client, overrides);
@@ -80,12 +80,12 @@ test('tools: the full list is offered, and read-only mode offers only the lookin
   const full = await connect(fakeClient().client);
   const tools = (await full.mcp.listTools()).tools;
   const names = tools.map((x) => x.name);
-  for (const n of ['station_status', 'now_playing', 'say_on_air', 'make_clip', 'play_clip', 'schedule_announcement', 'host_configure', 'draft_announcement', 'apply_effect', 'list_sound_effects', 'skip_track']) {
+  for (const n of ['station_status', 'now_playing', 'say_on_air', 'make_clip', 'play_clip', 'schedule_announcement', 'host_configure', 'draft_announcement', 'apply_effect', 'list_sound_effects', 'skip_track', 'list_personas', 'station_id']) {
     assert.ok(names.includes(n), n);
   }
   assert.ok(tools.every((x) => x.description && x.annotations));
   // anything that reaches the public stream says so, and is not marked read-only
-  for (const n of ['say_on_air', 'play_clip', 'schedule_announcement', 'skip_track', 'host_configure']) {
+  for (const n of ['say_on_air', 'play_clip', 'schedule_announcement', 'skip_track', 'host_configure', 'station_id']) {
     const tool = tools.find((x) => x.name === n);
     assert.match(tool.description, /PUBLIC STREAM/, n);
     assert.strictEqual(tool.annotations.readOnlyHint, false, n);
@@ -95,7 +95,7 @@ test('tools: the full list is offered, and read-only mode offers only the lookin
   const ro = await connect(fakeClient().client, { readOnly: true });
   const roNames = (await ro.mcp.listTools()).tools.map((x) => x.name);
   assert.ok(roNames.includes('now_playing') && roNames.includes('list_clips'));
-  for (const n of ['say_on_air', 'play_clip', 'skip_track', 'make_clip', 'host_configure', 'schedule_announcement', 'draft_announcement']) assert.ok(!roNames.includes(n), `${n} must not be offered read-only`);
+  for (const n of ['say_on_air', 'play_clip', 'skip_track', 'make_clip', 'host_configure', 'schedule_announcement', 'draft_announcement', 'station_id']) assert.ok(!roNames.includes(n), `${n} must not be offered read-only`);
   await ro.close();
 });
 
@@ -111,6 +111,10 @@ test('tools call the station client with the right arguments', async () => {
   await call('set_music_volume', { percent: 35 });
   await call('apply_effect', { id: 'c1', fx: 'robot' });
   await call('host_configure', { enabled: true, every: 3 });
+  await call('host_configure', { preset: 'chip', voice: 'CHIP' });
+  await call('list_personas', {});
+  await call('station_id', { play: true });
+  await call('station_id', {});
   await call('preview_host_line', { artist: 'Band', title: 'Tune' });
   await call('draft_announcement', { prompt: 'banter', format: 'dialogue', speakers: ['Rocky', 'Britta'], sfx: true, model: 'anthropic/claude-3.5-sonnet' });
   await call('schedule_announcement', { text: 'Happy hour', startAt: '2026-10-20T18:30:00-06:00', intervalMinutes: 60, count: 5, preempt: false });
@@ -119,6 +123,8 @@ test('tools call the station client with the right arguments', async () => {
   assert.deepStrictEqual(by('speak')[0], [{ script: 'Rocky: Hi\nBritta: Hello', voices: { Rocky: 'Rocky' }, provider: 'elevenlabs', tone: 'warm', fx: { preset: 'underground' }, preempt: true }]);
   assert.deepStrictEqual(by('synth')[0], [{ text: 'Saved only [sfx:ding]' }]);
   assert.deepStrictEqual([by('playClip')[0], by('setVolume')[0], by('applyFx')[0], by('hostUpdate')[0]], [['c1', undefined], [0.35], ['c1', 'robot'], [{ enabled: true, every: 3 }]]);
+  assert.deepStrictEqual(by('hostUpdate')[1], [{ preset: 'chip', voice: 'CHIP' }]);
+  assert.deepStrictEqual(by('stationId'), [[true], [false]]);
   assert.deepStrictEqual(by('hostSay')[0], [{ artist: 'Band', title: 'Tune', dryRun: true }]);
   assert.deepStrictEqual(by('draft')[0], [{ prompt: 'banter', format: 'dialogue', speakers: ['Rocky', 'Britta'], sfx: true, model: 'anthropic/claude-3.5-sonnet' }]);
   const [text, clipSched] = by('schedule');

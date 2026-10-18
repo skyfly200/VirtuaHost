@@ -63,6 +63,8 @@ function createStationClient({ baseUrl, key, fetchImpl = fetch, timeoutMs = 1200
     host: () => call('GET', '/host'),
     hostUpdate: (patch) => call('PUT', '/host', { body: patch }),
     hostSay: (body) => call('POST', '/host/say', { body }),
+    personas: () => call('GET', '/personas'),
+    stationId: (play) => call('POST', '/host/station-id', { body: { play: play === true } }),
 
     voices: (provider) => call('GET', '/tts/voices', { query: { provider } }),
     fxPresets: () => call('GET', '/fx/presets'),

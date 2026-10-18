@@ -79,6 +79,10 @@ function registerTools(server, client, { readOnly = false } = {}) {
     title: 'Virtual host status', description: 'Whether the virtual host is on, what link it has ready, what it last played, and its settings.', annotations: ro,
   }, safe(() => client.host()));
 
+  server.registerTool('list_personas', {
+    title: 'List host personas', description: 'Ready-made virtual-host personas (for example "chip", the computer DJ of Way High Radio). Apply one with host_configure preset.', annotations: ro,
+  }, safe(() => client.personas()));
+
   server.registerTool('preview_host_line', {
     title: 'Preview a host link', description: 'Write the link the virtual host would say about a track, without voicing or playing it (no cost).',
     inputSchema: { artist: z.string(), title: z.string() }, annotations: ro,
@@ -133,6 +137,8 @@ function registerTools(server, client, { readOnly = false } = {}) {
       lines: z.enum(['template', 'llm']).optional(), voice: z.string().optional(), provider: z.string().optional(),
       fx: z.string().optional().describe('effect preset, empty for none'), minGapSeconds: z.number().min(0).max(3600).optional(),
       preempt: z.boolean().optional().describe('allow it to interrupt a live DJ'),
+      preset: z.string().optional().describe('apply a persona preset such as "chip" (sets its lines, tone and effect; not the voice)'),
+      tone: z.string().optional().describe('delivery direction for models that support it'),
     }, annotations: air,
   }, safe((a) => client.hostUpdate(a)));
 
@@ -179,6 +185,12 @@ function registerTools(server, client, { readOnly = false } = {}) {
     title: 'Switch playlist', description: 'Switch the auto-DJ to a playlist (a folder of the music library); empty string for all music.',
     inputSchema: { name: z.string() }, annotations: air,
   }, safe(({ name }) => client.setPlaylist(name)));
+
+  server.registerTool('station_id', {
+    title: 'Station ID in the persona\'s style',
+    description: 'Make a station ID from the active host persona (apply one first with host_configure preset). Set play true to put it on the PUBLIC STREAM; otherwise it is only saved to the library.',
+    inputSchema: { play: z.boolean().optional() }, annotations: air,
+  }, safe(({ play }) => client.stationId(play === true)));
 
   server.registerTool('host_say', {
     title: 'Voice a host link for a track',
