@@ -73,6 +73,10 @@ test('library: list, edit, play (regenerates when evicted), delete', async () =>
   assert.strictEqual((await t.call('POST', `/clips/${id}/play`, {})).json.played, true);
   assert.strictEqual(t.synthCalls.length, 2);                         // regenerated from saved settings
   assert.strictEqual((await t.call('POST', '/clips/nope/play', {})).status, 404);
+  const audioRes = await fetch(`${t.base}/clips/${id}/audio`);                // the web UI's player: the bytes themselves
+  assert.deepStrictEqual([audioRes.status, audioRes.headers.get('content-type')], [200, 'audio/ogg']);
+  assert.strictEqual((await audioRes.arrayBuffer()).byteLength, 100);
+  assert.strictEqual((await t.call('GET', '/clips/nope/audio')).status, 404);
   assert.strictEqual((await t.call('DELETE', `/clips/${id}`)).status, 200);
   assert.strictEqual((await t.call('DELETE', `/clips/${id}`)).status, 404);
   t.close();
@@ -225,7 +229,9 @@ test('persona API: list, apply a preset, refuse unknown ones, and make a station
   const h = createHost({ store: createStore(null, {}), clips: { getOrCreate: async (s) => ({ clip: { id: 'h1', text: s.text }, reused: false }), get: () => ({ id: 'h1', text: 'x' }) },
     play: async () => ({ played: true }), nowPlaying: async () => ({ artist: '', title: '' }) });
   const t = await boot({ host: h });
-  assert.ok((await t.call('GET', '/personas')).json.personas.some((p) => p.name === 'chip'));
+  const chip = (await t.call('GET', '/personas')).json.personas.find((p) => p.name === 'chip');
+  assert.ok(chip);
+  assert.ok(chip.stationIds.length >= 4 && chip.templates.length >= 10 && chip.tone && chip.fx === 'hull');       // enough for a UI to audition it
   assert.strictEqual((await t.call('POST', '/host/station-id', {})).status, 400);       // nothing applied yet
   assert.strictEqual((await t.call('PUT', '/host', { preset: 'nope' })).status, 400);
   assert.strictEqual((await t.call('PUT', '/host', { preset: 'chip' })).json.settings.fx, 'hull');

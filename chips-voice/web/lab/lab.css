@@ -1,0 +1,8 @@
+.variant audio { width: 100%; margin-top: 8px; }
+.sfx-tray { display: flex; flex-wrap: wrap; gap: 6px; }
+.sfx-tray button { padding: 3px 9px; font-size: 13px; }
+.lines { display: grid; gap: 6px; }
+.line { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.line .text { font-size: 14px; }
+.persona-text { white-space: pre-wrap; font-size: 13px; color: var(--muted); }
+.speakers { display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }

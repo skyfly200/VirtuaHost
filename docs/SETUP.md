@@ -8,6 +8,7 @@ Three ways to use this system. They share one server (`chips-voice/`), so you ca
 | Have an app (VirtuaHost on Netlify, a webhook, another service) generate clips | [B. API](#b-api-virtuahost-and-other-callers) | Server URL, `INGEST_TOKEN` or API key |
 | Run music, the AI host and announcements on the stream server with no desktop | [C. Stream server AutoDJ](#c-stream-server-autodj-icecast--liquidsoap) | VPS with Icecast, Liquidsoap, ffmpeg, Node 22 |
 | Control any of the above from chat or an AI assistant | [D. Chat and MCP](#d-chat-and-mcp) | Use case B or C running |
+| Run several stations (Liquidsoap and/or RadioDJ) from one screen, or tune voices in a browser | [E. Hub and web apps](HUB.md) | The hub, plus an agent per station |
 
 Common to all: Node 22, `cd chips-voice/googleTextToSpeech1 && npm install`, copy `.env.example` to `.env`. ffmpeg is needed for
 effects, sound effects, dialogue joining and MP3 conversion (`FFMPEG_BIN` to override the path). Start with `npm start`

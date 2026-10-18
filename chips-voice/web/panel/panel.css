@@ -1,0 +1,8 @@
+.station { display: grid; gap: 8px; }
+.station.offline { opacity: .7; }
+.station .now { font-weight: 600; min-height: 1.5em; overflow-wrap: anywhere; }
+.station .tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.station input[type="range"] { flex: 1; min-width: 100px; }
+.site { margin: 4px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; }
+.pick { display: flex; align-items: center; gap: 8px; }
+.two { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-items: start; }

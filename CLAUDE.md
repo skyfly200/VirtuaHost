@@ -85,3 +85,5 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   `play`, `preempt` or `handoff: false`.
 - **Sound-effect tags.** `[sfx:name]` in a script is mixed in by the Chips Voice server; `handleGenerate`
   strips them before Gemini speaks (`sfxTagsRemoved`). Setup for script/API/AutoDJ/chat/MCP: `docs/SETUP.md`.
+- **Several stations.** `chips-voice/hub/` (zero-dependency Node) controls stations that speak the agent API (a Chips Voice server, or `chips-voice/agent-radiodj/` for RadioDJ);
+  `chips-voice/web/` holds two static apps (Voice Lab, Control Panel). Tests: `node --test test/*.test.js` inside `hub/` and `agent-radiodj/`. See `docs/HUB.md`.

@@ -39,6 +39,9 @@ const PERSONAS = {
   },
 };
 
-const list = () => Object.entries(PERSONAS).map(([name, p]) => ({ name, label: p.label, description: p.description }));
+// Everything a UI needs to show and audition a persona (the text is not secret; it is in the repository).
+const list = () => Object.entries(PERSONAS).map(([name, p]) => ({
+  name, label: p.label, description: p.description, tone: p.tone, fx: p.fx, persona: p.persona, templates: p.templates, timeLines: p.timeLines, stationIds: p.stationIds,
+}));
 
 module.exports = { PERSONAS, list };
