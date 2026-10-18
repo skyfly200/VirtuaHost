@@ -13,7 +13,7 @@ Menu names below are as Netlify usually labels them; if a screen differs, the se
 ## Before you start
 
 - **Both servers must be on HTTPS.** Sites on Netlify are HTTPS, and browsers refuse to let them call `http://` addresses. Put the Chips Voice server and the hub behind Caddy or nginx with a certificate (`chips-voice/docs/DEPLOY-VPS.md`). The same applies to `STATION_URL` for site A.
-- **Site A has no login.** `/api/generate` and `/api/clips` are open to anyone who finds the URL, and each request spends your Gemini quota. Before sharing the address: keep it unpublished, add Netlify's site password protection if your plan includes it, or add auth to the functions first. The web apps (site B) are safe to publish: they hold no secrets and ask for a key on first use.
+- **Site A is protected by one shared key.** `/api/generate` and `/api/clips` refuse requests without the `ACCESS_KEY` (401), and answer 503 if it is not set, so the site is never open by accident. Each unauthorised request is rejected before Gemini is called, so it costs no quota. The key is one shared secret: anyone who has it can generate clips, so share it only with people you trust and rotate it (change the variable, redeploy) if it leaks. There is no rate limiting. The page itself and the web apps (site B) are public but hold no secrets.
 - **Function time limits.** Gemini speech can take several seconds. Check your Netlify plan's current function time limit, and test a long `mode: "ai"` request after deploying.
 
 ## Site A: VirtuaHost
@@ -23,6 +23,7 @@ Menu names below are as Netlify usually labels them; if a screen differs, the se
 
 | Variable | Value | Needed |
 |----------|-------|--------|
+| `ACCESS_KEY` | a long random secret: run `openssl rand -hex 24` and paste the result (16+ characters) | **yes** |
 | `GEMINI_API_KEY` | from Google AI Studio | yes |
 | `STATION_NAME` | e.g. `Way High Radio` (used in the DJ prompt) | no |
 | `GEMINI_TTS_VOICE` | a Gemini voice name (default `Kore`) | no |
@@ -32,8 +33,8 @@ Menu names below are as Netlify usually labels them; if a screen differs, the se
 | `STATION_PREEMPT` | `true` lets it cut in over a live DJ | no |
 | `STATION_FX` | e.g. `underground` or `hull` (applied by the station) | no |
 
-   Netlify Blobs needs no setting: it is provided by the Netlify runtime.
-3. Deploy. Check: open the site, use the test console to make a clip, then `curl -X POST https://<site>/api/generate -H 'content-type: application/json' -d '{"mode":"say","text":"Hello"}'`.
+   Mark `ACCESS_KEY`, `GEMINI_API_KEY` and `STATION_INGEST_TOKEN` as secret values if Netlify offers that option. Netlify Blobs needs no setting: it is provided by the Netlify runtime.
+3. Deploy. Check: open the site, paste the access key into the box at the top of the test console, make a clip, and play it. From a terminal: `curl -X POST https://<site>/api/generate -H "x-api-key: $ACCESS_KEY" -H 'content-type: application/json' -d '{"mode":"say","text":"Hello"}'`. The same call without the header should return 401.
 4. Hand-off check: with `STATION_URL` set, the response includes a `handoff` field. A station error is reported there but the request still succeeds (the clip is stored).
 5. Scripts sent to this site may contain `[sfx:name]` tags; it strips them (Gemini voices do not mix effects). To get sound effects mixed in, speak through the Chips Voice server.
 
@@ -63,6 +64,10 @@ Set up the Chips Voice server per `docs/SETUP.md` (use case C), then the hub and
 ## Vercel instead?
 
 The static web apps (site B) work the same on Vercel: Root Directory `chips-voice/web`, Framework "Other", no build command. VirtuaHost itself (site A) is written for Netlify Functions and Blobs, so it stays on Netlify.
+
+## If you cannot connect the GitHub repository
+
+Netlify needs admin rights on a repository (or an owner's approval of its GitHub app) to link it. If you are only a collaborator: fork the repository to your own account and connect the fork (pull updates with GitHub's Sync fork), or deploy from your computer with the Netlify CLI (`netlify link`, then `netlify deploy --build --prod` for site A; `netlify deploy --dir chips-voice/web --prod` for site B). CLI deploys are manual.
 
 ## Updating
 
