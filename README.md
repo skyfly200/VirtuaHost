@@ -17,6 +17,7 @@ generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTE
 | [docs/SETUP.md](docs/SETUP.md) | Setup paths: scripts, API, stream-server AutoDJ, chat and MCP, several stations |
 | [docs/FOR-SYLVIA.md](docs/FOR-SYLVIA.md) | Start here for the KRAP side: what replaces each script, what is verified |
 | [docs/INTEGRATION.md](docs/INTEGRATION.md) | Netlify to the station hand-off, voices, effects, dialogue, the virtual host |
+| [docs/NETLIFY.md](docs/NETLIFY.md) | Deploying on Netlify: the generator site and the web-apps site, every environment variable |
 | [docs/HUB.md](docs/HUB.md) | The hub, the RadioDJ agent, and the Voice Lab and Control Panel web apps |
 | [docs/PERSONA-CHIP.md](docs/PERSONA-CHIP.md) | CHIP, the computer DJ persona of Way High Radio |
 | [chips-voice/README.md](chips-voice/README.md) | The Chips Voice server: API, playback backends, Icecast and Liquidsoap |
