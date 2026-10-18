@@ -16,6 +16,7 @@
 //   - Never talks over a spot: nothing is played over a track whose artist is in the skip list, and nothing is
 //     generated or played while a live DJ is on air.
 //   - "Smarter lines": lines can be written by the configured language model, falling back to the templates.
+const { PERSONAS } = require('./personas');
 const TEMPLATES = [
   "That was {artist} with {title}. You're listening to K.R.A.P., ninety-seven point seven.",
   '{artist}, {title}. Mm. Stay right here on K.R.A.P.',
@@ -72,7 +73,7 @@ function createHost({ store, clips, llm, play, nowPlaying, isLive = async () => 
   function composeTemplate(artist, title, cfg) {
     const pool = cfg.templates && cfg.templates.length ? cfg.templates : TEMPLATES;
     let line = pool[Math.floor(rng() * pool.length)].replace(/\{artist\}/g, artist).replace(/\{title\}/g, title);
-    if (rng() < 0.3) line += TIME_LINES[daypart(new Date(now()).getHours())];
+    if (rng() < 0.3) line += (cfg.timeLines || TIME_LINES)[daypart(new Date(now()).getHours())] || '';
     return line;
   }
 
@@ -98,6 +99,7 @@ function createHost({ store, clips, llm, play, nowPlaying, isLive = async () => 
 
   function specFor(text, cfg) {
     const spec = { text, voice: cfg.voice || undefined, provider: cfg.provider || undefined, fx: cfg.fx || undefined, format: 'MP3' };
+    if (cfg.tone) spec.tone = cfg.tone;
     return spec;
   }
 
@@ -181,13 +183,20 @@ function createHost({ store, clips, llm, play, nowPlaying, isLive = async () => 
 
     update(patch = {}) {
       const next = { ...store.data.host };
+      // A preset goes first so settings sent alongside it still win.
+      if (patch.preset !== undefined && patch.preset !== '') {
+        const p = PERSONAS[patch.preset];
+        if (!p) throw new Error(`unknown persona "${String(patch.preset).slice(0, 40)}" (known: ${Object.keys(PERSONAS).join(', ')})`);
+        Object.assign(next, { preset: patch.preset, persona: p.persona, tone: p.tone, fx: p.fx, templates: p.templates, timeLines: p.timeLines });
+      }
       if (typeof patch.enabled === 'boolean') next.enabled = patch.enabled;
       if (patch.every !== undefined) next.every = Math.min(50, Math.max(1, Math.floor(Number(patch.every)) || 1));
       if (patch.minGapSeconds !== undefined) next.minGapSeconds = Math.min(3600, Math.max(0, Number(patch.minGapSeconds) || 0));
       if (['template', 'llm'].includes(patch.lines)) next.lines = patch.lines;
       for (const key of ['voice', 'provider', 'fx']) if (typeof patch[key] === 'string') next[key] = patch[key].trim().slice(0, 200);
       if (typeof patch.preempt === 'boolean') next.preempt = patch.preempt;
-      if (typeof patch.persona === 'string') next.persona = patch.persona.slice(0, 500);
+      if (typeof patch.persona === 'string') next.persona = patch.persona.slice(0, 1000);
+      if (typeof patch.tone === 'string') next.tone = patch.tone.trim().slice(0, 300);
       if (Array.isArray(patch.skipArtists)) next.skipArtists = patch.skipArtists.map((a) => String(a).trim().slice(0, 100)).slice(0, 100);
       if (Array.isArray(patch.templates)) {
         const t = patch.templates.map((x) => String(x).trim().slice(0, 300)).filter(Boolean).slice(0, 50);
@@ -206,6 +215,18 @@ function createHost({ store, clips, llm, play, nowPlaying, isLive = async () => 
       if (dryRun) return { ...(await compose(String(artist || ''), String(title), cfg)), dryRun: true };
       const made = await prepare(String(artist || ''), String(title), cfg);
       if (playIt) await playReady(made, cfg);
+      return { ...made, played: playIt && state.last ? state.last.played : false };
+    },
+
+    // A station ID in the active persona's style (random pick). Only played if asked to.
+    async stationId({ play: playIt = false } = {}) {
+      const cfg = settings();
+      const p = PERSONAS[cfg.preset];
+      if (!p || !p.stationIds.length) throw new Error('the active persona has no station IDs (apply one with PUT /host {"preset":"chip"})');
+      const text = p.stationIds[Math.floor(rng() * p.stationIds.length)];
+      const { clip, reused } = await clips.getOrCreate(specFor(text, cfg), limits);
+      const made = { text, clipId: clip.id, reused, at: now() };
+      if (playIt) await playReady({ ...made, artist: '', title: 'station id' }, cfg);
       return { ...made, played: playIt && state.last ? state.last.played : false };
     },
 

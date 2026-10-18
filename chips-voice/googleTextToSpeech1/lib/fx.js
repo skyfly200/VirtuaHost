@@ -25,6 +25,11 @@ const PRESETS = {
     label: 'Underground (KRAP)', description: 'The KRAP station sound: noise-reduced, band-limited, warm, compressed, light echo and pink-noise bed.',
     chain: TEXTURE, noise: { color: 'pink', amp: 0.0045, lowpass: 6000 },
   },
+  hull: {
+    label: 'Ship hull', description: 'Warm tape-and-radio tone, a faint hull echo and a barely-there flutter. Subtle: the voice stays natural.',
+    chain: 'highpass=f=90,lowpass=f=7500,equalizer=f=220:t=q:w=1:g=2,vibrato=f=4:d=0.03,acompressor=threshold=-18dB:ratio=3:attack=8:release=120:makeup=3,aecho=0.8:0.6:45|90:0.14|0.08',
+    noise: { color: 'pink', amp: 0.002, lowpass: 5000 },
+  },
   telephone: { label: 'Telephone', description: 'Narrow phone-line band.', chain: 'highpass=f=300,lowpass=f=3400,acompressor=threshold=-18dB:ratio=4:attack=5:release=60:makeup=4' },
   radio: {
     label: 'AM radio', description: 'Mid-heavy, squeezed, a little hiss.',

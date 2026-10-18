@@ -219,3 +219,18 @@ test('drafting: a conversation script with delivery directions and the available
   assert.doesNotMatch(sent.system, /\[sfx:name\]/);                                            // effects are only offered when asked for
   t.close();
 });
+
+test('persona API: list, apply a preset, refuse unknown ones, and make a station ID', async () => {
+  const { createHost } = require('../lib/host');
+  const h = createHost({ store: createStore(null, {}), clips: { getOrCreate: async (s) => ({ clip: { id: 'h1', text: s.text }, reused: false }), get: () => ({ id: 'h1', text: 'x' }) },
+    play: async () => ({ played: true }), nowPlaying: async () => ({ artist: '', title: '' }) });
+  const t = await boot({ host: h });
+  assert.ok((await t.call('GET', '/personas')).json.personas.some((p) => p.name === 'chip'));
+  assert.strictEqual((await t.call('POST', '/host/station-id', {})).status, 400);       // nothing applied yet
+  assert.strictEqual((await t.call('PUT', '/host', { preset: 'nope' })).status, 400);
+  assert.strictEqual((await t.call('PUT', '/host', { preset: 'chip' })).json.settings.fx, 'hull');
+  const id = await t.call('POST', '/host/station-id', {});
+  assert.strictEqual(id.status, 200);
+  assert.ok(require("../lib/personas").PERSONAS.chip.stationIds.includes(id.json.text));
+  t.close();
+});

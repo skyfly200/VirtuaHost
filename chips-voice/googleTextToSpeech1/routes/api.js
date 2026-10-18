@@ -14,6 +14,8 @@ const crypto = require('crypto');
 
 const MIME = { ogg: 'audio/ogg', mp3: 'audio/mpeg', wav: 'audio/wav' };
 
+const { PERSONAS, list: listPersonas } = require('../lib/personas');
+
 function createApi({ host, sfx, clips, tts, llm, storage, scheduler, play, streamSecret, publicUrl, limits = {}, rateLimit = {}, ingest, ingestToken = '', authenticate = (req, res, next) => next(), ingestMaxBytes = 25e6 }) {
   const maxText = limits.maxText || 500;
   const maxPrompt = limits.maxPrompt || 1000;
@@ -221,7 +223,21 @@ function createApi({ host, sfx, clips, tts, llm, storage, scheduler, play, strea
   // ---- virtual host: links between songs (a server-side replication of the KRAP virtual_host.py) ----
   if (host) {
     router.get('/host', (req, res) => res.json(host.status()));
-    router.put('/host', wrap(async (req, res) => res.json(host.update(req.body || {}))));
+    router.put('/host', wrap(async (req, res) => {
+      const b = req.body || {};
+      if (b.preset && !PERSONAS[b.preset]) return res.status(400).json({ error: `unknown persona "${String(b.preset).slice(0, 40)}" (known: ${Object.keys(PERSONAS).join(', ')})` });
+      res.json(host.update(b));
+    }));
+    router.get('/personas', (req, res) => res.json({ personas: listPersonas() }));
+    // A station ID in the active persona's style: POST /host/station-id {"play": true}.
+    router.post('/host/station-id', costly, wrap(async (req, res) => {
+      try {
+        res.json(await host.stationId({ play: (req.body || {}).play === true }));
+      } catch (err) {
+        if (/no station IDs/.test(err.message)) return res.status(400).json({ error: err.message });
+        throw err;
+      }
+    }));
     // Like `virtual_host.py --say ARTIST TITLE [--dry-run]`.
     router.post('/host/say', costly, wrap(async (req, res) => {
       const b = req.body || {};
