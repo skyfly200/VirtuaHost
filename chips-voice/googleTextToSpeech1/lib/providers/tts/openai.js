@@ -9,7 +9,7 @@ function create(env) {
   const base = (env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
   return {
     name: 'openai',
-    capabilities: { ssml: false, pitch: false, rate: true, gain: false },
+    capabilities: { ssml: false, pitch: false, rate: true, gain: false, tone: /gpt-4o-mini-tts/.test(env.OPENAI_TTS_MODEL || '') },
     defaultVoice: env.OPENAI_TTS_VOICE || 'alloy',
 
     async listVoices() {
@@ -20,11 +20,14 @@ function create(env) {
       if (!env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not set');
       if (req.ssmlMode) throw new Error('openai TTS does not support SSML');
       const [responseFormat, ext] = FORMATS[req.format] || FORMATS.MP3;
+      const model = env.OPENAI_TTS_MODEL || 'tts-1';
       const audio = await request(`${base}/audio/speech`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
         body: {
-          model: env.OPENAI_TTS_MODEL || 'tts-1',
+          // Delivery direction ("warm, slow, a little tired") is only understood by gpt-4o-mini-tts.
+          ...(req.tone && /gpt-4o-mini-tts/.test(model) ? { instructions: req.tone } : {}),
+          model,
           voice: req.voice || this.defaultVoice,
           input: req.text,
           response_format: responseFormat,

@@ -151,3 +151,7 @@ Run here, against local stand-ins for the outside services:
 - The KRAP import against a mock ElevenLabs: 10 spots plus the 59-line talk (split into 4 requests and joined).
 
 Not run: real ElevenLabs, OpenRouter, Gemini, Liquidsoap, Icecast, or a Netlify deploy. Try each once with real credentials.
+
+## 7. Sound effects, chat and MCP
+
+See [SETUP.md](SETUP.md) for the three setup paths (script, API, stream server AutoDJ) and the chat/MCP integrations.

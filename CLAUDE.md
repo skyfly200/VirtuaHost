@@ -83,3 +83,5 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   `saveClip`. A station error is reported in the response's `handoff` field but the request
   still returns `201`, because the clip is already generated and stored. Requests can set
   `play`, `preempt` or `handoff: false`.
+- **Sound-effect tags.** `[sfx:name]` in a script is mixed in by the Chips Voice server; `handleGenerate`
+  strips them before Gemini speaks (`sfxTagsRemoved`). Setup for script/API/AutoDJ/chat/MCP: `docs/SETUP.md`.

@@ -78,7 +78,7 @@ test('openrouter speech: model and voice are sent, models are listed, setup erro
   const env = { TTS_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'k', OPENROUTER_BASE_URL: api.url, OPENROUTER_TTS_MODEL: 'vendor/tts-mini', OPENROUTER_TTS_VOICES: 'alloy, nova', OPENROUTER_REFERER: 'https://radio.example' };
   const tts = createTts(env);
   assert.deepStrictEqual((await tts.listVoices()).map((v) => v.id), ['alloy', 'nova']);
-  assert.deepStrictEqual(await tts.listModels(), [{ id: 'vendor/tts-mini', name: 'TTS Mini' }]);
+  assert.deepStrictEqual(await tts.listModels(), [{ id: 'vendor/tts-mini', name: 'TTS Mini', enabled: true }]);
   assert.strictEqual(api.seen[0].url, '/models?output_modalities=speech');
   const out = await tts.synthesize({ text: 'Hi there', rate: 1.25 });
   assert.deepStrictEqual([out.audio.toString(), out.ext, out.provider], ['MP3', 'mp3', 'openrouter']);
@@ -184,4 +184,75 @@ test('effects are part of the clip: validated, hashed, applied after speech, and
   assert.ok(clips.get(plain.clip.id) && clips.exists(plain.clip));                         // original kept
   await assert.rejects(clips.applyFx(plain.clip.id, {}), /choose an effect/);
   assert.strictEqual(await clips.applyFx('nope', 'robot'), null);
+});
+
+test('openrouter tone: sent as instructions; models are chosen per request from an allowed list', async (t) => {
+  const api = await mock(() => ({ raw: 'MP3' })); t.after(() => api.close());
+  const env = { TTS_PROVIDER: 'openrouter', OPENROUTER_API_KEY: 'k', OPENROUTER_BASE_URL: api.url, OPENROUTER_TTS_MODEL: 'openai/gpt-4o-mini-tts', OPENROUTER_TTS_MODELS: 'openai/gpt-4o-mini-tts, vendor/other-tts', OPENROUTER_TTS_VOICES: 'alloy' };
+  const tts = createTts(env);
+  assert.deepStrictEqual(tts.providers[0].models, ['openai/gpt-4o-mini-tts', 'vendor/other-tts']);
+  assert.strictEqual(tts.providers[0].capabilities.tone, true);
+  await tts.synthesize({ text: 'Good evening', tone: 'warm, slow, a little tired' });
+  assert.strictEqual(JSON.parse(api.seen[0].body).instructions, 'warm, slow, a little tired');
+  await tts.synthesize({ text: 'Plain' });
+  assert.strictEqual(JSON.parse(api.seen[1].body).instructions, undefined);
+  await tts.synthesize({ text: 'Other', model: 'vendor/other-tts' });
+  assert.strictEqual(JSON.parse(api.seen[2].body).model, 'vendor/other-tts');
+  await assert.rejects(tts.synthesize({ text: 'x', model: 'evil/model' }), /not enabled/);          // the key cannot be pointed at any model
+  assert.strictEqual(api.seen.length, 3);
+});
+
+test('openrouter Gemini models return PCM: asked for pcm and converted to MP3', async (t) => {
+  const api = await mock(() => ({ raw: 'RAWPCM' })); t.after(() => api.close());
+  const converted = [];
+  const { create } = require('../lib/providers/tts/openrouter');
+  const p = create({ OPENROUTER_API_KEY: 'k', OPENROUTER_BASE_URL: api.url, OPENROUTER_TTS_MODEL: 'google/gemini-3.8-flash-tts', OPENROUTER_TTS_VOICES: 'Kore' },
+    { pcmToMp3: async (buf, o) => { converted.push([buf.toString(), o.rate]); return Buffer.from('MP3FROMPCM'); } });
+  const out = await p.synthesize({ text: 'Hello' });
+  assert.strictEqual(JSON.parse(api.seen[0].body).response_format, 'pcm');
+  assert.deepStrictEqual([out.audio.toString(), out.ext, converted], ['MP3FROMPCM', 'mp3', [['RAWPCM', 24000]]]);
+});
+
+test('openrouter conversation: emulated by default (per-line calls), native only when switched on', async (t) => {
+  const api = await mock(() => ({ raw: 'MP3' })); t.after(() => api.close());
+  const { create } = require('../lib/providers/tts/openrouter');
+  const base = { OPENROUTER_API_KEY: 'k', OPENROUTER_BASE_URL: api.url, OPENROUTER_TTS_MODEL: 'openai/gpt-4o-mini-tts', OPENROUTER_TTS_VOICES: 'alloy,nova' };
+  assert.strictEqual(create(base).synthesizeDialogue, undefined);                       // so the generic ffmpeg-joined path is used
+  const deps = { ffmpegAvailable: () => true, concatMp3: async (parts) => Buffer.from(`joined:${parts.length}`), toMp3: async (b) => b };
+  const tts = createTts({ ...base, TTS_PROVIDER: 'openrouter' }, {}, deps);
+  const out = await tts.synthesize({ turns: [{ voice: 'alloy', text: 'Hi', tone: 'whispering' }, { voice: 'nova', text: 'Yo' }], tone: 'friendly' });
+  assert.strictEqual(out.audio.toString(), 'joined:2');
+  assert.deepStrictEqual(api.seen.map((s) => JSON.parse(s.body).instructions), ['whispering', 'friendly']);   // line tone beats the overall tone
+  assert.deepStrictEqual(api.seen.map((s) => JSON.parse(s.body).voice), ['alloy', 'nova']);
+
+  const nativeApi = await mock(() => ({ raw: 'ONE' })); t.after(() => nativeApi.close());
+  const nat = create({ ...base, OPENROUTER_BASE_URL: nativeApi.url, OPENROUTER_TTS_DIALOGUE: 'native', OPENROUTER_TTS_MODEL: 'vendor/multi-tts' });
+  const res = await nat.synthesizeDialogue({ turns: [{ voice: 'a', text: 'One', tone: 'dry' }, { voice: 'b', text: 'Two' }, { voice: 'a', text: 'Three' }], tone: 'calm' });
+  assert.strictEqual(res.audio.toString(), 'ONE');
+  const sent = JSON.parse(nativeApi.seen[0].body);
+  assert.deepStrictEqual(sent.input, [{ text: 'One', voice: 'a', instructions: 'dry' }, { text: 'Two', voice: 'b', instructions: 'calm' }, { text: 'Three', voice: 'a', instructions: 'calm' }]);
+  await assert.rejects(nat.synthesizeDialogue({ turns: [{ voice: 'a', text: '1' }, { voice: 'b', text: '2' }, { voice: 'c', text: '3' }] }), /at most two voices/);
+});
+
+test('openai: instructions only go to gpt-4o-mini-tts', async (t) => {
+  const api = await mock(() => ({ raw: 'MP3' })); t.after(() => api.close());
+  const mini = createTts({ TTS_PROVIDER: 'openai', OPENAI_API_KEY: 'k', OPENAI_BASE_URL: api.url, OPENAI_TTS_MODEL: 'gpt-4o-mini-tts' });
+  const old = createTts({ TTS_PROVIDER: 'openai', OPENAI_API_KEY: 'k', OPENAI_BASE_URL: api.url, OPENAI_TTS_MODEL: 'tts-1' });
+  assert.deepStrictEqual([mini.capabilities.tone, old.capabilities.tone], [true, false]);
+  await mini.synthesize({ text: 'a', tone: 'excited' }); await old.synthesize({ text: 'b', tone: 'excited' });
+  assert.deepStrictEqual(api.seen.map((s) => JSON.parse(s.body).instructions), ['excited', undefined]);
+});
+
+test('tone and model are part of the clip; scripts can carry a delivery direction per line', () => {
+  const spec = normalizeSpec({ script: 'Rocky (dry, sleepy): Britta, what are we listening to?\nBritta: No idea.', voices: { Rocky: 'R1' }, tone: ' upbeat ', model: 'google/gemini-3.8-flash-tts' });
+  assert.deepStrictEqual(spec.turns, [{ voice: 'R1', text: 'Britta, what are we listening to?', tone: 'dry, sleepy' }, { voice: 'Britta', text: 'No idea.' }]);
+  assert.deepStrictEqual([spec.tone, spec.model], ['upbeat', 'google/gemini-3.8-flash-tts']);
+  assert.throws(() => normalizeSpec({ text: 'x', model: 'bad model; rm' }), /invalid model/);
+  assert.deepStrictEqual(normalizeSpec({ turns: [{ voice: 'a', text: 'b', tone: ' soft ' }] }).turns, [{ voice: 'a', text: 'b', tone: 'soft' }]);
+});
+
+test('pcm is converted with real ffmpeg', { skip: !require('../lib/audio').ffmpegAvailable() && 'ffmpeg not installed' }, async () => {
+  const pcm = Buffer.alloc(24000 * 2, 3);                                                // one second of 24 kHz 16-bit mono
+  const mp3 = await require('../lib/audio').pcmToMp3(pcm);
+  assert.strictEqual(require('../lib/ingest').sniff(mp3), 'mp3');
 });

@@ -17,19 +17,19 @@ async function boot(extra = {}) {
   const tts = {
     names: ['fake'], capabilities: { ssml: false },
     listVoices: async () => [{ id: 'v1' }],
-    synthesize: async (spec) => { if (state.fail) throw new Error('speech synthesis failed (google: quota)'); synthCalls.push(spec); return { audio: Buffer.from('0123456789'.repeat(10)), ext: 'ogg', provider: 'fake' }; },
+    synthesize: async (spec) => { if (state.fail) throw new Error('speech synthesis failed (google: quota)'); synthCalls.push(spec); return { audio: extra.ttsAudio || Buffer.from('0123456789'.repeat(10)), ext: extra.ttsExt || 'ogg', provider: 'fake' }; },
   };
   const plays = [];
   const playResult = { value: { played: true } };
   const play = async (clip, o) => { plays.push([clip.id, o.preempt]); return playResult.value; };
   const store = createStore(path.join(dir, 'db.json'), { clips: {}, schedules: {} });
-  const clips = createClips({ store, tts, dir: path.join(dir, 'audio') });
+  const clips = createClips({ store, tts, dir: path.join(dir, 'audio'), sfx: extra.sfx });
   const scheduler = createScheduler({ store, clips, play });
   const llmCalls = [];
   const llm = { enabled: true, names: ['openrouter'], listModels: async () => [{ id: 'm' }],
     generate: async (r) => { llmCalls.push(r); return { text: 'Draft text. '.repeat(100), provider: 'openrouter', model: 'm' }; } };
   const storage = { enabled: true, targets: [{ name: 'owncloud', label: 'ownCloud' }], share: async (clip, file, target) => ({ target: target || 'owncloud', url: 'https://c/s/T', directUrl: 'https://c/s/T/download', file }) };
-  const { router, publicRouter } = createApi({ host: extra.host, clips, tts, llm, storage, scheduler, play, streamSecret: 'sec', publicUrl: 'https://radio.test', ...extra });
+  const { router, publicRouter } = createApi({ host: extra.host, sfx: extra.sfx, clips, tts, llm, storage, scheduler, play, streamSecret: 'sec', publicUrl: 'https://radio.test', ...extra });
   const app = express();
   app.set('trust proxy', true);
   app.use(express.json());
@@ -170,5 +170,52 @@ test('host API: status, settings, and a dry-run say', async () => {
   assert.strictEqual((await t.call('POST', '/host/say', { artist: 'Band' })).status, 400);
   await t.call('PUT', '/host', { enabled: false });
   h.stop();
+  t.close();
+});
+
+test('sound effects API: list, upload, preview, delete, and tagged speech through /synth (real ffmpeg)', { skip: !audio.ffmpegAvailable() && 'ffmpeg not installed' }, async (t) => {
+  const { createSfx } = require('../lib/sfx');
+  const sfx = createSfx({ dir: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sfxapi-')), 'lib'), builtinDir: fs.mkdtempSync(path.join(os.tmpdir(), 'sfxb-')) });
+  const sine = require('child_process').spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=300:duration=1', '-f', 'mp3', '-']).stdout;
+  const s = await boot({ sfx, ttsAudio: sine, ttsExt: 'mp3' }); t.after(() => s.close());
+  const listed = (await s.call('GET', '/sfx')).json;
+  assert.ok(listed.available && listed.effects.some((e) => e.name === 'ding' && e.source === 'built-in') && /\[sfx:name\]/.test(listed.syntax));
+  assert.deepStrictEqual((await s.call('GET', '/providers')).json.sfx.available, true);
+
+  const wav = require('child_process').spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=500:duration=0.5', '-ar', '24000', '-ac', '1', '-f', 'wav', '-']).stdout;
+  const up = await fetch(`${s.base}/sfx?name=Our-Jingle`, { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: wav });
+  assert.deepStrictEqual([up.status, (await up.json()).name], [201, 'our-jingle']);
+  const bad = await fetch(`${s.base}/sfx?name=x`, { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: Buffer.from('this is just text, not audio at all') });
+  assert.deepStrictEqual([bad.status, /unsupported audio/.test((await bad.json()).error)], [400, true]);
+  const big = await fetch(`${s.base}/sfx?name=big`, { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: Buffer.alloc(6e6, 1) });
+  assert.deepStrictEqual([big.status, (await big.json()).error], [413, 'file is too large']);
+  const preview = await fetch(`${s.base}/sfx/our-jingle/audio`);
+  assert.deepStrictEqual([preview.status, preview.headers.get('content-type')], [200, 'audio/mpeg']);
+  assert.strictEqual((await s.call('GET', '/sfx/nope/audio')).status, 404);
+
+  // tagged text through the speech API: the tag is not spoken, the unknown name is refused
+  const made = await s.call('POST', '/synth', { text: 'Welcome [sfx:our-jingle] everybody.' });
+  assert.strictEqual(made.status, 200);
+  assert.strictEqual(made.json.clip.text, 'Welcome everybody.');
+  assert.ok(s.synthCalls.every((c) => !/sfx/.test(c.text)));
+  const unknown = await s.call('POST', '/synth', { text: 'Hi [sfx:nope] there' });
+  assert.deepStrictEqual([unknown.status, /unknown sound effect/.test(unknown.json.error)], [400, true]);
+
+  assert.strictEqual((await s.call('DELETE', '/sfx/our-jingle')).status, 200);
+  assert.strictEqual((await s.call('DELETE', '/sfx/ding')).status, 404);                       // built-ins cannot be deleted
+});
+
+test('drafting: a conversation script with delivery directions and the available effects, on a chosen model', async () => {
+  const t = await boot();
+  const plain = await t.call('POST', '/announcements/draft', { prompt: 'Doors at six' });
+  assert.deepStrictEqual([plain.status, plain.json.format], [200, 'text']);
+  const convo = await t.call('POST', '/announcements/draft', { prompt: 'Banter about the weather', format: 'dialogue', speakers: ['Rocky', 'Britta', 'Bad<>Name'], tone: 'sleepy', model: 'anthropic/claude-3.5-sonnet' });
+  assert.deepStrictEqual([convo.status, convo.json.format], [200, 'dialogue']);
+  const sent = t.llmCalls[t.llmCalls.length - 1];
+  assert.strictEqual(sent.model, 'anthropic/claude-3.5-sonnet');
+  assert.match(sent.system, /speakers are: Rocky, Britta, BadName/);                           // names are cleaned before they reach the prompt
+  assert.match(sent.system, /"Name \(delivery direction\): what they say"/);
+  assert.match(sent.system, /Overall tone: sleepy/);
+  assert.doesNotMatch(sent.system, /\[sfx:name\]/);                                            // effects are only offered when asked for
   t.close();
 });

@@ -7,13 +7,14 @@ const { ScheduleError } = require('../lib/scheduler');
 const { verify, signedUrl } = require('../lib/signing');
 const { createLimiter } = require('../lib/ratelimit');
 const { IngestError } = require('../lib/ingest');
+const { SfxError } = require('../lib/sfx');
 const fxLib = require('../lib/fx');
 const audio = require('../lib/audio');
 const crypto = require('crypto');
 
 const MIME = { ogg: 'audio/ogg', mp3: 'audio/mpeg', wav: 'audio/wav' };
 
-function createApi({ host, clips, tts, llm, storage, scheduler, play, streamSecret, publicUrl, limits = {}, rateLimit = {}, ingest, ingestToken = '', authenticate = (req, res, next) => next(), ingestMaxBytes = 25e6 }) {
+function createApi({ host, sfx, clips, tts, llm, storage, scheduler, play, streamSecret, publicUrl, limits = {}, rateLimit = {}, ingest, ingestToken = '', authenticate = (req, res, next) => next(), ingestMaxBytes = 25e6 }) {
   const maxText = limits.maxText || 500;
   const maxPrompt = limits.maxPrompt || 1000;
   const costly = createLimiter({ windowMs: rateLimit.windowMs || 60000, max: rateLimit.max || 30 });
@@ -24,6 +25,7 @@ function createApi({ host, clips, tts, llm, storage, scheduler, play, streamSecr
     } catch (err) {
       if (err instanceof SpecError || err instanceof ScheduleError) return res.status(400).json({ error: err.message });
       if (err instanceof IngestError) return res.status(err.status).json({ error: err.message });
+      if (err instanceof SfxError) return res.status(400).json({ error: err.message });
       if (err instanceof fxLib.FxError) return res.status(400).json({ error: err.message });
       if (tts.ProviderError && err instanceof tts.ProviderError) return res.status(400).json({ error: err.message });
       console.error(`${req.method} ${req.path}:`, err.message);
@@ -69,10 +71,11 @@ function createApi({ host, clips, tts, llm, storage, scheduler, play, streamSecr
 
   router.get('/providers', (req, res) => res.json({
     tts: { names: tts.names, capabilities: tts.capabilities, providers: tts.providers },
-    llm: { enabled: llm.enabled, names: llm.names },
+    llm: { enabled: llm.enabled, names: llm.names, models: llm.models || [] },
     storage: { enabled: storage.enabled, targets: storage.targets },
     links: { enabled: !!streamSecret },
     fx: { available: fxAvailable },
+    sfx: { available: fxAvailable && !!sfx, count: sfx ? sfx.names().length : 0 },
     limits: { maxText, maxSsml: limits.maxSsml || 2000, maxPrompt },
   }));
 
@@ -89,6 +92,27 @@ function createApi({ host, clips, tts, llm, storage, scheduler, play, streamSecr
 
   router.get('/llm/models', wrap(async (req, res) => res.json(await llm.listModels())));
 
+  // Sound effects scripts can tag as [sfx:name] (needs ffmpeg on the server).
+  if (sfx) {
+    router.get('/sfx', (req, res) => res.json({
+      available: fxAvailable,
+      effects: sfx.list(),
+      syntax: '[sfx:name] in the text; options: over (mix over the next speech), vol=0-2, wait=0-5 (seconds of silence after)',
+    }));
+    // Upload: send the audio as the request body, name in ?name=. WAV, MP3 or Ogg; kept as a short mono MP3.
+    router.post('/sfx', costly, bodyParser.raw({ type: ['audio/*', 'application/octet-stream'], limit: 5e6 }), wrap(async (req, res) => {
+      if (!fxAvailable) return res.status(503).json({ error: 'sound effects need ffmpeg installed on the server' });
+      res.status(201).json(await sfx.put(req.query.name, Buffer.isBuffer(req.body) ? req.body : null));
+    }));
+    router.delete('/sfx/:name', (req, res) => (sfx.remove(req.params.name)
+      ? res.json({ ok: true }) : res.status(404).json({ error: 'only uploaded effects can be removed' })));
+    router.get('/sfx/:name/audio', wrap(async (req, res) => {
+      if (!sfx.has(req.params.name)) return res.status(404).json({ error: 'sound effect not found' });
+      res.set('Content-Type', 'audio/mpeg');
+      res.sendFile(await sfx.file(req.params.name));
+    }));
+  }
+
   // Audio treatment and voice-changer effects (needs ffmpeg on the server).
   router.get('/fx/presets', (req, res) => res.json({
     available: fxAvailable,
@@ -97,18 +121,34 @@ function createApi({ host, clips, tts, llm, storage, scheduler, play, streamSecr
   }));
 
   router.post('/announcements/draft', costly, wrap(async (req, res) => {
-    const prompt = String((req.body || {}).prompt || '').trim();
+    const body = req.body || {};
+    const prompt = String(body.prompt || '').trim();
     if (!prompt) return res.status(400).json({ error: 'prompt is required' });
     if (prompt.length > maxPrompt) return res.status(400).json({ error: `prompt is too long (max ${maxPrompt} characters)` });
-    const tone = String((req.body || {}).tone || '').slice(0, 60);
-    const out = await llm.generate({
-      system: `You write short announcements for a radio station, to be read aloud by a text-to-speech voice. `
+    const tone = String(body.tone || '').slice(0, 60);
+    const model = body.model ? String(body.model).slice(0, 100) : undefined;
+    const dialogue = body.format === 'dialogue';
+    let system;
+    let limit = maxText;
+    if (dialogue) {
+      // A short conversation in the script format /speak accepts: one "Name: line" per line.
+      const speakers = (Array.isArray(body.speakers) && body.speakers.length ? body.speakers : ['Rocky', 'Britta'])
+        .map((s) => String(s).replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 30)).filter(Boolean).slice(0, 4);
+      const effects = body.sfx === true && sfx ? sfx.names() : [];
+      limit = Math.min(1500, maxText * 3);
+      system = `You write short on-air conversations for a radio station, to be read aloud by text-to-speech voices. `
+        + `The speakers are: ${speakers.join(', ')}. Reply with only the script, one line per turn, each line exactly "Name: what they say" `
+        + `or "Name (delivery direction): what they say", where the direction is a few words such as "dry, sleepy" or "excited". `
+        + `Keep it natural: short turns, reactions, interruptions. You may use audio tags such as [laughs] or [softly] inside lines. `
+        + (effects.length ? `You may add a sound effect on its own line as [sfx:name], using only these names: ${effects.join(', ')}. ` : '')
+        + `No markdown, no stage directions, under ${Math.floor(limit * 0.85)} characters in total.${tone ? ` Overall tone: ${tone}.` : ''}`;
+    } else {
+      system = `You write short announcements for a radio station, to be read aloud by a text-to-speech voice. `
         + `Reply with only the announcement text: plain sentences, no markdown, no quotation marks, no stage directions, `
-        + `under ${Math.floor(maxText * 0.8)} characters.${tone ? ` Tone: ${tone}.` : ''}`,
-      prompt,
-      maxTokens: 300,
-    });
-    res.json({ text: out.text.slice(0, maxText), provider: out.provider, model: out.model });
+        + `under ${Math.floor(maxText * 0.8)} characters.${tone ? ` Tone: ${tone}.` : ''}`;
+    }
+    const out = await llm.generate({ system, prompt, maxTokens: dialogue ? 600 : 300, model });
+    res.json({ text: out.text.slice(0, limit), provider: out.provider, model: out.model, format: dialogue ? 'dialogue' : 'text' });
   }));
 
   router.post('/synth', costly, wrap(async (req, res) => {
@@ -172,6 +212,11 @@ function createApi({ host, clips, tts, llm, storage, scheduler, play, streamSecr
     clips.setCloud(clip.id, { ...shared, at: Date.now() });
     res.json(shared);
   }));
+
+  router.use((err, req, res, next) => {
+    if (!err || !err.status) return next(err);
+    res.status(err.status).json({ error: err.type === 'entity.too.large' ? 'file is too large' : (err.message || 'bad request') });
+  });
 
   // ---- virtual host: links between songs (a server-side replication of the KRAP virtual_host.py) ----
   if (host) {

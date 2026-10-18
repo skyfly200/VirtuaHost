@@ -5,6 +5,14 @@ import { saveClip } from "../store.js";
 import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
 
+// Chips Voice scripts can contain [sfx:name] sound effect tags. This Gemini path cannot mix them, and Gemini
+// would read them aloud, so they are removed (use the station's /speak to get the effects mixed in).
+const SFX_TAG = /\[\s*sfx\s*:[^\]]*\]/gi;
+export function stripSfxTags(text: string): { text: string; removed: boolean } {
+  const removed = new RegExp(SFX_TAG.source, "i").test(text);
+  return { text: removed ? text.replace(SFX_TAG, " ").replace(/\s{2,}/g, " ").trim() : text, removed };
+}
+
 export async function handleGenerate(req: Request): Promise<Response> {
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
@@ -35,6 +43,12 @@ export async function handleGenerate(req: Request): Promise<Response> {
     scriptText = mode === "ai" ? await writeDjLine(input) : input;
   } catch (err) {
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
+  }
+
+  const stripped = stripSfxTags(scriptText);
+  if (stripped.removed) scriptText = stripped.text;
+  if (!scriptText) {
+    return Response.json({ error: "The text contains only sound effect tags; add some words to speak" }, { status: 400 });
   }
 
   let pcm: Buffer;
@@ -76,7 +90,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   }
 
   return Response.json(
-    { id, scriptText, audioUrl: `/api/clips/${id}`, ...(handoff ? { handoff } : {}) },
+    { id, scriptText, audioUrl: `/api/clips/${id}`, ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(handoff ? { handoff } : {}) },
     { status: 201 },
   );
 }
