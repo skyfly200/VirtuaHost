@@ -50,7 +50,7 @@ HUB_KEY=$(openssl rand -hex 24)  HUB_PORT=3200  VOICE_URL=https://voice.example.
 | `HUB_CORS_ORIGIN` | the web apps' address when they are hosted elsewhere (default `*`; the apps send no cookies, only a token) |
 | `HUB_STATIC` | a folder to serve at `/`, e.g. `../web`, so the hub serves the two apps itself |
 
-Put it behind HTTPS (Caddy or nginx, as in `docs/DEPLOY-VPS.md`). Add stations in the Control Panel or `POST /stations {name,url,key,site}`.
+Put it behind HTTPS (Caddy or nginx, as in `chips-voice/docs/DEPLOY-VPS.md`). Add stations in the Control Panel or `POST /stations {name,url,key,site}`.
 Station keys stay in the hub; they are never sent to the browser.
 
 ## 3. Add each kind of station
