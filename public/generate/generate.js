@@ -212,11 +212,19 @@ export async function mountGenerate(root, api) {
     draft = { ...next, url: URL.createObjectURL(next.blob) };
     const player = h('audio', { controls: true, src: draft.url });
     const saveStatus = h('span', { class: 'small muted', role: 'status' });
+    // Details that travel with the clip to other systems (docs/CLIP-METADATA.md); all optional.
+    const detail = { title: '', kind: state.format || '', expires: '', tags: '' };
+    const field = (label, key, props = {}) => h('label', { class: 'field' }, label, h('input', { ...props, value: detail[key], oninput: (e) => { detail[key] = e.target.value; } }));
+    const details = h('details', { class: 'tips' }, h('summary', {}, 'Details for other systems (title, kind, expiry)'),
+      h('div', { class: 'grid cols' }, field('Title', 'title', { placeholder: 'shown by players and now-playing' }), field('Kind', 'kind', { placeholder: 'drop, promo, station-id...' }),
+        field('Tags (comma separated)', 'tags'), field('Do not play after', 'expires', { type: 'datetime-local' })),
+      h('p', { class: 'muted small' }, 'These are written into the audio file and saved with the clip. A clip is never queued, scheduled or played after its expiry.'));
     const saveButton = h('button', { class: 'primary', type: 'button', onclick: async () => {
       saveButton.disabled = true; saveStatus.classList.remove('bad'); saveStatus.textContent = 'Saving...';
       try {
         const f = draft.first;
-        const meta = { mode: draft.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: draft.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects };
+        const meta = { mode: draft.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: draft.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects,
+          info: { ...(detail.title.trim() ? { title: detail.title.trim() } : {}), ...(detail.kind.trim() ? { kind: detail.kind.trim() } : {}), ...(detail.tags.trim() ? { tags: detail.tags.split(',').map((t) => t.trim()) } : {}), ...(detail.expires ? { expiresAt: new Date(detail.expires).toISOString() } : {}), ...(state.persona ? { persona: state.persona } : {}) } };
         const saved = await api.request('POST', '/clips', { raw: draft.blob, contentType: draft.blob.type, headers: { 'x-clip-meta': encodeURIComponent(JSON.stringify(meta)) } });
         toast(saved.handoff ? (saved.handoff.sent ? 'Saved and sent to the station.' : `Saved. Station hand-off failed: ${saved.handoff.error}`) : 'Saved to the library.', saved.handoff && !saved.handoff.sent ? 'error' : 'info');
         discard(); state.text = ''; if (textArea) textArea.value = ''; status.textContent = '';
@@ -226,7 +234,7 @@ export async function mountGenerate(root, api) {
     clear(draftBox, h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'preview, not saved yet'), draft.effects.length ? h('span', { class: 'chip' }, `effects: ${[...new Set(draft.effects)].join(', ')}`) : null, h('span', {}, `${(draft.blob.size / 1024).toFixed(0)} KB`)),
       h('p', { class: 'clip-script' }, draft.scriptText),
-      player,
+      player, details,
       h('div', { class: 'row' }, saveButton, h('button', { type: 'button', onclick: discard }, 'Discard'), saveStatus)));
     player.play().catch(() => {});
   }
@@ -239,13 +247,18 @@ export async function mountGenerate(root, api) {
       clear(clipsBox, clips.length ? clips.map((clip) => h('div', { class: 'clip' },
         h('div', { class: 'row small muted' },
           h('span', { class: 'chip' }, clip.mode), h('span', {}, fmtDate(Date.parse(clip.createdAt))), h('span', {}, clip.voice),
-          clip.speechModel ? h('span', { class: 'chip' }, clip.speechModel) : null, clip.tone ? h('span', { class: 'chip' }, clip.tone) : null),
+          clip.speechModel ? h('span', { class: 'chip' }, clip.speechModel) : null, clip.tone ? h('span', { class: 'chip' }, clip.tone) : null,
+          clip.info && clip.info.kind ? h('span', { class: 'chip' }, clip.info.kind) : null, expiryChip(clip)),
         h('p', { class: 'clip-script' }, clip.scriptText),
-        h('div', { class: 'row' }, playButton(clip.id), ...sendButtons(clip.id)))) : h('p', { class: 'empty' }, 'No clips yet. Generate one above.'));
+        h('div', { class: 'row' }, playButton(clip.id), ...(expired(clip) ? [] : sendButtons(clip.id))))) : h('p', { class: 'empty' }, 'No clips yet. Generate one above.'));
     } catch (err) {
       clear(clipsBox, h('p', { class: 'empty' }, `Failed to load clips: ${err.message}`));
     }
   }
+  // A clip with an expiry is never sent, queued or played after it (the site and the station both check).
+  const expired = (clip) => Boolean(clip.info && clip.info.expiresAt && Date.parse(clip.info.expiresAt) <= Date.now());
+  const expiryChip = (clip) => (clip.info && clip.info.expiresAt
+    ? h('span', { class: 'chip', title: clip.info.expiresAt, style: expired(clip) ? 'opacity:.6;text-decoration:line-through' : '' }, expired(clip) ? 'expired' : `expires ${fmtDate(Date.parse(clip.info.expiresAt))}`) : null);
   // With STATION_MODE=queue a saved clip can be sent to the station daemon, to go on air now or just to be kept there.
   function sendButtons(id) {
     if (!(options.features && options.features.stationQueue)) return [];

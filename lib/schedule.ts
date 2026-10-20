@@ -57,7 +57,7 @@ export const validTimeZone = (tz: string): boolean => {
 };
 
 // The UTC instant at which the clock in `tz` reads y-m-d h:m (the first one when a DST change makes it ambiguous or missing).
-function zonedToUtc(y: number, m: number, d: number, h: number, min: number, tz: string): number {
+export function zonedToUtc(y: number, m: number, d: number, h: number, min: number, tz: string): number {
   const guess = Date.UTC(y, m - 1, d, h, min);
   let result = guess;
   for (let i = 0; i < 2; i++) {

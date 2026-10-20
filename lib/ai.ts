@@ -5,7 +5,7 @@
 //
 // With OpenRouter the writing model and speech model can be chosen per request (lib/openrouter.ts). Gemini is used
 // directly with its fixed models.
-import { writeDjLine, synthesizeSpeech as geminiSpeech, DEFAULT_VOICE } from "./gemini.js";
+import { writeDjLine, describeImage, synthesizeSpeech as geminiSpeech, DEFAULT_VOICE } from "./gemini.js";
 import * as openrouter from "./openrouter.js";
 import { pcmToWav } from "./wav.js";
 import { buildSystemPrompt, type DjFormat } from "./formats.js";
@@ -50,6 +50,16 @@ export async function complete(options: { system: string; prompt: string; provid
     return openrouter.chat({ model: options.textModel ?? openrouter.defaultTextModel(), system: options.system, prompt: options.prompt, maxTokens: 1200 });
   }
   return writeDjLine(options.prompt, options.system);
+}
+
+// Looks at one image (a data: URL) and answers the prompt: used to read fliers.
+export async function readImage(options: { system: string; prompt: string; image: string; provider: ProviderName; model?: string }): Promise<string> {
+  if (options.provider === "openrouter") {
+    return openrouter.chatWithImage({ model: options.model ?? openrouter.visionModel(), system: options.system, prompt: options.prompt, image: options.image });
+  }
+  const m = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(options.image);
+  if (!m) throw new Error("The image must be a base64 data URL");
+  return describeImage(options.prompt, options.system, m[1], m[2]);
 }
 
 export interface SpeakOptions {

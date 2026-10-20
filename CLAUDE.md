@@ -101,6 +101,11 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   `POST /api/personas/generate` drafts one with the writing model; `persona` on `/api/generate` shapes the AI-written line and sets default delivery.
 - **Sound library** (`lib/library/`, `/api/library`, Library tab, `docs/LIBRARY.md`): sfx and music folders read from OwnCloud (WebDAV) and/or Google
   Drive (service account), read-only. Files are only fetched by name from a fresh listing, never by a client-supplied path. The premix script reads it too (with `SITE_URL`/`ACCESS_KEY`).
+- **Clip metadata and expiry** (`lib/clip-info.ts`, `docs/CLIP-METADATA.md`): every clip has `info` (title, kind, tags, persona, event, `expiresAt`, extra) written into the
+  audio (ID3v2.4 / WAV LIST+`vhmd`), served at `/api/clips/:id/meta`, carried on queue items, and passed by the daemon to Liquidsoap as `annotate:` plus a `<id>.json` sidecar.
+  An expired clip is refused by the queue, skipped by `claimNext`, rechecked by the daemon at play time, and schedules have an `until` date.
+- **Flier tool** (`lib/flier.ts`, `lib/handlers/flier.ts`, `public/flier/`): `/api/flier/read` (vision model or pasted text -> event, times resolved in the event's time zone),
+  `/api/flier/promo` (spots in a persona's voice from the confirmed facts, dates spoken as weekday+date, never "tonight"); the saved promo expires when the event ends/starts.
 - **Premix** (`scripts/premix.mjs`, `.github/workflows/premix.yml`, `premix/`): scripts with `[sfx:]` tags mixed with ffmpeg in GitHub Actions.
 - **Station queue and daemon** (`lib/queue-store.ts`, `lib/station-send.ts`, `/api/queue`, `/api/station/*`, `station-daemon/`): with `STATION_MODE=queue`
   every saved clip is queued in Blobs; the zero-dependency daemon on the streaming server polls with `STATION_KEY`, downloads, applies the Chips Voice fx
