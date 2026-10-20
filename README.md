@@ -17,8 +17,8 @@ generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTE
 | [docs/SETUP.md](docs/SETUP.md) | Setup paths: scripts, API, stream-server AutoDJ, chat and MCP, several stations |
 | [docs/FOR-SYLVIA.md](docs/FOR-SYLVIA.md) | Start here for the KRAP side: what replaces each script, what is verified |
 | [docs/INTEGRATION.md](docs/INTEGRATION.md) | Netlify to the station hand-off, voices, effects, dialogue, the virtual host |
-| [docs/NETLIFY.md](docs/NETLIFY.md) | Deploying on Netlify: the generator site and the web-apps site, every environment variable |
-| [docs/HUB.md](docs/HUB.md) | The hub, the RadioDJ agent, and the Voice Lab and Control Panel web apps |
+| [docs/NETLIFY.md](docs/NETLIFY.md) | Deploying on Netlify: logins, the AI key, every environment variable |
+| [docs/HUB.md](docs/HUB.md) | The hub, the RadioDJ agent, and the Voice Lab and Stations tabs |
 | [docs/PERSONA-CHIP.md](docs/PERSONA-CHIP.md) | CHIP, the computer DJ persona of Way High Radio |
 | [chips-voice/README.md](chips-voice/README.md) | The Chips Voice server: API, playback backends, Icecast and Liquidsoap |
 
@@ -27,20 +27,19 @@ generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTE
 1. `npm install`
 2. `netlify link` (or `netlify init`) to connect this directory to a Netlify
    site — this is what makes Netlify Blobs available locally.
-3. Copy `.env.example` to `.env` and set an AI key and `ACCESS_KEY` (a random secret,
-   16+ characters: `openssl rand -hex 24`). The AI key is `OPENROUTER_API_KEY`
+3. Copy `.env.example` to `.env` and set an AI key and a sign-in (`LOGIN_USERS` + `SESSION_SECRET`, or `ACCESS_KEY`). The AI key is `OPENROUTER_API_KEY`
    (recommended: one key, choose the writing and voice models yourself) or `GEMINI_API_KEY`
    (from [Google AI Studio](https://aistudio.google.com/), fixed models). `STATION_NAME` and `GEMINI_TTS_VOICE` are optional.
    For quick local experiments only, `AUTH_DISABLED=true` turns the key check off.
 4. `netlify dev`
 
-## Access key
+## Signing in
 
-`/api/generate` and `/api/clips` need the `ACCESS_KEY` on every request, as `x-api-key: <key>` or
-`Authorization: Bearer <key>`. A missing or wrong key gets `401`; if `ACCESS_KEY` is not set (or shorter than 16
-characters) the API answers `503` instead of being open to the internet. Set it as a site environment variable
-on Netlify (see [docs/NETLIFY.md](docs/NETLIFY.md)). It is one shared secret, not per-user accounts; rotate it by
-changing the variable and redeploying.
+The site's API needs a sign-in on every request. People sign in with a username and password (`LOGIN_USERS` and
+`SESSION_SECRET`; make a password hash with `npm run hash-password -- alice`). Scripts can use the optional
+`ACCESS_KEY` instead, sent as `x-api-key: <key>` or `Authorization: Bearer <key>`. With neither configured the API
+answers `503` instead of being open to the internet; a missing or wrong credential gets `401`. Wrong passwords are
+throttled. Set these as site environment variables on Netlify (see [docs/NETLIFY.md](docs/NETLIFY.md)).
 
 ```
 curl -X POST https://your-site.netlify.app/api/generate \
@@ -48,13 +47,13 @@ curl -X POST https://your-site.netlify.app/api/generate \
   -d '{"mode":"say","text":"Hello"}'
 ```
 
-## Test console
+## The web UI
 
-`index.html` is a small static page served alongside the functions — open
-the site's root URL (e.g. `https://your-site.netlify.app/` or
-`http://localhost:8888/` under `netlify dev`) to generate clips and play
-back everything in `/api/clips` from a browser, without needing `curl`.
-Enter the access key at the top first; it is kept in that browser tab only. The page itself is public and contains no secrets.
+`public/` is a single page with three tabs: **Generate** (make clips: pick the kind of line, tone, models and voice),
+**Voice Lab** (compare voices, audition host personas) and **Stations** (control every radio station). The last two stay
+switched off, with a note on what to set, until the site is connected to a Chips Voice server and the hub (`VOICE_URL`,
+`HUB_URL` and their keys). Open the site's root URL (e.g. `https://your-site.netlify.app/` or `http://localhost:8888/`
+under `netlify dev`) and sign in. The page itself is public and contains no secrets.
 
 ## API
 

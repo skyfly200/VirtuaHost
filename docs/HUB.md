@@ -1,22 +1,27 @@
-# Several stations, two web apps: the hub, the agents, the Voice Lab and the Control Panel
+# Several stations: the hub, the agents, and the Voice Lab and Stations tabs of the site
 
 ```
- Voice Lab (browser) ───────────────────────────► Chips Voice server (voices, personas, clips)
-                                                      ▲
- Control Panel (browser) ──► HUB ──────────────────── │ clip audio (signed link)
-                              │ one API per station
-          ┌───────────────────┼────────────────────┐
-          ▼                   ▼                    ▼
-   Chips Voice server    Chips Voice server    RadioDJ agent  ──► RadioDJ (Windows)
-   + Liquidsoap/Icecast  + Liquidsoap/Icecast
+ Browser ──sign in──► the site (Netlify: UI + /api)
+                          │  /api/voice/*  (VOICE_URL + VOICE_KEY)        /api/hub/*  (HUB_URL + HUB_KEY)
+                          ▼                                                    ▼
+              Chips Voice server (voices, personas, clips)                    HUB ── one API per station
+                                                              ┌────────────────┼───────────────────┐
+                                                              ▼                ▼                   ▼
+                                                     Chips Voice server  Chips Voice server  RadioDJ agent ──► RadioDJ (Windows)
+                                                     + Liquidsoap/Icecast + Liquidsoap/Icecast
 ```
 
 - **Station agent**: anything that answers the small HTTP API below. A Chips Voice server in front of Liquidsoap already does. The
   **RadioDJ agent** (`chips-voice/agent-radiodj/`) does it for RadioDJ on Windows.
 - **Hub** (`chips-voice/hub/`): keeps the list of stations, polls them, and does what needs more than one: broadcasts that start together,
   playlists pushed to several stations, host settings copied between them. No dependencies; Node 18+.
-- **Voice Lab** and **Control Panel** (`chips-voice/web/`): two static web apps sharing one small kit (`web/shared/`). No build step. They run in
-  the browser and talk to your servers; the page host stores nothing.
+- **The site's UI** (`public/`): one page with three tabs, **Generate** (always on), **Voice Lab** (needs a Chips Voice server) and **Stations** (needs the hub).
+  The last two stay switched off, with a short "what to set" card, until the site is connected to them. You sign in once, to the site; the site talks to the
+  voice server and the hub for you, so their keys never reach the browser.
+
+**Where does what run?** The hub is just a small coordinator. It does not play audio and it does not run RadioDJ. Put it anywhere that can reach your stations and is
+reachable over HTTPS by the site: usually on the same VPS as Icecast. RadioDJ and the other Windows software stay on their Windows machine, with a small **RadioDJ agent**
+beside them that the hub talks to (section 3).
 
 ## 1. The agent API (the contract)
 
@@ -43,14 +48,13 @@ HUB_KEY=$(openssl rand -hex 24)  HUB_PORT=3200  VOICE_URL=https://voice.example.
 
 | Env | Meaning |
 |-----|---------|
-| `HUB_KEY` | required, 12+ characters. The Control Panel exchanges it for a 12-hour token |
+| `HUB_KEY` | required, 12+ characters. The site's `HUB_KEY` setting must match it |
 | `HUB_PORT`, `HUB_HOST` | default 3200, 0.0.0.0 |
 | `HUB_DATA` | JSON file for stations, playlists and timed broadcasts (default `hub/data/hub.json`, mode 600 because it holds station keys) |
 | `VOICE_URL`, `VOICE_KEY` | a Chips Voice server, only needed to broadcast a clip by id (the hub asks it for a signed link; set its `STREAM_SECRET`) |
-| `HUB_CORS_ORIGIN` | the web apps' address when they are hosted elsewhere (default `*`; the apps send no cookies, only a token) |
-| `HUB_STATIC` | a folder to serve at `/`, e.g. `../web`, so the hub serves the two apps itself |
+| `HUB_CORS_ORIGIN` | only if a browser calls the hub directly (the site's UI goes through its own `/api/hub` proxy, so this is normally not needed) |
 
-Put it behind HTTPS (Caddy or nginx, as in `chips-voice/docs/DEPLOY-VPS.md`). Add stations in the Control Panel or `POST /stations {name,url,key,site}`.
+Put it behind HTTPS (Caddy or nginx, as in `chips-voice/docs/DEPLOY-VPS.md`). Add stations in the Stations tab or `POST /stations {name,url,key,site}`.
 Station keys stay in the hub; they are never sent to the browser.
 
 ## 3. Add each kind of station
@@ -68,7 +72,7 @@ address and the key is that `API_KEY`. `STATION_NAME` sets the display name. Sav
    to the internet; put it behind the VPN or an HTTPS reverse proxy.
 
 What the RadioDJ agent can do: now playing, put a clip on air (write the file, fire the cart), and list its library. Skip and volume work **only if** you
-set the REST plugin command names, which I could not confirm from public documentation; until then the Control Panel greys those buttons. RadioDJ playlists
+set the REST plugin command names, which I could not confirm from public documentation; until then the Stations tab greys those buttons. RadioDJ playlists
 live in its database, so the agent does not define or switch them (the hub shows "does not support").
 
 ## 4. What the hub does
@@ -84,19 +88,24 @@ live in its database, so the agent does not define or switch them (the hub shows
   between stations (same folder layout) for coverage to be full. `POST /playlists/import {station, prefix, name}` builds one from a station's folder.
 - **Host settings**: `POST /sync/host {from, to, fields}` copies persona, tone, effect, templates and timing; voice and provider only if you list them.
 
-## 5. Deploy the web apps
+## 5. Connect the site to the hub and the voice server
 
-Step by step for Netlify (both sites, with every environment variable): [NETLIFY.md](NETLIFY.md).
+The Voice Lab and Stations tabs turn on when the site has the address and key of what they need. In the site's environment variables (Netlify: Site configuration, Environment variables):
 
-The apps are plain files in `chips-voice/web/` (`index.html`, `lab/`, `panel/`, `shared/`). Pick one:
+| Variable | Value |
+|----------|-------|
+| `HUB_URL`, `HUB_KEY` | the hub's public https address and its `HUB_KEY`. Turns on **Stations** |
+| `VOICE_URL`, `VOICE_KEY` | a Chips Voice server's https address and its `API_KEY`. Turns on **Voice Lab** |
 
-- **Hub serves them**: `HUB_STATIC=../web`. Open `https://hub.example.com/panel/`. Same origin, no CORS to set up.
-- **Netlify**: new site from this repo, Base directory `chips-voice/web`, Publish directory `.`, no build command. (The repository root's own `netlify.toml` belongs to VirtuaHost, so use a separate site.)
-- **Vercel**: new project, Root Directory `chips-voice/web`, Framework "Other", no build command.
-- **Anywhere static** (a LAN box, GitHub Pages, your own nginx).
+Redeploy afterwards. Notes:
 
-When hosted away from the servers, set `HUB_CORS_ORIGIN` on the hub and `CORS_ORIGIN` on each Chips Voice server to the apps' address. The first screen asks for a server
-address and a key (the Voice Lab also takes a username and password). Tokens are kept for the tab, or on the device if you tick "keep me signed in"; the long-lived key is never stored.
+- **https is required** (the keys travel in a header); plain `http://localhost` is accepted only for local testing.
+- The site forwards `/api/hub/*` and `/api/voice/*` to those servers after you sign in, replacing your sign-in with the server key. Everyone who can sign in can do whatever those keys allow, so treat a login like an admin account.
+- **Size limits:** Netlify functions take request bodies up to about 6 MB, so uploads through the site (a broadcast file, a sound effect) are capped at 5 MB. Larger files: use the hub or voice server API directly.
+- **Time limits:** a function call that takes longer than your Netlify plan allows is cut off. Speech generation and large library listings are the slow ones.
+- If the hub is down or the key is wrong, the tab shows a plain message ("rejected this site's key: check HUB_URL and HUB_KEY") instead of failing silently.
+
+Everything about signing in to the site itself (`LOGIN_USERS`, `SESSION_SECRET`) is in [NETLIFY.md](NETLIFY.md).
 
 ## 6. Voice Lab
 
@@ -105,11 +114,15 @@ Write or draft a script (one voice, or a conversation with "Name: line" per line
 host personas (such as CHIP): edit the tone, effect, persona text and templates, hear any link template, station ID or time-of-day line with your voice, and **Apply to the station host**.
 Nothing in the Lab goes on air.
 
+## 7. Stations tab
+
+Stations grouped by site with now playing, skip, volume and playlist; select several and skip them together, **broadcast** one file to all of them at the same moment (or at a chosen time), manage shared playlists (coverage, push, import from a folder), and copy host settings from one station to others.
+
 ## What is verified, and what is not
 
 Verified by automated tests: the hub's API against fake stations (auth, status, group actions, playlists, broadcasts, timed jobs, host copy), the hub
-driving the real RadioDJ agent with a stand-in RadioDJ, the agent's own API, the music library code (path safety), and the two web apps driven in a real browser
-(sign-in, adding stations, skip, broadcast, playlists, voice generation, persona audition) against stub servers.
+driving the real RadioDJ agent with a stand-in RadioDJ, the agent's own API, the music library code (path safety), and the site's UI driven in a real browser
+against the real site handlers (sign-in with a password and with the access key, generating with a stand-in OpenRouter, the Voice Lab and Stations tabs through the proxy, and the "not connected" cards).
 
 Not verified: a live RadioDJ (the `/npjson` format and the skip/volume command names), a live Liquidsoap playing a `list:` playlist (the m3u is written and selected with
 `music.uri`; check it on your server), real speech providers in the Lab, and simultaneous start across real Icecast streams.

@@ -6,7 +6,8 @@
     "dev": "netlify dev",
     "build": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "hash-password": "node scripts/hash-password.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.19.0",

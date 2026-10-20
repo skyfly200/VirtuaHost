@@ -1,6 +1,7 @@
 import { checkAuth } from "../auth.js";
 import { activeProvider, NO_PROVIDER_MESSAGE } from "../ai.js";
 import { textModels, speechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
+import { features } from "./proxy.js";
 import { TONES, FORMATS, MAX_TONE_LENGTH, fillStation } from "../formats.js";
 
 // What the test console offers: the provider in use, the models that can be chosen, tones, and script formats with examples.
@@ -17,6 +18,7 @@ export async function handleOptions(req: Request): Promise<Response> {
 
   return Response.json({
     provider,
+    features: features(),
     ...(provider ? {} : { warning: NO_PROVIDER_MESSAGE }),
     station,
     // Models can only be chosen with OpenRouter; with Gemini direct the models are fixed.

@@ -1,8 +1,8 @@
 // Voice Lab: try voices, models, tone and effects side by side on the same text, audition host personas, and apply what works.
-import { h, $, clear, toast, connect, headerBar, audioUrl } from '../shared/kit.js';
+import { h, clear, toast, audioUrl } from '../shared/kit.js';
 
-const client = await connect({ id: 'voice', label: 'the voice server', kind: 'voice' });
-const app = $('#app');
+let client = null;   // set by mountLab: a client for this site's /api/voice proxy
+let app = null;
 
 const state = {
   providers: null, fx: [], personas: [], sfx: [], voices: new Map(), host: null,
@@ -208,17 +208,24 @@ function personaCard() {
 }
 
 function render() {
-  clear(app,
-    headerBar('Chips Voice', 'Voice Lab', client),
-    h('main', {},
-      h('p', { class: 'muted' }, 'Write something, pick voices, and listen to them side by side. Nothing here goes on air; use the Control Panel for that.'),
-      scriptCard(), variantsCard(), personaCard()));
+  clear(app, h('div', { class: 'stack' },
+    h('p', { class: 'muted' }, 'Write something, pick voices, and listen to them side by side. Nothing here goes on air; use Stations for that.'),
+    scriptCard(), variantsCard(), personaCard()));
 }
 
-try {
-  await load();
-  state.slots = [newSlot(), newSlot()];
-  render();
-} catch (err) {
-  clear(app, h('main', {}, h('p', { class: 'bad' }, err.message)));
+// Draws the Voice Lab into `root`. `voiceClient` talks to the voice server through this site's proxy.
+export async function mountLab(root, voiceClient) {
+  client = voiceClient;
+  app = root;
+  Object.assign(state, { providers: null, fx: [], personas: [], sfx: [], voices: new Map(), host: null, mode: 'single', slots: [] });
+  Object.assign(persona, { name: '', provider: '', voice: '', model: '', edit: null });
+  persona.audio.clear();
+  clear(app, h('p', { class: 'muted' }, 'Loading the voice server...'));
+  try {
+    await load();
+    state.slots = [newSlot(), newSlot()];
+    render();
+  } catch (err) {
+    clear(app, h('p', { class: 'bad' }, err.message));
+  }
 }

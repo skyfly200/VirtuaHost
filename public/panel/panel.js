@@ -1,8 +1,9 @@
 // Control Panel: every station on one screen, plus the things that need several at once (broadcasts, playlists, copying host settings).
-import { h, $, clear, toast, connect, headerBar, fmtDate } from '../shared/kit.js';
+import { h, clear, toast, fmtDate } from '../shared/kit.js';
 
-const client = await connect({ id: 'hub', label: 'the hub', kind: 'hub' });
-const app = $('#app');
+let client = null;   // set by mountPanel: a client for this site's /api/hub proxy
+let app = null;
+let timer = null;
 
 const state = { stations: [], selected: new Set(), playlists: [], jobs: [], volumes: new Map(), results: null, coverage: null, editingPlaylist: null };
 const stationName = (id) => (state.stations.find((s) => s.id === id) || { name: id }).name;
@@ -27,7 +28,7 @@ async function refresh({ quiet = true } = {}) {
 // ---------- stations ----------
 function stationCard(s) {
   const caps = s.capabilities || {};
-  const pick = h('input', { type: 'checkbox', checked: state.selected.has(s.id), onchange: (e) => { e.target.checked ? state.selected.add(s.id) : state.selected.delete(s.id); paintTargets(); }, 'aria-label': `Select ${s.name}` });
+  const pick = h('input', { type: 'checkbox', checked: state.selected.has(s.id), onchange: (e) => { if (e.target.checked) state.selected.add(s.id); else state.selected.delete(s.id); paintTargets(); }, 'aria-label': `Select ${s.name}` });
   const volume = h('input', { type: 'range', min: 0, max: 100, value: state.volumes.get(s.id) ?? 100, disabled: !s.online || !caps.volume, title: caps.volume ? 'Music volume' : 'This station cannot set volume', 'aria-label': `Volume for ${s.name}`,
     oninput: (e) => { state.volumes.set(s.id, e.target.value); send(e.target.value); } });
   const send = debounce((v) => client.post(`/stations/${s.id}/volume`, { volume: Number(v) / 100 }).catch((e) => toast(e.message, 'error')));
@@ -87,7 +88,7 @@ function editStation(existing) {
   const dialog = h('dialog', {}, h('form', { method: 'dialog', class: 'grid', onsubmit: async (e) => {
     e.preventDefault();
     try {
-      existing ? await client.put(`/stations/${existing.id}`, f) : await client.post('/stations', f);
+      if (existing) await client.put(`/stations/${existing.id}`, f); else await client.post('/stations', f);
       dialog.close(); dialog.remove(); await refresh({ quiet: false });
     } catch (err) { error.textContent = err.message; }
   } },
@@ -244,13 +245,24 @@ function paintLive() {
   paintStations(); paintTargets(); paintJobs(); paintPlaylists();
 }
 function build() {
-  clear(app, headerBar('Chips Voice', 'Control Panel', client),
-    h('main', {}, live,
-      h('div', { class: 'two' }, broadcastCard(), h('section', { class: 'card' }, h('h2', {}, 'Timed broadcasts'), jobsBox)),
-      h('div', { class: 'two' }, playlistsCard(), syncCard())));
+  clear(app, h('div', { class: 'stack' }, live,
+    h('div', { class: 'two' }, broadcastCard(), h('section', { class: 'card' }, h('h2', {}, 'Timed broadcasts'), jobsBox)),
+    h('div', { class: 'two' }, playlistsCard(), syncCard())));
   paintLive();
 }
 
-build();
-await refresh({ quiet: false });
-setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+// Draws the Control Panel into `root`. `hubClient` talks to the hub through this site's proxy. Call unmountPanel() when leaving.
+export async function mountPanel(root, hubClient) {
+  client = hubClient;
+  app = root;
+  Object.assign(state, { stations: [], selected: new Set(), playlists: [], jobs: [], volumes: new Map(), results: null, coverage: null, editingPlaylist: null });
+  build();
+  await refresh({ quiet: false });
+  clearInterval(timer);
+  timer = setInterval(() => { if (!document.hidden && app && app.isConnected) refresh(); }, 5000);
+}
+
+export function unmountPanel() {
+  clearInterval(timer);
+  timer = null;
+}
