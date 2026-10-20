@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { activeProvider, writeScript, speak, NO_PROVIDER_MESSAGE } from "../ai.js";
-import { pickTextModel, pickSpeechModel, type SpeechModel } from "../openrouter.js";
+import { pickTextModel, pickSpeechModel, speechModels, discoverSpeechModels, type SpeechModel } from "../openrouter.js";
 import { cleanTone, findFormat } from "../formats.js";
 import { saveClip } from "../store.js";
 import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
@@ -62,7 +62,10 @@ export async function handleGenerate(req: Request): Promise<Response> {
   if (provider === "openrouter") {
     const t = pickTextModel(typeof body.textModel === "string" ? body.textModel : undefined);
     if ("error" in t) return Response.json({ error: t.error }, { status: 400 });
-    const sp = pickSpeechModel(typeof body.speechModel === "string" ? body.speechModel : undefined);
+    const requestedSpeech = typeof body.speechModel === "string" ? body.speechModel : undefined;
+    // Models OpenRouter lists but the configured list lacks are looked up only when asked for.
+    const listed = !requestedSpeech || speechModels().some((m) => m.id === requestedSpeech);
+    const sp = pickSpeechModel(requestedSpeech, listed ? [] : await discoverSpeechModels());
     if ("error" in sp) return Response.json({ error: sp.error }, { status: 400 });
     textModel = t.model;
     speechModel = sp.model;

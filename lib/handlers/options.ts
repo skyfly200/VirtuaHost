@@ -1,6 +1,6 @@
 import { checkAuth } from "../auth.js";
 import { activeProvider, NO_PROVIDER_MESSAGE } from "../ai.js";
-import { textModels, speechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
+import { textModels, allSpeechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
 import { features } from "./proxy.js";
 import { TONES, FORMATS, MAX_TONE_LENGTH, fillStation } from "../formats.js";
 
@@ -23,7 +23,7 @@ export async function handleOptions(req: Request): Promise<Response> {
     station,
     // Models can only be chosen with OpenRouter; with Gemini direct the models are fixed.
     models: openrouter
-      ? { choosable: true, allowAny: allowAnyModel(), text: textModels(), speech: speechModels(), defaultText: defaultTextModel(), defaultSpeech: defaultSpeechModel().id }
+      ? { choosable: true, allowAny: allowAnyModel(), text: textModels(), speech: await allSpeechModels(), defaultText: defaultTextModel(), defaultSpeech: defaultSpeechModel().id }
       : { choosable: false, allowAny: false, text: [], speech: [], defaultText: "", defaultSpeech: "" },
     tones: TONES,
     maxToneLength: MAX_TONE_LENGTH,

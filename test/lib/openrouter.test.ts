@@ -150,3 +150,29 @@ describe("speech", () => {
     await expect(speech({ model: "x/tts", text: "Hi" })).rejects.toThrow("x/tts returned no audio");
   });
 });
+
+describe("speech model discovery", () => {
+  it("merges the models OpenRouter lists, with their voices, into the configured list", async () => {
+    vi.resetModules();
+    const { allSpeechModels, voiceFor: voiceForFresh } = await import("../../lib/openrouter.js");
+    fetchMock.mockResolvedValue(jsonResponse({ data: [
+      { id: "hexgrad/kokoro-82m", supported_voices: ["af_heart", "af_bella"] },
+      { id: "new/tts", supported_voices: ["ana", "", 5] },
+      { id: "bad slug!" },
+    ] }));
+    const all = await allSpeechModels();
+    expect(fetchMock.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/models?output_modalities=speech");
+    expect(all.find((m) => m.id === "hexgrad/kokoro-82m")).toEqual({ id: "hexgrad/kokoro-82m", voice: "af_heart", voices: ["af_heart", "af_bella"] });
+    const added = all.find((m) => m.id === "new/tts")!;
+    expect(added.voices).toEqual(["ana"]);
+    expect(all.some((m) => m.id.includes("bad"))).toBe(false);
+    expect(voiceForFresh(added)).toBe("ana");
+  });
+
+  it("falls back to the configured list when OpenRouter cannot be reached", async () => {
+    vi.resetModules();
+    const { allSpeechModels } = await import("../../lib/openrouter.js");
+    fetchMock.mockRejectedValue(new Error("offline"));
+    expect((await allSpeechModels()).length).toBeGreaterThan(1);
+  });
+});

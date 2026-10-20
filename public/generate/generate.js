@@ -76,9 +76,10 @@ export async function mountGenerate(root, api) {
     function paintVoices() {
       const entry = options.models.speech.find((m) => m.id === state.speechModel);
       const voices = entry && entry.voice ? [entry.voice] : [];
+      if (entry && entry.voices) for (const v of entry.voices) if (!voices.includes(v)) voices.push(v);
       if (options.provider === 'gemini' || state.speechModel.startsWith('google/')) for (const v of GEMINI_VOICES) if (!voices.includes(v)) voices.push(v);
       clear(voiceList, voices.map((v) => h('option', { value: v })));
-      if (voiceInput) voiceInput.placeholder = entry && entry.voice ? `default: ${entry.voice}` : 'model default';
+      if (voiceInput) voiceInput.placeholder = entry && (entry.voice || (entry.voices && entry.voices[0])) ? `default: ${entry.voice || entry.voices[0]}` : 'model default';
     }
     const voiceInput = h('input', { value: state.voice, list: 'voice-list', placeholder: 'model default', autocomplete: 'off', 'aria-label': 'Voice', oninput: (e) => { state.voice = e.target.value; persist(); } });
     paintVoices();
