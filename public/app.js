@@ -6,6 +6,7 @@ import { mountLab } from './lab/lab.js';
 import { mountPersonas } from './personas/personas.js';
 import { mountLibrary } from './library/library.js';
 import { mountFlier } from './flier/flier.js';
+import { mountSchedules } from './schedules/schedules.js';
 import { mountPanel, unmountPanel } from './panel/panel.js';
 
 const app = $('#app');
@@ -77,6 +78,7 @@ function showApp(credential, options) {
     { id: 'generate', label: 'Generate', on: true },
     { id: 'personas', label: 'Personas', on: true },
     { id: 'flier', label: 'Flier', on: true },
+    { id: 'schedules', label: 'Schedules', on: true },
     { id: 'library', label: 'Library', on: true },
     { id: 'lab', label: 'Voice Lab', on: true },
     { id: 'stations', label: 'Stations', on: features.hub, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
@@ -96,6 +98,7 @@ function showApp(credential, options) {
     if (!tab.on) return clear(panel, offCard(tab));
     if (id === 'generate') await mountGenerate(panel, clientFor('/api', credential));
     if (id === 'personas') await mountPersonas(panel, clientFor('/api', credential));
+    if (id === 'schedules') await mountSchedules(panel, clientFor('/api', credential));
     if (id === 'flier') await mountFlier(panel, clientFor('/api', credential));
     if (id === 'library') await mountLibrary(panel, clientFor('/api', credential));
     if (id === 'lab') await mountLab(panel, clientFor('/api', credential));

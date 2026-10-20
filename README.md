@@ -49,10 +49,14 @@ curl -X POST https://your-site.netlify.app/api/generate \
 
 ## The web UI
 
-`public/` is a single page with three tabs: **Generate** (make clips: pick the kind of line, tone, models and voice),
-**Voice Lab** (compare voices, audition host personas) and **Stations** (control every radio station). The last two stay
-switched off, with a note on what to set, until the site is connected to a Chips Voice server and the hub (`VOICE_URL`,
-`HUB_URL` and their keys). Open the site's root URL (e.g. `https://your-site.netlify.app/` or `http://localhost:8888/`
+`public/` is a single page with these tabs, all running on the site itself (no other server):
+**Generate** (write or have the AI write a line, hear it with effects and music mixed in, then save it),
+**Voice Lab** (compare voices, models, tone and effects side by side; conversations),
+**Personas** (host characters with ten examples, a sample explorer, and the virtual host settings),
+**Flier** (turn an event flier into a promo clip that stops airing when the event is over),
+**Schedules** (things that happen on a timetable), and **Library** (sound effects and music from OwnCloud or Google Drive).
+**Stations** (control several radio stations) stays switched off until the site is connected to the hub (`HUB_URL`, `HUB_KEY`).
+The station itself needs only the small daemon in `station-daemon/` (see its README). Open the site's root URL (e.g. `https://your-site.netlify.app/` or `http://localhost:8888/`
 under `netlify dev`) and sign in. The page itself is public and contains no secrets.
 
 ## API

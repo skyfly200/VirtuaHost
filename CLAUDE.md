@@ -35,7 +35,7 @@ that replicates it (virtual host, ElevenLabs dialogue, the "underground" audio t
 ## Architecture
 
 ```
-public/                    the web UI (static, no build step): sign-in, Generate, Voice Lab and Stations tabs
+public/                    the web UI (static, no build step): sign-in, then Generate, Voice Lab, Personas, Flier, Schedules, Library and Stations tabs
 netlify/functions/*.mts   thin Netlify Function adapters (routing/config only)
         |
 lib/handlers/*.ts         request handling logic, framework-agnostic (Request -> Response)
@@ -88,16 +88,16 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   neither configured the API answers 503 rather than being open; `AUTH_DISABLED=true` is the explicit local-dev opt-out.
   `npm run hash-password -- <user>` makes an entry. There are no roles: every login can do everything.
 - **The UI and its proxy.** `public/index.html` is one page (`app.js`): login, then tabs. `generate/`, `lab/` and `panel/` are
-  ES modules that draw into a tab, using clients from `shared/kit.js`. Voice Lab and Stations talk to this site's
-  `/api/voice/*` and `/api/hub/*`, which `lib/handlers/proxy.ts` forwards (after the auth check, with `VOICE_KEY` / `HUB_KEY`,
-  https only, same-origin paths, 5 MB body cap) to the Chips Voice server and the hub in `chips-voice/`. The tabs are switched off
-  (a "not connected" card) until `VOICE_URL`+`VOICE_KEY` / `HUB_URL`+`HUB_KEY` are set; `GET /api/options` reports `features`.
+  ES modules that draw into a tab, using clients from `shared/kit.js`. Every tab except Stations runs on this site's own `/api/*`
+  (Voice Lab included: `public/shared/speaker.js` speaks and mixes, `public/generate/fx.js` previews effects in the browser). Stations talks to
+  `/api/hub/*`, which `lib/handlers/proxy.ts` forwards (after the auth check, with `HUB_KEY`, https only, same-origin paths, 5 MB body cap) to the
+  hub in `chips-voice/`; that tab is switched off (a "not connected" card) until `HUB_URL`+`HUB_KEY` are set. `GET /api/options` reports `features`.
   The page itself is public and holds no secrets; the session credential lives in `sessionStorage`.
 - **Write first, then speak; preview before saving.** `mode: "ai"` with `textOnly: true` returns just the written line; the UI shows it for
   editing, then speaks it as plain "say" text with `preview: true` (audio returned, nothing stored). `[sfx:name]` and `[music:name vol=0.2]`
   tags are mixed in the browser (`public/generate/mixer.js`: synthesised built-in effects, library files, a music bed), and the mixed WAV is saved
   with `POST /api/clips` (raw audio body, details in the `x-clip-meta` header). Per-model tone and tag support is in `lib/cues.ts` (`docs/CUES.md`).
-- **Personas** (`lib/personas.ts`, `lib/persona-store.ts`, `/api/personas`, Personas tab): character brief, tone, voice, speech model; CHIP is built in.
+- **Personas** (`lib/personas.ts`, `lib/persona-library.ts`, `lib/persona-store.ts`, `/api/personas`, Personas tab): character brief, tone, voice, speech model, tags, emoji, line banks (song links, station IDs, promos, sign-offs, time-of-day); ten example personas ship built in (read-only). The tab has a sample explorer (`public/personas/explorer.js`), import/export and the virtual host settings.
   `POST /api/personas/generate` drafts one with the writing model; `persona` on `/api/generate` shapes the AI-written line and sets default delivery.
 - **Sound library** (`lib/library/`, `/api/library`, Library tab, `docs/LIBRARY.md`): sfx and music folders read from OwnCloud (WebDAV) and/or Google
   Drive (service account), read-only. Files are only fetched by name from a fresh listing, never by a client-supplied path. The premix script reads it too (with `SITE_URL`/`ACCESS_KEY`).
@@ -106,6 +106,7 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   An expired clip is refused by the queue, skipped by `claimNext`, rechecked by the daemon at play time, and schedules have an `until` date.
 - **Flier tool** (`lib/flier.ts`, `lib/handlers/flier.ts`, `public/flier/`): `/api/flier/read` (vision model or pasted text -> event, times resolved in the event's time zone),
   `/api/flier/promo` (spots in a persona's voice from the confirmed facts, dates spoken as weekday+date, never "tonight"); the saved promo expires when the event ends/starts.
+- **Schedules** (`lib/schedule.ts`, `lib/scheduler.ts`, `lib/schedule-store.ts`, `/api/schedules`, `netlify/functions/scheduler.mts` every minute): once / every N minutes / daily at a local time (any IANA time zone, DST-safe) with weekdays, an end date (`until`) and a run count; each run makes the clip and queues it (`STATION_MODE=queue`).
 - **Premix** (`scripts/premix.mjs`, `.github/workflows/premix.yml`, `premix/`): scripts with `[sfx:]` tags mixed with ffmpeg in GitHub Actions.
 - **Station queue and daemon** (`lib/queue-store.ts`, `lib/station-send.ts`, `/api/queue`, `/api/station/*`, `station-daemon/`): with `STATION_MODE=queue`
   every saved clip is queued in Blobs; the zero-dependency daemon on the streaming server polls with `STATION_KEY`, downloads, applies the Chips Voice fx
