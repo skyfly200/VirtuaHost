@@ -84,6 +84,8 @@ function showApp(credential, options) {
   ];
   const panel = h('div');
   let leave = () => {};
+  // Other tabs can send you somewhere (for example a persona's "Use in Generate").
+  window.addEventListener('vh-tab', (e) => { if (tabs.some((t) => t.id === e.detail && t.on)) select(e.detail); });
 
   const tabButtons = tabs.map((t) => h('button', { type: 'button', role: 'tab', onclick: () => select(t.id) }, t.label, t.on ? null : h('span', { class: 'off' }, 'off')));
   const select = async (id) => {

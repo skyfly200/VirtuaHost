@@ -7,6 +7,8 @@ const GEMINI_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Zep
 const OTHER = '__other';
 const PREF_KEY = 'djPrefs';
 
+// A line sent here from another tab (a persona's sample), used once.
+function takePrefill() { try { const t = sessionStorage.getItem('prefillText') || ''; sessionStorage.removeItem('prefillText'); return t; } catch { return ''; } }
 const loadPrefs = () => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch { return {}; } };
 const savePrefs = (prefs) => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch { /* storage blocked */ } };
 
@@ -32,7 +34,7 @@ export async function mountGenerate(root, api) {
   const state = {
     mode: prefs.mode === 'ai' ? 'ai' : 'say', format: prefs.format || '', persona: personas.some((p) => p.id === prefs.persona) ? prefs.persona : '', tone: prefs.tone || '',
     textModel: prefs.textModel || options.models.defaultText, speechModel: prefs.speechModel || options.models.defaultSpeech, voice: prefs.voice || '',
-    textCustom: '', speechCustom: '', text: '',
+    textCustom: '', speechCustom: '', text: takePrefill(),
   };
   const persist = () => savePrefs({ mode: state.mode, format: state.format, persona: state.persona, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice });
   const formatOf = () => options.formats.find((f) => f.id === state.format);
