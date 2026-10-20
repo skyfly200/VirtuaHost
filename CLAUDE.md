@@ -105,6 +105,8 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
 - **Station queue and daemon** (`lib/queue-store.ts`, `lib/station-send.ts`, `/api/queue`, `/api/station/*`, `station-daemon/`): with `STATION_MODE=queue`
   every saved clip is queued in Blobs; the zero-dependency daemon on the streaming server polls with `STATION_KEY`, downloads, applies the Chips Voice fx
   preset (ffmpeg), pushes to Liquidsoap's `announce`/`announce_live` queue and acks. Outbound-only from the station. Leases expire after 90 s (3 attempts).
+  The **virtual host** (`lib/host.ts`, `lib/host-link.ts`, `lib/make-clip.ts`, `/api/host`, `/api/station/host*`, `station-daemon/host.mjs`): the site keeps its settings and writes+voices
+  each link; the daemon's loop watches Icecast and plays it as the next track begins. Configured in the Personas tab.
   Tests: `npm run test:daemon`. `scripts/premix.mjs --publish` can save premixed files (and queue them with `# send: air|library`).
 - **Station hand-off is optional and never fails a generation.** When `STATION_URL` and
   `STATION_INGEST_TOKEN` are set, `handleGenerate` posts the WAV to the station after

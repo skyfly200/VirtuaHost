@@ -7,6 +7,9 @@
 //   POLL_SECONDS        how often to ask for work (default 5)
 //   KEEP_FILES          clips kept in STATION_DIR (default 200, oldest removed)
 //   LIQUIDSOAP_HOST/PORT  Liquidsoap's telnet server (default 127.0.0.1:1234, see chips-voice/googleTextToSpeech1/radio.liq)
+//   ICECAST_STATUS_URL  Icecast's status-json.xsl, used by the virtual host to see what is playing (default http://127.0.0.1:8000/status-json.xsl)
+//   ICECAST_MOUNT / ICECAST_LIVE_MOUNT  the listener mount (/stream) and the live DJ mount (/live)
+//   HOST_POLL_SECONDS   how often the virtual host looks at what is playing (default 2)
 //   LIQUIDSOAP_QUEUE    queue for normal clips (default announce); LIQUIDSOAP_LIVE_QUEUE for preempting ones (default announce_live)
 //
 // Per item: download the audio, apply the requested effect with ffmpeg (the Chips Voice presets, e.g. "underground"; a failed
@@ -16,6 +19,7 @@ import net from "node:net";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { createHostLoop, icecastReaders } from "./host.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -62,27 +66,33 @@ export function createDaemon({ site, key, dir, fetchImpl = fetch, command, apply
     for (const old of files.slice(keep)) fs.rmSync(path.join(dir, old.f), { force: true });
   }
 
-  // Handles at most one item. Returns "idle", "played" or "failed"; throws only when the site cannot be reached.
+  // Fetches an item's audio, applies its effect, keeps a copy, and puts it on air when it is meant for air.
+  // item: { id, title, audioUrl, fx?, play, preempt }
+  async function deliver(item) {
+    const res = await call(item.audioUrl);
+    let audio = Buffer.from(await res.arrayBuffer());
+    let ext = (res.headers.get("content-type") || "").includes("mpeg") ? "mp3" : "wav";
+    if (item.fx && applyFx) {
+      try { audio = Buffer.from(await applyFx(audio, item.fx)); ext = "mp3"; } catch (err) { log(`effect "${typeof item.fx === "string" ? item.fx : "custom"}" failed, playing the clip unprocessed: ${err.message}`); }
+    }
+    const file = path.resolve(dir, `${item.id}.${ext}`);
+    fs.writeFileSync(file, audio);
+    if (item.play) {
+      const reply = await command(`${item.preempt ? "announce_live" : "announce"}.push ${file}`);
+      log(`on air: ${item.title.slice(0, 60)} (${reply})`);
+    } else {
+      log(`stored: ${item.title.slice(0, 60)}`);
+    }
+    prune();
+  }
+
+  // Handles at most one queued item. Returns "idle", "played" or "failed"; throws only when the site cannot be reached.
   async function tick() {
     const { item } = await (await call("/api/station/next")).json();
     if (!item) return "idle";
     try {
-      const res = await call(item.audioUrl);
-      let audio = Buffer.from(await res.arrayBuffer());
-      let ext = (res.headers.get("content-type") || "").includes("mpeg") ? "mp3" : "wav";
-      if (item.fx && applyFx) {
-        try { audio = Buffer.from(await applyFx(audio, item.fx)); ext = "mp3"; } catch (err) { log(`effect "${typeof item.fx === "string" ? item.fx : "custom"}" failed, playing the clip unprocessed: ${err.message}`); }
-      }
-      const file = path.resolve(dir, `${item.id}.${ext}`);
-      fs.writeFileSync(file, audio);
-      if (item.play) {
-        const reply = await command(`${item.preempt ? "announce_live" : "announce"}.push ${file}`);
-        log(`on air: ${item.title.slice(0, 60)} (${reply})`);
-      } else {
-        log(`stored: ${item.title.slice(0, 60)}`);
-      }
+      await deliver(item);
       await ack(item.id, "played");
-      prune();
       return "played";
     } catch (err) {
       log(`failed: ${err.message}`);
@@ -91,7 +101,10 @@ export function createDaemon({ site, key, dir, fetchImpl = fetch, command, apply
     }
   }
 
-  return { tick };
+  // JSON calls to the site for other loops (the virtual host).
+  const api = async (pathname, body) => (await call(pathname, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json();
+
+  return { tick, deliver, api };
 }
 
 async function main() {
@@ -108,6 +121,12 @@ async function main() {
     site, key, dir: path.resolve(process.env.STATION_DIR || "clips"), applyFx, keep: Number(process.env.KEEP_FILES) || 200,
     command: (cmd) => liquidsoapCommand(cmd.replace(/^announce_live\./, `${liveQueue}.`).replace(/^announce\./, `${queue}.`), live),
   });
+  // The virtual host: switched on and configured from the site; this loop only runs the station's half of it.
+  const icecast = icecastReaders({ url: process.env.ICECAST_STATUS_URL || "http://127.0.0.1:8000/status-json.xsl", mount: process.env.ICECAST_MOUNT || "/stream", liveMount: process.env.ICECAST_LIVE_MOUNT || "/live" });
+  const hostLoop = createHostLoop({ api: daemon.api, nowPlaying: icecast.nowPlaying, isLive: icecast.isLive, deliver: daemon.deliver });
+  const hostEvery = Math.max(1, Number(process.env.HOST_POLL_SECONDS) || 2) * 1000;
+  (async () => { for (;;) { await hostLoop.tick(); await new Promise((r) => setTimeout(r, hostEvery)); } })();
+
   const every = Math.max(1, Number(process.env.POLL_SECONDS) || 5) * 1000;
   let wait = every;
   console.log(`station daemon: polling ${site} every ${every / 1000}s`);
