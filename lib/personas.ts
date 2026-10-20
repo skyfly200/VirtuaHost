@@ -15,38 +15,26 @@ export interface Persona {
   /** Example lines with {artist} / {title}, usable as "say verbatim" text or as examples of the voice. */
   templates: string[];
   stationIds: string[];
+  /** One emoji shown on the persona's card. */
+  emoji?: string;
+  /** Vibe and genre words, for finding and filtering ("jazz", "grumpy", "morning"). */
+  tags: string[];
+  /** The persona's catchphrase or slogan. */
+  tagline?: string;
+  /** A line added to a link at different times of day. */
+  timeLines?: { morning?: string; afternoon?: string; evening?: string; night?: string };
+  /** Promo and event lines. */
+  promos: string[];
+  /** Ways to end a show or a break. */
+  signOffs: string[];
   builtin?: boolean;
   updatedAt?: string;
 }
 
 export const ID = /^[a-z0-9][a-z0-9-]{0,49}$/;
-const LIMITS = { name: 60, description: 300, instructions: 1500, tone: 100, voice: 60, speechModel: 100, line: 300, templates: 20, stationIds: 10 };
+const LIMITS = { name: 60, description: 300, instructions: 1500, tone: 100, voice: 60, speechModel: 100, line: 300, templates: 20, stationIds: 10, promos: 10, signOffs: 10, tags: 8, tag: 24, tagline: 120, emoji: 8 };
 
-export const BUILTIN_PERSONAS: Persona[] = [
-  {
-    id: "chip",
-    name: "CHIP (Way High Radio)",
-    description: "The old gravelly computer-captain of the haunted interdimensional pirate ship that carries Way High Radio.",
-    tone: "weathered, grumbly old sailor, dry, secretly fond, slow and unhurried",
-    instructions:
-      "You are CHIP, the old gravelly computer-captain who runs the transmitter on the haunted interdimensional pirate ship carrying Way High Radio. " +
-      "Speak slowly, grumble about the machinery and the fog, and be secretly fond of the crew and the music. Call listeners crew, shipmates or stowaways. " +
-      "Keep each link to one or two short sentences. Use ship and signal language. Never claim to be a real person and never make factual claims about real regulators. " +
-      'The tagline is "We\'re taking radio higher."',
-    templates: [
-      "That was {artist} with {title}. Smooth sailing. Mostly. The fog has been in the engine again.",
-      "{artist}, {title}. Don't ask me how the signal got through. I stopped asking years ago.",
-      "Ahoy, crew. That was {title} from {artist}. Next port: more music.",
-      "Hmph. {artist}. Not bad. Don't tell the others I said that.",
-    ],
-    stationIds: [
-      "This is Way High Radio. Broadcasting from a haunted ship adrift between dimensions. We are taking radio higher.",
-      "CHIP here, at the helm of the signal. You are tuned in, so you are crew. Way High Radio.",
-      "Don't touch that dial. The dial is cursed. Way High Radio.",
-    ],
-    builtin: true,
-  },
-];
+export { EXAMPLE_PERSONAS as BUILTIN_PERSONAS } from "./persona-library.js";
 
 const clean = (value: unknown, max: number): string =>
   typeof value === "string" ? value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ").replace(/[ \t]+/g, " ").trim().slice(0, max) : "";
@@ -65,8 +53,23 @@ export function sanitizePersona(raw: unknown): { persona: Omit<Persona, "id"> } 
   if (!instructions) return { error: "A persona needs instructions (who they are and how they talk)" };
   const voice = clean(r.voice, LIMITS.voice);
   const speechModel = clean(r.speechModel, LIMITS.speechModel);
+  const emoji = clean(r.emoji, LIMITS.emoji);
+  const tagline = clean(r.tagline, LIMITS.tagline);
+  const tags = Array.isArray(r.tags) ? [...new Set(r.tags.map((t) => clean(t, LIMITS.tag).toLowerCase()).filter(Boolean))].slice(0, LIMITS.tags) : [];
+  const tl = (r.timeLines && typeof r.timeLines === "object" ? r.timeLines : {}) as Record<string, unknown>;
+  const timeLines: NonNullable<Persona["timeLines"]> = {};
+  for (const part of ["morning", "afternoon", "evening", "night"] as const) {
+    const line = clean(tl[part], LIMITS.line);
+    if (line) timeLines[part] = ` ${line}`;
+  }
   return {
     persona: {
+      ...(emoji ? { emoji } : {}),
+      ...(tagline ? { tagline } : {}),
+      tags,
+      promos: lines(r.promos, LIMITS.promos),
+      signOffs: lines(r.signOffs, LIMITS.signOffs),
+      ...(Object.keys(timeLines).length ? { timeLines } : {}),
       name,
       description: clean(r.description, LIMITS.description),
       instructions,
@@ -84,8 +87,10 @@ export const PERSONA_SYSTEM_PROMPT =
   "You design on-air host personas for an online radio station. Reply with ONLY a JSON object, no prose and no code fences, with these keys: " +
   '"name" (short), "description" (one sentence), "instructions" (2 to 5 sentences written to the AI that will play this host: who they are, how they speak, ' +
   "what they call listeners, what to avoid, always ending with a reminder to keep each link to one or two short sentences and never claim to be a real person), " +
-  '"tone" (a few comma-separated delivery words, under 100 characters), "templates" (6 short example song-link lines using {artist} and {title}), ' +
-  '"stationIds" (3 short station ID lines). Spoken words only in the lines: no stage directions, emoji or markdown.';
+  '"tone" (a few comma-separated delivery words, under 100 characters), "emoji" (one emoji), "tags" (3 to 5 lowercase vibe or genre words), "tagline" (a short slogan), ' +
+  '"templates" (6 short example song-link lines using {artist} and {title}), "stationIds" (3 short station ID lines), "promos" (2 short promo lines), ' +
+  '"signOffs" (2 short sign-off lines) and "timeLines" (an object with a short sentence for each of morning, afternoon, evening and night). Lines may use {station} for the station name. ' +
+  "Spoken words only in the lines: no stage directions, emoji or markdown.";
 
 export function personaPrompt(description: string, station: string): string {
   return `Station: ${station}\nThe host I want: ${description}`;
@@ -102,3 +107,6 @@ export function parsePersonaReply(reply: string): { persona: Omit<Persona, "id">
     return { error: "The model's reply was not valid JSON. Try again." };
   }
 }
+
+// Personas saved before tags, promos and sign-offs existed still load: the missing lists are empty.
+export const normalizePersona = (p: Persona): Persona => ({ ...p, tags: p.tags ?? [], promos: p.promos ?? [], signOffs: p.signOffs ?? [] });

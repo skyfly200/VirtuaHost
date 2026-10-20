@@ -40,11 +40,38 @@ describe("personas", () => {
     expect(persona.templates).toEqual(["Next: {title}."]);
 
     const list = (await (await call("GET")).json()) as { personas: Array<{ id: string; builtin?: boolean }> };
-    expect(list.personas.map((p) => p.id)).toEqual(["chip", "night-owl-abc123"]);
+    expect(list.personas.map((p) => p.id)).toContain("chip");
+    expect(list.personas.filter((p) => !p.builtin).map((p) => p.id)).toEqual(["night-owl-abc123"]);
 
     expect((await call("PUT", persona.id, { name: "Night Owl 2", instructions: "Still sleepy." })).status).toBe(200);
     expect((await call("DELETE", persona.id)).status).toBe(204);
     expect((await call("GET", persona.id)).status).toBe(404);
+  });
+
+  it("ships well-formed example personas", async () => {
+    const { BUILTIN_PERSONAS, sanitizePersona } = await import("../../lib/personas.js");
+    expect(BUILTIN_PERSONAS.length).toBeGreaterThanOrEqual(10);
+    expect(new Set(BUILTIN_PERSONAS.map((p) => p.id)).size).toBe(BUILTIN_PERSONAS.length);
+    for (const p of BUILTIN_PERSONAS) {
+      expect(sanitizePersona(p), p.id).toHaveProperty("persona");
+      expect(p.templates.length, p.id).toBeGreaterThanOrEqual(5);
+      expect(p.stationIds.length, p.id).toBeGreaterThanOrEqual(3);
+      expect(p.tags.length, p.id).toBeGreaterThan(0);
+      expect(p.emoji, p.id).toBeTruthy();
+      expect(Object.keys(p.timeLines ?? {}), p.id).toEqual(["morning", "afternoon", "evening", "night"]);
+      for (const line of [...p.templates, ...p.stationIds, ...p.promos, ...p.signOffs, ...Object.values(p.timeLines ?? {})]) {
+        expect(line.replace(/\{(artist|title|station)\}/g, ""), `${p.id}: ${line}`).not.toMatch(/[{}\[\]]/);   // only known placeholders, no tags to read aloud
+        expect(line.length).toBeLessThanOrEqual(300);
+      }
+      expect(p.templates.some((l) => l.includes("{artist}") || l.includes("{title}")), p.id).toBe(true);
+    }
+  });
+
+  it("keeps the new fields when saving, and loads older personas without them", async () => {
+    const { sanitizePersona, normalizePersona } = await import("../../lib/personas.js");
+    const out = sanitizePersona({ name: "Zed", instructions: "x", emoji: "🎧", tags: ["Jazz", "jazz", " Chill "], tagline: "Hi", promos: ["Promo"], signOffs: ["Bye"], timeLines: { morning: "Morning!" } });
+    expect(out).toMatchObject({ persona: { emoji: "🎧", tags: ["jazz", "chill"], tagline: "Hi", promos: ["Promo"], signOffs: ["Bye"], timeLines: { morning: " Morning!" } } });
+    expect(normalizePersona({ id: "old", name: "Old", description: "", instructions: "x", tone: "", templates: [], stationIds: [] } as never)).toMatchObject({ tags: [], promos: [], signOffs: [] });
   });
 
   it("refuses to change a built-in persona and rejects an empty one", async () => {

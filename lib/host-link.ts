@@ -19,7 +19,7 @@ export async function composeLink(artist: string, title: string, config: HostCon
       note = `The writing model failed, so a template was used: ${(err as Error).message}`.slice(0, 200);
     }
   }
-  return { text: templateLine({ artist, title, station, hour: now.getHours(), rng, templates: persona?.templates }), source: "template", ...(note ? { note } : {}) };
+  return { text: templateLine({ artist, title, station, hour: now.getHours(), rng, templates: persona?.templates, timeLines: persona?.timeLines }), source: "template", ...(note ? { note } : {}) };
 }
 
 // Writes and voices the link, saving it as a clip. The station daemon plays it.

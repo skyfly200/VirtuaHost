@@ -15,7 +15,7 @@ vi.mock("../../lib/store.js", () => ({ getClip: vi.fn(async () => null), saveCli
 
 import { makeClip } from "../../lib/make-clip.js";
 import { sendToStation } from "../../lib/station-send.js";
-import { buildSchedule, nextRun, sanitizeWhen } from "../../lib/schedule.js";
+import { buildSchedule, nextRun, sanitizeWhen, type When } from "../../lib/schedule.js";
 import { listSchedules, saveSchedule } from "../../lib/schedule-store.js";
 import { runDueSchedules, GRACE_MS } from "../../lib/scheduler.js";
 
@@ -25,22 +25,22 @@ describe("nextRun", () => {
   it("handles once and intervals", () => {
     expect(nextRun({ type: "once", at: "2030-01-01T10:00:00Z" }, at("2030-01-01T09:00:00Z"))).toBe(at("2030-01-01T10:00:00Z"));
     expect(nextRun({ type: "once", at: "2030-01-01T10:00:00Z" }, at("2030-01-01T10:00:00Z"))).toBeNull();
-    const w = { type: "interval", everyMinutes: 30, startAt: "2030-01-01T10:00:00Z" } as const;
+    const w: When = { type: "interval", everyMinutes: 30, startAt: "2030-01-01T10:00:00Z" };
     expect(nextRun(w, at("2030-01-01T09:00:00Z"))).toBe(at("2030-01-01T10:00:00Z"));
     expect(nextRun(w, at("2030-01-01T10:00:00Z"))).toBe(at("2030-01-01T10:30:00Z"));
     expect(nextRun(w, at("2030-01-01T12:10:00Z"))).toBe(at("2030-01-01T12:30:00Z"));   // skips missed slots
   });
 
   it("runs daily at a local time, across a daylight-saving change", () => {
-    const w = { type: "daily", time: "07:30", days: [], tz: "America/New_York" } as const;
+    const w: When = { type: "daily", time: "07:30", days: [], tz: "America/New_York" };
     expect(nextRun(w, at("2030-03-09T00:00:00Z"))).toBe(at("2030-03-09T12:30:00Z"));   // EST (UTC-5)
     expect(nextRun(w, at("2030-03-09T13:00:00Z"))).toBe(at("2030-03-10T11:30:00Z"));   // clocks changed on the 10th: now EDT (UTC-4)
-    expect(nextRun({ ...w, tz: "Asia/Tokyo" }, at("2030-03-09T00:00:00Z"))).toBe(at("2030-03-08T22:30:00Z") + 24 * 3600_000);
+    expect(nextRun({ ...w, tz: "Asia/Tokyo" } as When, at("2030-03-09T00:00:00Z"))).toBe(at("2030-03-08T22:30:00Z") + 24 * 3600_000);
   });
 
   it("limits daily runs to chosen weekdays", () => {
     // 2030-01-07 is a Monday; ask for Wednesday (3) and Friday (5) at 09:00 UTC
-    const w = { type: "daily", time: "09:00", days: [3, 5], tz: "UTC" } as const;
+    const w: When = { type: "daily", time: "09:00", days: [3, 5], tz: "UTC" };
     expect(nextRun(w, at("2030-01-07T00:00:00Z"))).toBe(at("2030-01-09T09:00:00Z"));
     expect(nextRun(w, at("2030-01-09T09:00:00Z"))).toBe(at("2030-01-11T09:00:00Z"));
   });

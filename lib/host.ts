@@ -84,6 +84,8 @@ export interface LineContext {
   rng?: () => number;
   /** The persona's example lines, when it has any. */
   templates?: string[];
+  /** The persona's time-of-day lines; the defaults are used when it has none. */
+  timeLines?: Partial<Record<string, string>>;
 }
 
 // A link from the example lines; 30% of the time a time-of-day line is added, like the original script.
@@ -91,7 +93,7 @@ export function templateLine(ctx: LineContext): string {
   const rng = ctx.rng ?? Math.random;
   const pool = ctx.templates && ctx.templates.length ? ctx.templates : TEMPLATES;
   let line = fill(pool[Math.floor(rng() * pool.length)], { artist: ctx.artist, title: ctx.title, station: ctx.station });
-  if (rng() < 0.3) line += TIME_LINES[daypart(ctx.hour)] ?? "";
+  if (rng() < 0.3) line += fill(ctx.timeLines?.[daypart(ctx.hour)] ?? TIME_LINES[daypart(ctx.hour)] ?? "", { artist: ctx.artist, title: ctx.title, station: ctx.station });
   return line;
 }
 
