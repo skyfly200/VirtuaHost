@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { activeProvider, writeScript, speak, NO_PROVIDER_MESSAGE } from "../ai.js";
-import { pickTextModel, pickSpeechModel, speechModels, discoverSpeechModels, type SpeechModel } from "../openrouter.js";
+import { pickTextModel, pickSpeechModel, speechModels, defaultSpeechModel, discoverSpeechModels, type SpeechModel } from "../openrouter.js";
+import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "../cues.js";
 import { cleanTone, findFormat } from "../formats.js";
+import { getPersona } from "../persona-store.js";
 import { saveClip } from "../store.js";
 import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
 import { checkAuth } from "../auth.js";
@@ -46,7 +48,14 @@ export async function handleGenerate(req: Request): Promise<Response> {
   const provider = activeProvider();
   if (!provider) return Response.json({ error: NO_PROVIDER_MESSAGE }, { status: 503 });
 
-  const tone = cleanTone(body.tone);
+  let persona;
+  if (body.persona !== undefined) {
+    if (typeof body.persona !== "string") return Response.json({ error: "persona must be an id" }, { status: 400 });
+    persona = await getPersona(body.persona);
+    if (!persona) return Response.json({ error: `Unknown persona "${body.persona.slice(0, 50)}"` }, { status: 400 });
+  }
+
+  const tone = cleanTone(body.tone ?? persona?.tone);
   if (body.tone !== undefined && typeof body.tone !== "string") {
     return Response.json({ error: "tone must be text" }, { status: 400 });
   }
@@ -54,7 +63,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   if (body.format && !format) {
     return Response.json({ error: `Unknown format "${String(body.format).slice(0, 40)}"` }, { status: 400 });
   }
-  const voice = typeof body.voice === "string" ? body.voice.trim().slice(0, 60) : undefined;
+  const voice = typeof body.voice === "string" ? body.voice.trim().slice(0, 60) : persona?.voice;
 
   // Models can be chosen per request only when OpenRouter is the provider.
   let textModel: string | undefined;
@@ -62,7 +71,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   if (provider === "openrouter") {
     const t = pickTextModel(typeof body.textModel === "string" ? body.textModel : undefined);
     if ("error" in t) return Response.json({ error: t.error }, { status: 400 });
-    const requestedSpeech = typeof body.speechModel === "string" ? body.speechModel : undefined;
+    const requestedSpeech = typeof body.speechModel === "string" ? body.speechModel : persona?.speechModel;
     // Models OpenRouter lists but the configured list lacks are looked up only when asked for.
     const listed = !requestedSpeech || speechModels().some((m) => m.id === requestedSpeech);
     const sp = pickSpeechModel(requestedSpeech, listed ? [] : await discoverSpeechModels());
@@ -75,9 +84,15 @@ export async function handleGenerate(req: Request): Promise<Response> {
 
   let scriptText: string;
   try {
-    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format })).text : input;
+    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format, persona: persona?.instructions })).text : input;
   } catch (err) {
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
+  }
+
+  // The writing step on its own: nothing is spoken, stored or sent anywhere.
+  if (body.textOnly === true) {
+    if (mode !== "ai") return Response.json({ error: 'textOnly needs mode "ai"' }, { status: 400 });
+    return Response.json({ textOnly: true, scriptText, provider, ...(textModel ? { textModel } : {}) });
   }
 
   const stripped = stripSfxTags(scriptText);
@@ -86,11 +101,29 @@ export async function handleGenerate(req: Request): Promise<Response> {
     return Response.json({ error: "The text contains only sound effect tags; add some words to speak" }, { status: 400 });
   }
 
+  // Inline cues like [laughs] are only performed by some models; others would read the brackets aloud.
+  const cues = provider === "openrouter" ? cuesFor((speechModel ?? defaultSpeechModel()).id) : GEMINI_DIRECT_CUES;
+  let cueTagsRemoved = false;
+  if (cues.tags === false) {
+    const plain = stripDeliveryTags(scriptText);
+    cueTagsRemoved = plain.removed;
+    if (plain.removed) scriptText = plain.text;
+    if (!scriptText) return Response.json({ error: "The text contains only delivery tags; add some words to speak" }, { status: 400 });
+  }
+  const toneIgnored = Boolean(tone) && cues.tone === "none";
+
   let spoken;
   try {
     spoken = await speak({ text: scriptText, provider, speechModel, voice, tone });
   } catch (err) {
     return Response.json({ error: `Speech synthesis failed: ${(err as Error).message}` }, { status: 502 });
+  }
+
+  if (body.preview === true) {
+    return Response.json({
+      preview: true, scriptText, audio: spoken.audio.toString("base64"), mimeType: spoken.mimeType, voice: spoken.voice, provider, speechModel: spoken.model,
+      ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}),
+    });
   }
 
   const id = randomUUID();
@@ -128,7 +161,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   }
 
   return Response.json(
-    { id, scriptText, audioUrl: `/api/clips/${id}`, provider, speechModel: spoken.model, ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(handoff ? { handoff } : {}) },
+    { id, scriptText, audioUrl: `/api/clips/${id}`, provider, speechModel: spoken.model, ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}), ...(handoff ? { handoff } : {}) },
     { status: 201 },
   );
 }

@@ -31,15 +31,25 @@ export interface WriteOptions {
   textModel?: string;
   tone?: string;
   format?: DjFormat;
+  /** A persona's character brief, from lib/personas.ts. */
+  persona?: string;
 }
 
 export async function writeScript(options: WriteOptions): Promise<{ text: string; model: string }> {
-  const system = buildSystemPrompt({ station: process.env.STATION_NAME || "the station", tone: options.tone, format: options.format });
+  const system = buildSystemPrompt({ station: process.env.STATION_NAME || "the station", tone: options.tone, format: options.format, persona: options.persona });
   if (options.provider === "openrouter") {
     const model = options.textModel ?? openrouter.defaultTextModel();
     return { text: await openrouter.chat({ model, system, prompt: options.prompt }), model };
   }
   return { text: await writeDjLine(options.prompt, system), model: "gemini-3.6-flash" };
+}
+
+// A free-form completion (used to draft personas): the same two providers as writeScript, with a larger reply budget.
+export async function complete(options: { system: string; prompt: string; provider: ProviderName; textModel?: string }): Promise<string> {
+  if (options.provider === "openrouter") {
+    return openrouter.chat({ model: options.textModel ?? openrouter.defaultTextModel(), system: options.system, prompt: options.prompt, maxTokens: 1200 });
+  }
+  return writeDjLine(options.prompt, options.system);
 }
 
 export interface SpeakOptions {

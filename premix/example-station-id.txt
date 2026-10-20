@@ -1,0 +1,3 @@
+# tone: upbeat, late-night
+# loudness: -16
+[sfx:chime] You're listening to the station. [sfx:whoosh over] Free signal, good music, all night long. [sfx:ding]

@@ -15,6 +15,8 @@
 // documented in public summaries, and `google/*` models are asked for raw 24 kHz PCM. Errors from OpenRouter are passed
 // through to the caller so a wrong voice or model name is visible.
 
+import { cuesFor } from "./cues.js";
+
 const DEFAULT_TEXT_MODELS = ["openai/gpt-4o-mini", "anthropic/claude-3.5-haiku", "meta-llama/llama-3.1-8b-instruct"];
 // Providers like Kokoro reject a request with no voice, so every built-in model carries one (the UI can still override it).
 const DEFAULT_SPEECH_MODELS = [
@@ -167,11 +169,14 @@ export interface OpenRouterSpeech {
 // Google's speech models are asked for raw PCM (their native output); the others for MP3.
 export const speechFormat = (model: string): "pcm" | "mp3" => (model.startsWith("google/") ? "pcm" : "mp3");
 
-// How tone reaches the voice: Gemini speech models take a natural-language direction in the text itself; other models
-// take an `instructions` field.
+// How tone reaches the voice depends on the model (lib/cues.ts): Gemini speech models take a natural-language direction in
+// the text itself, gpt-4o-mini-tts takes an `instructions` field, and fixed-voice models (Kokoro, Voxtral) take nothing.
 export function applyTone(model: string, text: string, tone: string): { input: string; instructions?: string } {
   if (!tone) return { input: text };
-  return model.startsWith("google/") ? { input: `Say in a ${tone} tone: ${text}` } : { input: text, instructions: `Speak in a ${tone} tone.` };
+  const mode = cuesFor(model).tone;
+  if (mode === "text") return { input: `Say in a ${tone} tone: ${text}` };
+  if (mode === "instructions") return { input: text, instructions: `Speak in a ${tone} tone.` };
+  return { input: text };
 }
 
 export async function speech(options: { model: string; voice?: string; text: string; tone?: string }): Promise<OpenRouterSpeech> {

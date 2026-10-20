@@ -176,3 +176,17 @@ describe("speech model discovery", () => {
     expect((await allSpeechModels()).length).toBeGreaterThan(1);
   });
 });
+
+describe("delivery cues by model", () => {
+  it("sends tone the way each model takes it, or not at all", async () => {
+    const { cuesFor, stripDeliveryTags } = await import("../../lib/cues.js");
+    expect(cuesFor("google/gemini-3.1-flash-tts-preview")).toMatchObject({ tone: "text", tags: true });
+    expect(cuesFor("openai/gpt-4o-mini-tts-2025-12-15")).toMatchObject({ tone: "instructions", tags: false });
+    expect(cuesFor("hexgrad/kokoro-82m")).toMatchObject({ tone: "none", tags: false });
+    expect(cuesFor("some/new-tts")).toMatchObject({ tags: "unknown", basis: "unknown" });
+    expect(applyTone("openai/gpt-4o-mini-tts-2025-12-15", "Hi", "warm")).toEqual({ input: "Hi", instructions: "Speak in a warm tone." });
+    expect(applyTone("hexgrad/kokoro-82m", "Hi", "warm")).toEqual({ input: "Hi" });
+    expect(stripDeliveryTags("Hello [laughs] world, [short pause] ok.")).toEqual({ text: "Hello world, ok.", removed: true });
+    expect(stripDeliveryTags("No tags here.")).toEqual({ text: "No tags here.", removed: false });
+  });
+});
