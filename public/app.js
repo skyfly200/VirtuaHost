@@ -5,6 +5,8 @@ import { mountGenerate } from './generate/generate.js';
 import { mountLab } from './lab/lab.js';
 import { mountPersonas } from './personas/personas.js';
 import { mountLibrary } from './library/library.js';
+import { mountFlier } from './flier/flier.js';
+import { mountSchedules } from './schedules/schedules.js';
 import { mountPanel, unmountPanel } from './panel/panel.js';
 
 const app = $('#app');
@@ -75,14 +77,17 @@ function showApp(credential, options) {
   const tabs = [
     { id: 'generate', label: 'Generate', on: true },
     { id: 'personas', label: 'Personas', on: true },
+    { id: 'flier', label: 'Flier', on: true },
+    { id: 'schedules', label: 'Schedules', on: true },
     { id: 'library', label: 'Library', on: true },
-    { id: 'lab', label: 'Voice Lab', on: features.voice, needs: 'a Chips Voice server', vars: 'VOICE_URL and VOICE_KEY',
-      what: 'Try voices, models, tone, effects and sound effects side by side, and audition host personas such as CHIP.' },
+    { id: 'lab', label: 'Voice Lab', on: true },
     { id: 'stations', label: 'Stations', on: features.hub, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
       what: 'Control every station on one screen: now playing, skip, volume, playlists, broadcasts at the same moment, and host settings.' },
   ];
   const panel = h('div');
   let leave = () => {};
+  // Other tabs can send you somewhere (for example a persona's "Use in Generate").
+  window.addEventListener('vh-tab', (e) => { if (tabs.some((t) => t.id === e.detail && t.on)) select(e.detail); });
 
   const tabButtons = tabs.map((t) => h('button', { type: 'button', role: 'tab', onclick: () => select(t.id) }, t.label, t.on ? null : h('span', { class: 'off' }, 'off')));
   const select = async (id) => {
@@ -93,8 +98,10 @@ function showApp(credential, options) {
     if (!tab.on) return clear(panel, offCard(tab));
     if (id === 'generate') await mountGenerate(panel, clientFor('/api', credential));
     if (id === 'personas') await mountPersonas(panel, clientFor('/api', credential));
+    if (id === 'schedules') await mountSchedules(panel, clientFor('/api', credential));
+    if (id === 'flier') await mountFlier(panel, clientFor('/api', credential));
     if (id === 'library') await mountLibrary(panel, clientFor('/api', credential));
-    if (id === 'lab') await mountLab(panel, clientFor('/api/voice', credential));
+    if (id === 'lab') await mountLab(panel, clientFor('/api', credential));
     if (id === 'stations') { leave = unmountPanel; await mountPanel(panel, clientFor('/api/hub', credential)); }
   };
 

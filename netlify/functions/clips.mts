@@ -4,5 +4,5 @@ import { handleClips } from "../../lib/handlers/clips.js";
 export default (req: Request, context: Context) => handleClips(req, context.params.id);
 
 export const config: Config = {
-  path: ["/api/clips", "/api/clips/:id"],
+  path: ["/api/clips", "/api/clips/:id", "/api/clips/:id/meta"],
 };

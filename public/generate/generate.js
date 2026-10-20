@@ -1,11 +1,14 @@
 // Generate tab: make a clip with the AI (OpenRouter or Gemini). Pick what kind of line it is, the tone, the models and the voice.
 import { h, clear, toast, fmtDate, audioUrl } from '../shared/kit.js';
-import { parseTags, mix, toWav, effectNames, RATE } from './mixer.js';
+import { effectNames } from './mixer.js';
+import { createSpeaker } from '../shared/speaker.js';
 
 const GEMINI_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Zephyr', 'Orus'];
 const OTHER = '__other';
 const PREF_KEY = 'djPrefs';
 
+// A line sent here from another tab (a persona's sample), used once.
+function takePrefill() { try { const t = sessionStorage.getItem('prefillText') || ''; sessionStorage.removeItem('prefillText'); return t; } catch { return ''; } }
 const loadPrefs = () => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch { return {}; } };
 const savePrefs = (prefs) => { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch { /* storage blocked */ } };
 
@@ -23,28 +26,15 @@ export async function mountGenerate(root, api) {
   let personas = [];
   try { personas = (await api.get('/personas')).personas; } catch { /* the picker is optional */ }
 
-  // Sounds from the connected cloud library (OwnCloud / Google Drive), usable as [sfx:name] and [music:name].
-  const library = { sfx: [], music: [] };
-  if (options.features && options.features.library && (options.features.library.sfx || options.features.library.music)) {
-    try { for (const item of (await api.get('/library')).items) (library[item.kind] || []).push(item); } catch { /* built-in effects still work */ }
-  }
-  const libraryItem = (kind, name) => library[kind].find((i) => i.name === name);
-  const sampleCache = new Map();
-  async function librarySamples(kind, name) {
-    const key = `${kind}/${name}`;
-    if (!sampleCache.has(key)) {
-      const item = libraryItem(kind, name);
-      const blob = await api.get(`/library/${encodeURIComponent(item.source)}/${kind}/${encodeURIComponent(item.name)}`, { blob: true });
-      sampleCache.set(key, await decodeToSamples(new Uint8Array(await blob.arrayBuffer())));
-    }
-    return sampleCache.get(key);
-  }
+  // Speaking and mixing (built-in effects, the cloud library, music beds) is shared with Voice Lab: public/shared/speaker.js.
+  const speaker = createSpeaker(api, options.features);
+  const library = await speaker.loadLibrary();
 
   const prefs = loadPrefs();
   const state = {
     mode: prefs.mode === 'ai' ? 'ai' : 'say', format: prefs.format || '', persona: personas.some((p) => p.id === prefs.persona) ? prefs.persona : '', tone: prefs.tone || '',
     textModel: prefs.textModel || options.models.defaultText, speechModel: prefs.speechModel || options.models.defaultSpeech, voice: prefs.voice || '',
-    textCustom: '', speechCustom: '', text: '',
+    textCustom: '', speechCustom: '', text: takePrefill(),
   };
   const persist = () => savePrefs({ mode: state.mode, format: state.format, persona: state.persona, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice });
   const formatOf = () => options.formats.find((f) => f.id === state.format);
@@ -154,12 +144,6 @@ export async function mountGenerate(root, api) {
   // mixed in here in the browser, so the draft you hear is the file that gets saved.
   const draftBox = h('div');
   let draft = null;
-  const bytesOf = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  async function decodeToSamples(bytes) {
-    const buffer = await new OfflineAudioContext(1, 1, RATE).decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-    return buffer.getChannelData(0);
-  }
-
   const writerBase = () => ({
     ...(state.persona ? { persona: state.persona } : {}), ...(state.format ? { format: state.format } : {}), ...(state.tone.trim() ? { tone: state.tone.trim() } : {}),
     ...(options.models.choosable ? (() => { const m = chosen('textModel', 'textCustom'); return m ? { textModel: m } : {}; })() : {}),
@@ -212,45 +196,16 @@ export async function mountGenerate(root, api) {
   async function makeAudio(value, meta) {
     status.classList.remove('bad');
     status.textContent = 'Generating a preview (this calls the speech service live and can take a few seconds)...';
-    const base = { preview: true, mode: 'say', ...(state.persona ? { persona: state.persona } : {}) };
+    const base = { ...(state.persona ? { persona: state.persona } : {}) };
     if (state.tone.trim()) base.tone = state.tone.trim();
     if (state.voice.trim()) base.voice = state.voice.trim();
     if (options.models.choosable) {
       const speechModel = chosen('speechModel', 'speechCustom');
       if (speechModel) base.speechModel = speechModel;
     }
-    const pieces = parseTags(value);
-    const tagged = pieces.filter((p) => p.type !== 'speech');
-    for (const p of tagged) {
-      if (p.type === 'sfx' && !effectNames().includes(p.name) && !libraryItem('sfx', p.name)) throw new Error(`Unknown sound effect "${p.name}". Available: ${[...effectNames(), ...library.sfx.map((i) => i.name)].join(', ')}`);
-      if (p.type === 'music' && !libraryItem('music', p.name)) throw new Error(library.music.length ? `Unknown music "${p.name}". Available: ${library.music.map((i) => i.name).join(', ')}` : 'No music library is connected (see docs/LIBRARY.md).');
-    }
-    if (!pieces.some((p) => p.type === 'speech')) throw new Error('Add some words to speak as well as the sound effects.');
-
-    const results = [];
-    const speechCount = pieces.filter((p) => p.type === 'speech').length;
-    for (const piece of pieces) {
-      if (piece.type !== 'speech') { results.push(piece); continue; }
-      status.textContent = `Generating speech${speechCount > 1 ? ` (${results.filter((r) => r.type === 'speech').length + 1} of ${speechCount})` : ''}...`;
-      results.push({ type: 'speech', data: await api.post('/generate', { ...base, text: piece.text }) });
-    }
-    const first = results.find((r) => r.type === 'speech').data;
-    let blob;
-    if (!tagged.length) {
-      blob = new Blob([bytesOf(first.audio)], { type: first.mimeType });
-    } else {
-      status.textContent = 'Mixing...';
-      const items = [];
-      for (const r of results) {
-        if (r.type === 'speech') items.push({ kind: 'speech', samples: await decodeToSamples(bytesOf(r.data.audio)) });
-        else if (r.type === 'music') items.push({ kind: 'music', vol: r.vol, samples: await librarySamples('music', r.name) });
-        else items.push({ kind: 'sfx', name: r.name, vol: r.vol, over: r.over, wait: r.wait, ...(effectNames().includes(r.name) ? {} : { samples: await librarySamples('sfx', r.name) }) });
-      }
-      blob = new Blob([toWav(mix(items))], { type: 'audio/wav' });
-    }
-    const tagText = (r) => `[${r.type}:${r.name}${r.over ? ' over' : ''}${r.vol !== (r.type === 'music' ? 0.25 : 1) ? ` vol=${r.vol}` : ''}${r.wait ? ` wait=${r.wait}` : ''}]`;
-    const scriptText = tagged.length ? results.map((r) => (r.type === 'speech' ? r.data.scriptText : tagText(r))).join(' ') : first.scriptText;
-    showDraft({ blob, scriptText, input: meta.input, mode: meta.mode, textModel: meta.textModel, first, effects: tagged.map((p) => p.name) });
+    const out = await speaker.render(value, base, { onProgress: (m) => { status.textContent = m; } });
+    const first = out.first;
+    showDraft({ blob: out.blob, scriptText: out.scriptText, input: meta.input, mode: meta.mode, textModel: meta.textModel, first, effects: out.effects });
     status.textContent = `Preview ready${first.speechModel ? ` (${first.speechModel}${meta.textModel ? `, written by ${meta.textModel}` : ''})` : ''}. Listen, then save it or discard it.${first.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${first.toneIgnored ? ' This model ignores tone.' : ''}`;
   }
 
@@ -259,11 +214,19 @@ export async function mountGenerate(root, api) {
     draft = { ...next, url: URL.createObjectURL(next.blob) };
     const player = h('audio', { controls: true, src: draft.url });
     const saveStatus = h('span', { class: 'small muted', role: 'status' });
+    // Details that travel with the clip to other systems (docs/CLIP-METADATA.md); all optional.
+    const detail = { title: '', kind: state.format || '', expires: '', tags: '' };
+    const field = (label, key, props = {}) => h('label', { class: 'field' }, label, h('input', { ...props, value: detail[key], oninput: (e) => { detail[key] = e.target.value; } }));
+    const details = h('details', { class: 'tips' }, h('summary', {}, 'Details for other systems (title, kind, expiry)'),
+      h('div', { class: 'grid cols' }, field('Title', 'title', { placeholder: 'shown by players and now-playing' }), field('Kind', 'kind', { placeholder: 'drop, promo, station-id...' }),
+        field('Tags (comma separated)', 'tags'), field('Do not play after', 'expires', { type: 'datetime-local' })),
+      h('p', { class: 'muted small' }, 'These are written into the audio file and saved with the clip. A clip is never queued, scheduled or played after its expiry.'));
     const saveButton = h('button', { class: 'primary', type: 'button', onclick: async () => {
       saveButton.disabled = true; saveStatus.classList.remove('bad'); saveStatus.textContent = 'Saving...';
       try {
         const f = draft.first;
-        const meta = { mode: draft.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: draft.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects };
+        const meta = { mode: draft.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: draft.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects,
+          info: { ...(detail.title.trim() ? { title: detail.title.trim() } : {}), ...(detail.kind.trim() ? { kind: detail.kind.trim() } : {}), ...(detail.tags.trim() ? { tags: detail.tags.split(',').map((t) => t.trim()) } : {}), ...(detail.expires ? { expiresAt: new Date(detail.expires).toISOString() } : {}), ...(state.persona ? { persona: state.persona } : {}) } };
         const saved = await api.request('POST', '/clips', { raw: draft.blob, contentType: draft.blob.type, headers: { 'x-clip-meta': encodeURIComponent(JSON.stringify(meta)) } });
         toast(saved.handoff ? (saved.handoff.sent ? 'Saved and sent to the station.' : `Saved. Station hand-off failed: ${saved.handoff.error}`) : 'Saved to the library.', saved.handoff && !saved.handoff.sent ? 'error' : 'info');
         discard(); state.text = ''; if (textArea) textArea.value = ''; status.textContent = '';
@@ -273,7 +236,7 @@ export async function mountGenerate(root, api) {
     clear(draftBox, h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'preview, not saved yet'), draft.effects.length ? h('span', { class: 'chip' }, `effects: ${[...new Set(draft.effects)].join(', ')}`) : null, h('span', {}, `${(draft.blob.size / 1024).toFixed(0)} KB`)),
       h('p', { class: 'clip-script' }, draft.scriptText),
-      player,
+      player, details,
       h('div', { class: 'row' }, saveButton, h('button', { type: 'button', onclick: discard }, 'Discard'), saveStatus)));
     player.play().catch(() => {});
   }
@@ -286,12 +249,26 @@ export async function mountGenerate(root, api) {
       clear(clipsBox, clips.length ? clips.map((clip) => h('div', { class: 'clip' },
         h('div', { class: 'row small muted' },
           h('span', { class: 'chip' }, clip.mode), h('span', {}, fmtDate(Date.parse(clip.createdAt))), h('span', {}, clip.voice),
-          clip.speechModel ? h('span', { class: 'chip' }, clip.speechModel) : null, clip.tone ? h('span', { class: 'chip' }, clip.tone) : null),
+          clip.speechModel ? h('span', { class: 'chip' }, clip.speechModel) : null, clip.tone ? h('span', { class: 'chip' }, clip.tone) : null,
+          clip.info && clip.info.kind ? h('span', { class: 'chip' }, clip.info.kind) : null, expiryChip(clip)),
         h('p', { class: 'clip-script' }, clip.scriptText),
-        playButton(clip.id))) : h('p', { class: 'empty' }, 'No clips yet. Generate one above.'));
+        h('div', { class: 'row' }, playButton(clip.id), ...(expired(clip) ? [] : sendButtons(clip.id))))) : h('p', { class: 'empty' }, 'No clips yet. Generate one above.'));
     } catch (err) {
       clear(clipsBox, h('p', { class: 'empty' }, `Failed to load clips: ${err.message}`));
     }
+  }
+  // A clip with an expiry is never sent, queued or played after it (the site and the station both check).
+  const expired = (clip) => Boolean(clip.info && clip.info.expiresAt && Date.parse(clip.info.expiresAt) <= Date.now());
+  const expiryChip = (clip) => (clip.info && clip.info.expiresAt
+    ? h('span', { class: 'chip', title: clip.info.expiresAt, style: expired(clip) ? 'opacity:.6;text-decoration:line-through' : '' }, expired(clip) ? 'expired' : `expires ${fmtDate(Date.parse(clip.info.expiresAt))}`) : null);
+  // With STATION_MODE=queue a saved clip can be sent to the station daemon, to go on air now or just to be kept there.
+  function sendButtons(id) {
+    if (!(options.features && options.features.stationQueue)) return [];
+    const send = (play) => async (e) => {
+      const button = e.currentTarget; button.disabled = true;
+      try { await api.post('/queue', { clipId: id, play }); toast(play ? 'Queued to go on air.' : 'Queued for the station library.', 'info'); } catch (err) { toast(err.message, 'error'); } finally { button.disabled = false; }
+    };
+    return [h('button', { type: 'button', onclick: send(true) }, 'Send to air'), h('button', { type: 'button', onclick: send(false) }, 'Send to station library')];
   }
   // An <audio src> cannot send the sign-in, so the audio is fetched first and played from memory.
   function playButton(id) {

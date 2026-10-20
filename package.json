@@ -7,7 +7,8 @@
     "build": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
-    "hash-password": "node scripts/hash-password.mjs"
+    "hash-password": "node scripts/hash-password.mjs",
+    "test:daemon": "node --test station-daemon/test/*.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.19.0",

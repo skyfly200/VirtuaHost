@@ -3,6 +3,7 @@ import { activeProvider, NO_PROVIDER_MESSAGE } from "../ai.js";
 import { textModels, allSpeechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
 import { cuesFor, GEMINI_DIRECT_CUES } from "../cues.js";
 import { features } from "./proxy.js";
+import { queueMode } from "../station-send.js";
 import { libraryFeatures } from "../library/index.js";
 import { TONES, FORMATS, MAX_TONE_LENGTH, fillStation } from "../formats.js";
 
@@ -20,7 +21,7 @@ export async function handleOptions(req: Request): Promise<Response> {
 
   return Response.json({
     provider,
-    features: { ...features(), library: libraryFeatures() },
+    features: { ...features(), library: libraryFeatures(), stationQueue: queueMode() },
     ...(provider ? {} : { warning: NO_PROVIDER_MESSAGE }),
     station,
     // Models can only be chosen with OpenRouter; with Gemini direct the models are fixed.

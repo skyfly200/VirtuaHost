@@ -1,3 +1,5 @@
+import type { ClipInfo } from "./clip-info.js";
+
 export type GenerateMode = "say" | "ai";
 
 export interface GenerateRequest {
@@ -24,6 +26,8 @@ export interface GenerateRequest {
   persona?: string;
   /** mode "ai" only: return the written line and stop, before any speech service is called. The UI shows it for editing first. */
   textOnly?: boolean;
+  /** Metadata to attach to the clip (title, kind, event, expiresAt, ...); saved with it and written into the audio file. */
+  info?: unknown;
   /** Return the audio without saving it or sending it to the station; the Generate tab uses this to preview a clip. */
   preview?: boolean;
   /** Audio treatment or voice changer the station applies on arrival. Defaults to STATION_FX. */
@@ -46,4 +50,6 @@ export interface ClipMetadata {
   format?: string;
   /** Sound effects mixed in before the clip was saved (Generate tab). */
   effects?: string[];
+  /** What other systems may want to know about the clip; also written into the audio file (lib/clip-info.ts). */
+  info?: ClipInfo;
 }

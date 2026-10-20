@@ -1,0 +1,17 @@
+[Unit]
+Description=VirtuaHost station daemon
+After=network-online.target liquidsoap.service
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/virtuahost
+Environment=SITE_URL=https://your-site.netlify.app
+Environment=STATION_KEY=change-me
+Environment=STATION_DIR=/var/lib/station-daemon/clips
+ExecStart=/usr/bin/node station-daemon/daemon.mjs
+Restart=always
+RestartSec=5
+User=radio
+
+[Install]
+WantedBy=multi-user.target

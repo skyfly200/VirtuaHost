@@ -68,11 +68,11 @@ Mark `LOGIN_USERS`, `SESSION_SECRET`, `ACCESS_KEY`, `OPENROUTER_API_KEY`, `GEMIN
 
 ## 5. Later: connect the radio side
 
-When the Chips Voice server and the hub are running (see `docs/SETUP.md` and `docs/HUB.md`), add these and redeploy; the two tabs turn on by themselves:
+Voice Lab, Personas, Flier, Schedules and Library need no extra server. To run several stations from one screen, run the hub (see `docs/HUB.md`), add these and redeploy; the Stations tab turns on by itself:
 
 | Variable | Value | Turns on |
 |----------|-------|----------|
-| `VOICE_URL`, `VOICE_KEY` | the Chips Voice server's https address and its `API_KEY` | Voice Lab |
+| `VOICE_URL`, `VOICE_KEY` | a Chips Voice server's https address and its `API_KEY` | nothing in the UI any more: **Voice Lab runs on the site itself**. Only the hub (broadcast a clip by id) can still use it. |
 | `HUB_URL`, `HUB_KEY` | the hub's https address and its `HUB_KEY` | Stations |
 
 Who calls whom:

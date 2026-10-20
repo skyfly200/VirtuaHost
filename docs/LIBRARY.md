@@ -39,4 +39,8 @@ so a new file can take that long to show up.
 
 In the Generate tab, put the tags in the text (or in the line the AI wrote, before pressing "Make the audio"):
 `[music:late-jazz vol=0.2] Good evening. [sfx:big-ding] You're listening to the station.` The preview is mixed in the
-browser, and what you hear is what gets saved. The premix Action and the station daemon do not read this library yet.
+browser, and what you hear is what gets saved.
+
+The **premix Action** (`scripts/premix.mjs`) reads the same library when `SITE_URL` (variable) and `ACCESS_KEY` (secret) are set: library
+effects work as `[sfx:name]` and `[music:name vol=0.2]` puts a bed under the whole script. The station daemon plays finished clips, so it does
+not need the library.

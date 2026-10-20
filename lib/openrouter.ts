@@ -160,6 +160,34 @@ export async function chat(options: { model: string; system: string; prompt: str
   return text;
 }
 
+// A chat completion that also looks at one image (a data: URL). The model must accept images; OPENROUTER_VISION_MODEL picks it
+// (default openai/gpt-4o-mini).
+export const visionModel = (): string => {
+  const wanted = process.env.OPENROUTER_VISION_MODEL?.trim();
+  return wanted && MODEL_SLUG.test(wanted) ? wanted : "openai/gpt-4o-mini";
+};
+
+export async function chatWithImage(options: { model: string; system: string; prompt: string; image: string; maxTokens?: number }): Promise<string> {
+  const res = await fetch(`${base()}/chat/completions`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      model: options.model,
+      max_tokens: options.maxTokens ?? 900,
+      messages: [
+        { role: "system", content: options.system },
+        { role: "user", content: [{ type: "text", text: options.prompt }, { type: "image_url", image_url: { url: options.image } }] },
+      ],
+    }),
+    signal: AbortSignal.timeout(40_000),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const text = body.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error(`${options.model} returned no text (does it accept images?)`);
+  return text;
+}
+
 export interface OpenRouterSpeech {
   audio: Buffer;
   /** "pcm" must be wrapped in a WAV header; "mp3" is a finished file. */

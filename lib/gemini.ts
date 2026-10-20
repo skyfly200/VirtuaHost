@@ -39,6 +39,18 @@ export async function writeDjLine(prompt: string, systemInstruction?: string): P
   return text;
 }
 
+// Reads an image (a flier, a poster) with the text model and returns its answer to the prompt.
+export async function describeImage(prompt: string, systemInstruction: string, mimeType: string, base64: string): Promise<string> {
+  const response = await getClient().models.generateContent({
+    model: TEXT_MODEL,
+    contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }] }],
+    config: { systemInstruction },
+  });
+  const text = response.text?.trim();
+  if (!text) throw new Error("Gemini returned no text for the image");
+  return text;
+}
+
 export interface SynthesizedSpeech {
   pcm: Buffer;
   mimeType: string;
