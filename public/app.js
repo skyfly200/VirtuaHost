@@ -6,6 +6,7 @@ import { mountLab } from './lab/lab.js';
 import { mountPersonas } from './personas/personas.js';
 import { mountLibrary } from './library/library.js';
 import { mountFlier } from './flier/flier.js';
+import { mountPromos } from './promos/promos.js';
 import { mountSchedules } from './schedules/schedules.js';
 import { mountStationProfiles } from './stations/stations.js';
 import { loadStations, allStations, currentStation, setStation } from './shared/station.js';
@@ -80,6 +81,7 @@ function showApp(credential, options) {
     { id: 'generate', label: 'Generate', on: true },
     { id: 'personas', label: 'Personas', on: true },
     { id: 'flier', label: 'Flier', on: true },
+    { id: 'promos', label: 'Promos', on: true },
     { id: 'schedules', label: 'Schedules', on: true },
     { id: 'library', label: 'Library', on: true },
     { id: 'lab', label: 'Voice Lab', on: true },
@@ -104,6 +106,7 @@ function showApp(credential, options) {
     if (id === 'generate') await mountGenerate(panel, clientFor('/api', credential));
     if (id === 'personas') await mountPersonas(panel, clientFor('/api', credential));
     if (id === 'schedules') await mountSchedules(panel, clientFor('/api', credential));
+    if (id === 'promos') await mountPromos(panel, clientFor('/api', credential));
     if (id === 'flier') await mountFlier(panel, clientFor('/api', credential));
     if (id === 'library') await mountLibrary(panel, clientFor('/api', credential));
     if (id === 'lab') await mountLab(panel, clientFor('/api', credential));

@@ -104,7 +104,7 @@ export async function mountGenerate(root, api) {
       const entry = options.models.speech.find((m) => m.id === state.speechModel);
       const voices = entry && entry.voice ? [entry.voice] : [];
       if (entry && entry.voices) for (const v of entry.voices) if (!voices.includes(v)) voices.push(v);
-      if (options.provider === 'gemini' || state.speechModel.startsWith('google/')) for (const v of GEMINI_VOICES) if (!voices.includes(v)) voices.push(v);
+      if (options.provider === 'gemini' || (state.speechModel || '').startsWith('google/')) for (const v of GEMINI_VOICES) if (!voices.includes(v)) voices.push(v);
       clear(voiceList, voices.map((v) => h('option', { value: v })));
       paintCues();
       if (voiceInput) voiceInput.placeholder = entry && (entry.voice || (entry.voices && entry.voices[0])) ? `default: ${entry.voice || entry.voices[0]}` : 'model default';

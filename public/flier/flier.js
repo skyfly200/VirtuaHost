@@ -187,7 +187,7 @@ export async function mountFlier(root, api) {
       } catch (err) { toast(err.message, 'error'); } finally { ev.target.disabled = false; }
     } }, 'Repeat it until then');
     return h('div', { class: 'hint' },
-      h('b', {}, 'Saved.'), ' The audio file carries the title, the event and its expiry (ID3 / WAV tags), and ', h('code', {}, `/api/clips/${s.saved.id}/meta`), ' returns them as JSON for other systems.',
+      h('b', {}, 'Saved.'), ' See and manage it in the ', h('button', { type: 'button', class: 'link', onclick: () => window.dispatchEvent(new CustomEvent('vh-tab', { detail: 'promos' })) }, 'Promos page'), '. The audio file carries the title, the event and its expiry (ID3 / WAV tags), and ', h('code', {}, `/api/clips/${s.saved.id}/meta`), ' returns them as JSON for other systems.',
       queueOn ? h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { type: 'button', onclick: send(true) }, 'Send to air now'), h('button', { type: 'button', onclick: send(false) }, 'Send to station library'), h('span', { class: 'muted small' }, 'or'), every, repeat)
         : h('p', { class: 'muted small' }, 'Set STATION_MODE=queue on the site (docs/NETLIFY.md) to send promos to the station and repeat them until the event.'));
   }

@@ -35,7 +35,7 @@ that replicates it (virtual host, ElevenLabs dialogue, the "underground" audio t
 ## Architecture
 
 ```
-public/                    the web UI (static, no build step): sign-in, then Generate, Personas, Flier, Schedules, Library, Voice Lab, Stations (profiles) and Control (the hub) tabs
+public/                    the web UI (static, no build step): sign-in, then Generate, Personas, Flier, Promos, Schedules, Library (clips, sound effects, music), Voice Lab, Stations (profiles) and Control (the hub) tabs
 netlify/functions/*.mts   thin Netlify Function adapters (routing/config only)
         |
 lib/handlers/*.ts         request handling logic, framework-agnostic (Request -> Response)
@@ -107,6 +107,7 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   An expired clip is refused by the queue, skipped by `claimNext`, rechecked by the daemon at play time, and schedules have an `until` date.
 - **Flier tool** (`lib/flier.ts`, `lib/handlers/flier.ts`, `public/flier/`): `/api/flier/read` (vision model or pasted text -> event, times resolved in the event's time zone),
   `/api/flier/promo` (spots in a persona's voice from the confirmed facts, dates spoken as weekday+date, never "tonight"); the saved promo expires when the event ends/starts.
+- **Library clips and Promos** (`public/library/clips.js`, `public/promos/promos.js`, `public/shared/clipcard.js`): the Library tab lists every saved clip (search, kind, status, station filters) with a play button; the Promos page lists promo clips with their event, airing status and linked repeat schedules. Cards can send a clip to the station, edit its details/expiry (`PATCH /api/clips/:id`, which rewrites the audio's tags via `retag`) or delete it (`DELETE /api/clips/:id`).
 - **Schedules** (`lib/schedule.ts`, `lib/scheduler.ts`, `lib/schedule-store.ts`, `/api/schedules`, `netlify/functions/scheduler.mts` every minute): once / every N minutes / daily at a local time (any IANA time zone, DST-safe) with weekdays, an end date (`until`) and a run count; each run makes the clip and queues it (`STATION_MODE=queue`).
 - **Premix** (`scripts/premix.mjs`, `.github/workflows/premix.yml`, `premix/`): scripts with `[sfx:]` tags mixed with ffmpeg in GitHub Actions.
 - **Station queue and daemon** (`lib/queue-store.ts`, `lib/station-send.ts`, `/api/queue`, `/api/station/*`, `station-daemon/`): with `STATION_MODE=queue`
