@@ -5,32 +5,37 @@
 //   [sfx:ding]            between the speech before and after the tag
 //   [sfx:whoosh over]     over the start of the speech that follows
 //   [sfx:crowd vol=0.5]   quieter (0 to 2)         [sfx:beep wait=0.5]   then pause (0 to 5 seconds)
+//   [music:name vol=0.2]  a music bed from the library under the whole clip (0 to 1, default 0.25), fading in and out
+// A name that is not one of the built-in effects is looked up in the connected sound library by the caller.
 export const RATE = 44100;
 
-const TAG = /\[\s*sfx\s*:\s*([a-z0-9_-]{1,40})((?:\s+[a-z]+(?:=[0-9.]+)?){0,4})\s*\]/gi;
+const TAG = /\[\s*(sfx|music)\s*:\s*([a-z0-9_-]{1,40})((?:\s+[a-z]+(?:=[0-9.]+)?){0,4})\s*\]/gi;
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
 // Text with tags -> alternating { type: 'speech', text } and { type: 'sfx', name, vol, over, wait }.
 export function parseTags(text) {
   const pieces = [];
   let last = 0;
+  let beds = 0;
   for (const m of text.matchAll(TAG)) {
     if (m.index > last) pieces.push({ type: 'speech', text: text.slice(last, m.index) });
-    const opts = { type: 'sfx', name: m[1].toLowerCase(), vol: 1, over: false, wait: 0 };
-    for (const tok of m[2].trim().split(/\s+/).filter(Boolean)) {
+    const music = m[1].toLowerCase() === 'music';
+    const opts = { type: music ? 'music' : 'sfx', name: m[2].toLowerCase(), vol: music ? 0.25 : 1, over: false, wait: 0 };
+    for (const tok of m[3].trim().split(/\s+/).filter(Boolean)) {
       const [key, val] = tok.toLowerCase().split('=');
       const num = Number(val);
-      if (key === 'over' && val === undefined) opts.over = true;
-      else if (key === 'vol' && val !== undefined && Number.isFinite(num)) opts.vol = clamp(num, 0, 2);
-      else if (key === 'wait' && val !== undefined && Number.isFinite(num)) opts.wait = clamp(num, 0, 5);
-      else throw new Error(`Unknown sound effect option "${tok}" in [sfx:${m[1]}] (use over, vol=0-2, wait=0-5)`);
+      if (!music && key === 'over' && val === undefined) opts.over = true;
+      else if (key === 'vol' && val !== undefined && Number.isFinite(num)) opts.vol = clamp(num, 0, music ? 1 : 2);
+      else if (!music && key === 'wait' && val !== undefined && Number.isFinite(num)) opts.wait = clamp(num, 0, 5);
+      else throw new Error(music ? `Unknown music option "${tok}" in [music:${m[2]}] (use vol=0-1)` : `Unknown sound effect option "${tok}" in [sfx:${m[2]}] (use over, vol=0-2, wait=0-5)`);
     }
+    if (music && ++beds > 1) throw new Error('Use only one [music:...] bed per clip.');
     pieces.push(opts);
     last = m.index + m[0].length;
   }
   if (last < text.length) pieces.push({ type: 'speech', text: text.slice(last) });
-  const out = pieces.map((p) => (p.type === 'speech' ? { ...p, text: p.text.trim() } : p)).filter((p) => p.type === 'sfx' || p.text);
-  for (const p of out) if (p.type === 'speech' && /\[\s*sfx\s*:/i.test(p.text)) throw new Error('A sound effect tag is malformed (use [sfx:name], for example [sfx:ding])');
+  const out = pieces.map((p) => (p.type === 'speech' ? { ...p, text: p.text.trim() } : p)).filter((p) => p.type !== 'speech' || p.text);
+  for (const p of out) if (p.type === 'speech' && /\[\s*(sfx|music)\s*:/i.test(p.text)) throw new Error('A sound effect or music tag is malformed (use [sfx:name] or [music:name vol=0.2])');
   return out;
 }
 
@@ -75,13 +80,18 @@ export const EFFECTS = {
 export const effectNames = () => Object.keys(EFFECTS);
 
 // ----- assembling -----
-// items: { kind: 'speech', samples } | { kind: 'sfx', name, vol, over, wait }; speech is mono Float32Array at RATE.
+// items: { kind: 'speech', samples } | { kind: 'sfx', name, vol, over, wait, samples? } | { kind: 'music', vol, samples }.
+// Speech and library samples are mono Float32Array at RATE; a built-in effect has no samples and is synthesised by name.
+export const BED_LEAD = 0.8;   // seconds of music before the first word
+export const BED_TAIL = 1.5;   // seconds of music after the last word, fading out
 export function mix(items) {
+  const bed = items.find((i) => i.kind === 'music');
+  const timeline = items.filter((i) => i.kind !== 'music');
   const parts = [];
   let over = [];
-  items.forEach((item, i) => {
-    const samples = item.kind === 'speech' ? item.samples : gain(EFFECTS[item.name](), item.vol);
-    if (item.kind === 'sfx' && item.over && i < items.length - 1) { over.push(samples); return; }
+  timeline.forEach((item, i) => {
+    const samples = item.kind === 'speech' ? item.samples : gain(item.samples || EFFECTS[item.name](), item.vol);
+    if (item.kind === 'sfx' && item.over && i < timeline.length - 1) { over.push(samples); return; }
     let slot = samples;
     if (over.length) {
       const len = Math.max(samples.length, ...over.map((o) => o.length));
@@ -92,9 +102,18 @@ export function mix(items) {
     parts.push(slot);
     if (item.kind === 'sfx' && item.wait > 0) parts.push(new Float32Array(Math.round(item.wait * RATE)));
   });
-  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
-  let at = 0;
+  const lead = bed ? Math.round(BED_LEAD * RATE) : 0;
+  const body = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Float32Array(lead + body + (bed ? Math.round(BED_TAIL * RATE) : 0));
+  let at = lead;
   for (const p of parts) { out.set(p, at); at += p.length; }
+  if (bed && bed.samples.length) {
+    const fadeInLen = Math.round(0.5 * RATE); const fadeOutLen = Math.round(BED_TAIL * RATE);
+    for (let n = 0; n < out.length; n++) {
+      const g = Math.min(1, n / fadeInLen) * Math.min(1, (out.length - n) / fadeOutLen);
+      out[n] += bed.samples[n % bed.samples.length] * bed.vol * g;
+    }
+  }
   let peak = 0;
   for (let n = 0; n < out.length; n++) peak = Math.max(peak, Math.abs(out[n]));
   if (peak > 0.98) for (let n = 0; n < out.length; n++) out[n] *= 0.98 / peak;

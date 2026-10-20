@@ -23,6 +23,23 @@ export async function mountGenerate(root, api) {
   let personas = [];
   try { personas = (await api.get('/personas')).personas; } catch { /* the picker is optional */ }
 
+  // Sounds from the connected cloud library (OwnCloud / Google Drive), usable as [sfx:name] and [music:name].
+  const library = { sfx: [], music: [] };
+  if (options.features && options.features.library && (options.features.library.sfx || options.features.library.music)) {
+    try { for (const item of (await api.get('/library')).items) (library[item.kind] || []).push(item); } catch { /* built-in effects still work */ }
+  }
+  const libraryItem = (kind, name) => library[kind].find((i) => i.name === name);
+  const sampleCache = new Map();
+  async function librarySamples(kind, name) {
+    const key = `${kind}/${name}`;
+    if (!sampleCache.has(key)) {
+      const item = libraryItem(kind, name);
+      const blob = await api.get(`/library/${encodeURIComponent(item.source)}/${kind}/${encodeURIComponent(item.name)}`, { blob: true });
+      sampleCache.set(key, await decodeToSamples(new Uint8Array(await blob.arrayBuffer())));
+    }
+    return sampleCache.get(key);
+  }
+
   const prefs = loadPrefs();
   const state = {
     mode: prefs.mode === 'ai' ? 'ai' : 'say', format: prefs.format || '', persona: personas.some((p) => p.id === prefs.persona) ? prefs.persona : '', tone: prefs.tone || '',
@@ -124,8 +141,9 @@ export async function mountGenerate(root, api) {
         h('li', {}, h('b', {}, 'Give the AI facts. '), 'It only knows what you put in the brief (artist, title, time, event details) and is told not to invent the rest.'),
         h('li', {}, h('b', {}, 'Delivery tags '), 'in square brackets are performed only by models that support them (see the note under the speech model). Others have them removed before speaking. Example: ', h('code', {}, '[softly]'), ', ', h('code', {}, '[excited]'), ', ', h('code', {}, '[laughs]'), ', ', h('code', {}, '[short pause]'), '.'),
         h('li', {}, h('b', {}, 'Tone '), 'guides the AI writer and is sent to the voice as a direction ("Say in a warm tone"). The same text can sound very different per model: generate, listen, adjust.'),
-        h('li', {}, h('b', {}, 'Sound effects '), 'in "Say verbatim" text are mixed into the preview: ', h('code', {}, '[sfx:ding]'), ', ', h('code', {}, '[sfx:whoosh over]'), ' (over the next words), ', h('code', {}, '[sfx:crowd vol=0.5]'), ', ', h('code', {}, '[sfx:beep wait=0.5]'), `. Available: ${effectNames().join(', ')}.`))),
-      h('div', {}, h('button', { class: 'primary', id: 'generate-btn', onclick: submit }, 'Generate preview')),
+        h('li', {}, h('b', {}, 'Ask the AI to write it '), 'writes the line first and shows it to you; nothing is spoken until you press "Make the audio", so you can edit the words (and add effect tags) first.'),
+        h('li', {}, h('b', {}, 'Sound effects and music '), 'in the text are mixed into the preview: ', h('code', {}, '[sfx:ding]'), ', ', h('code', {}, '[sfx:whoosh over]'), ' (over the next words), ', h('code', {}, '[sfx:crowd vol=0.5]'), ', ', h('code', {}, '[sfx:beep wait=0.5]'), `, and ${library.music.length ? `[music:${library.music[0].name} vol=0.2] for a music bed under the clip` : 'a music bed with [music:name] once a library is connected'}. Built in: ${effectNames().join(', ')}${library.sfx.length ? `. From your library: ${library.sfx.map((i) => i.name).join(', ')}` : ''}.`))),
+      h('div', {}, h('button', { class: 'primary', id: 'generate-btn', onclick: submit }, state.mode === 'ai' ? 'Write the line' : 'Generate preview')),
       status);
   }
 
@@ -142,56 +160,98 @@ export async function mountGenerate(root, api) {
     return buffer.getChannelData(0);
   }
 
+  const writerBase = () => ({
+    ...(state.persona ? { persona: state.persona } : {}), ...(state.format ? { format: state.format } : {}), ...(state.tone.trim() ? { tone: state.tone.trim() } : {}),
+    ...(options.models.choosable ? (() => { const m = chosen('textModel', 'textCustom'); return m ? { textModel: m } : {}; })() : {}),
+  });
+
   async function submit(e) {
     const value = state.text.trim();
     status.classList.remove('bad');
     if (!value) { status.textContent = state.mode === 'say' ? 'Enter text to speak.' : 'Enter a brief for the AI.'; status.classList.add('bad'); return; }
     const button = e.currentTarget;
     button.disabled = true;
-    status.textContent = 'Generating a preview (this calls the AI live and can take a few seconds)...';
     try {
-      const base = { preview: true, ...(state.persona ? { persona: state.persona } : {}) };
-      if (state.format) base.format = state.format;
-      if (state.tone.trim()) base.tone = state.tone.trim();
-      if (state.voice.trim()) base.voice = state.voice.trim();
-      if (options.models.choosable) {
-        const speechModel = chosen('speechModel', 'speechCustom');
-        if (speechModel) base.speechModel = speechModel;
-        if (state.mode === 'ai') { const textModel = chosen('textModel', 'textCustom'); if (textModel) base.textModel = textModel; }
-      }
-      const pieces = state.mode === 'say' ? parseTags(value) : [{ type: 'speech', text: value }];
-      const effects = pieces.filter((p) => p.type === 'sfx');
-      const unknown = effects.find((p) => !effectNames().includes(p.name));
-      if (unknown) throw new Error(`Unknown sound effect "${unknown.name}". Available: ${effectNames().join(', ')}`);
-      if (!pieces.some((p) => p.type === 'speech')) throw new Error('Add some words to speak as well as the sound effects.');
-
-      const results = [];
-      for (const piece of pieces) {
-        if (piece.type === 'sfx') { results.push(piece); continue; }
-        status.textContent = `Generating speech${pieces.length > 1 ? ` (${results.filter((r) => r.type === 'speech').length + 1} of ${pieces.filter((p) => p.type === 'speech').length})` : ''}...`;
-        const data = await api.post('/generate', { ...base, mode: state.mode, ...(state.mode === 'say' ? { text: piece.text } : { prompt: piece.text }) });
-        results.push({ type: 'speech', data });
-      }
-      const first = results.find((r) => r.type === 'speech').data;
-      let blob;
-      if (!effects.length) {
-        blob = new Blob([bytesOf(first.audio)], { type: first.mimeType });
-      } else {
-        const items = [];
-        for (const r of results) {
-          items.push(r.type === 'sfx' ? { kind: 'sfx', name: r.name, vol: r.vol, over: r.over, wait: r.wait } : { kind: 'speech', samples: await decodeToSamples(bytesOf(r.data.audio)) });
-        }
-        blob = new Blob([toWav(mix(items))], { type: 'audio/wav' });
-      }
-      const spoken = results.filter((r) => r.type === 'speech').map((r) => r.data.scriptText);
-      const scriptText = effects.length ? results.map((r) => (r.type === 'sfx' ? `[sfx:${r.name}${r.over ? ' over' : ''}${r.vol !== 1 ? ` vol=${r.vol}` : ''}${r.wait ? ` wait=${r.wait}` : ''}]` : r.data.scriptText)).join(' ') : first.scriptText;
-      showDraft({ blob, scriptText, input: value, first, effects: effects.map((p) => p.name), spoken });
-      status.textContent = `Preview ready${first.speechModel ? ` (${first.speechModel}${first.textModel ? `, written by ${first.textModel}` : ''})` : ''}. Listen, then save it or discard it.${first.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${first.toneIgnored ? ' This model ignores tone.' : ''}`;
+      // "Ask the AI to write it" writes the line first and stops, so it can be read and edited before any speech is generated.
+      if (state.mode === 'ai') await writeLine(value);
+      else await makeAudio(value, { mode: 'say', input: value });
     } catch (err) {
       status.textContent = err.message; status.classList.add('bad');
     } finally {
       button.disabled = false;
     }
+  }
+
+  async function writeLine(brief) {
+    status.textContent = 'Writing the line (the speech service is not called yet)...';
+    const data = await api.post('/generate', { mode: 'ai', prompt: brief, textOnly: true, ...writerBase() });
+    showScript({ brief, text: data.scriptText, textModel: data.textModel });
+    status.textContent = `Line written${data.textModel ? ` by ${data.textModel}` : ''}. Edit it if you like, then make the audio.`;
+  }
+
+  // The written line, editable, with the next step. Sound effect tags can be added here and are mixed in like any other text.
+  function showScript(script) {
+    if (draft) { URL.revokeObjectURL(draft.url); draft = null; }
+    const box = h('textarea', { rows: 4, 'aria-label': 'Written line', oninput: (e) => { script.text = e.target.value; } });
+    box.value = script.text;
+    const make = h('button', { class: 'primary', type: 'button', onclick: async () => {
+      if (!script.text.trim()) { status.textContent = 'The line is empty.'; status.classList.add('bad'); return; }
+      make.disabled = true; status.classList.remove('bad');
+      try { await makeAudio(script.text.trim(), { mode: 'ai', input: script.brief, textModel: script.textModel }); } catch (err) { status.textContent = err.message; status.classList.add('bad'); } finally { make.disabled = false; }
+    } }, 'Make the audio');
+    const again = h('button', { type: 'button', onclick: async () => {
+      again.disabled = true; status.classList.remove('bad');
+      try { await writeLine(script.brief); } catch (err) { status.textContent = err.message; status.classList.add('bad'); again.disabled = false; }
+    } }, 'Write it again');
+    clear(draftBox, h('div', { class: 'clip' },
+      h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'written line, not spoken yet'), script.textModel ? h('span', { class: 'chip' }, script.textModel) : null),
+      box, h('div', { class: 'row' }, make, again, h('button', { type: 'button', onclick: discard }, 'Discard'))));
+  }
+
+  // The speech step: each stretch of text goes to the speech service as plain "say" text; effects are mixed here.
+  async function makeAudio(value, meta) {
+    status.classList.remove('bad');
+    status.textContent = 'Generating a preview (this calls the speech service live and can take a few seconds)...';
+    const base = { preview: true, mode: 'say', ...(state.persona ? { persona: state.persona } : {}) };
+    if (state.tone.trim()) base.tone = state.tone.trim();
+    if (state.voice.trim()) base.voice = state.voice.trim();
+    if (options.models.choosable) {
+      const speechModel = chosen('speechModel', 'speechCustom');
+      if (speechModel) base.speechModel = speechModel;
+    }
+    const pieces = parseTags(value);
+    const tagged = pieces.filter((p) => p.type !== 'speech');
+    for (const p of tagged) {
+      if (p.type === 'sfx' && !effectNames().includes(p.name) && !libraryItem('sfx', p.name)) throw new Error(`Unknown sound effect "${p.name}". Available: ${[...effectNames(), ...library.sfx.map((i) => i.name)].join(', ')}`);
+      if (p.type === 'music' && !libraryItem('music', p.name)) throw new Error(library.music.length ? `Unknown music "${p.name}". Available: ${library.music.map((i) => i.name).join(', ')}` : 'No music library is connected (see docs/LIBRARY.md).');
+    }
+    if (!pieces.some((p) => p.type === 'speech')) throw new Error('Add some words to speak as well as the sound effects.');
+
+    const results = [];
+    const speechCount = pieces.filter((p) => p.type === 'speech').length;
+    for (const piece of pieces) {
+      if (piece.type !== 'speech') { results.push(piece); continue; }
+      status.textContent = `Generating speech${speechCount > 1 ? ` (${results.filter((r) => r.type === 'speech').length + 1} of ${speechCount})` : ''}...`;
+      results.push({ type: 'speech', data: await api.post('/generate', { ...base, text: piece.text }) });
+    }
+    const first = results.find((r) => r.type === 'speech').data;
+    let blob;
+    if (!tagged.length) {
+      blob = new Blob([bytesOf(first.audio)], { type: first.mimeType });
+    } else {
+      status.textContent = 'Mixing...';
+      const items = [];
+      for (const r of results) {
+        if (r.type === 'speech') items.push({ kind: 'speech', samples: await decodeToSamples(bytesOf(r.data.audio)) });
+        else if (r.type === 'music') items.push({ kind: 'music', vol: r.vol, samples: await librarySamples('music', r.name) });
+        else items.push({ kind: 'sfx', name: r.name, vol: r.vol, over: r.over, wait: r.wait, ...(effectNames().includes(r.name) ? {} : { samples: await librarySamples('sfx', r.name) }) });
+      }
+      blob = new Blob([toWav(mix(items))], { type: 'audio/wav' });
+    }
+    const tagText = (r) => `[${r.type}:${r.name}${r.over ? ' over' : ''}${r.vol !== (r.type === 'music' ? 0.25 : 1) ? ` vol=${r.vol}` : ''}${r.wait ? ` wait=${r.wait}` : ''}]`;
+    const scriptText = tagged.length ? results.map((r) => (r.type === 'speech' ? r.data.scriptText : tagText(r))).join(' ') : first.scriptText;
+    showDraft({ blob, scriptText, input: meta.input, mode: meta.mode, textModel: meta.textModel, first, effects: tagged.map((p) => p.name) });
+    status.textContent = `Preview ready${first.speechModel ? ` (${first.speechModel}${meta.textModel ? `, written by ${meta.textModel}` : ''})` : ''}. Listen, then save it or discard it.${first.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${first.toneIgnored ? ' This model ignores tone.' : ''}`;
   }
 
   function showDraft(next) {
@@ -203,7 +263,7 @@ export async function mountGenerate(root, api) {
       saveButton.disabled = true; saveStatus.classList.remove('bad'); saveStatus.textContent = 'Saving...';
       try {
         const f = draft.first;
-        const meta = { mode: state.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: f.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects };
+        const meta = { mode: draft.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: draft.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects };
         const saved = await api.request('POST', '/clips', { raw: draft.blob, contentType: draft.blob.type, headers: { 'x-clip-meta': encodeURIComponent(JSON.stringify(meta)) } });
         toast(saved.handoff ? (saved.handoff.sent ? 'Saved and sent to the station.' : `Saved. Station hand-off failed: ${saved.handoff.error}`) : 'Saved to the library.', saved.handoff && !saved.handoff.sent ? 'error' : 'info');
         discard(); state.text = ''; if (textArea) textArea.value = ''; status.textContent = '';

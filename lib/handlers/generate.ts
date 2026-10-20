@@ -89,6 +89,12 @@ export async function handleGenerate(req: Request): Promise<Response> {
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
   }
 
+  // The writing step on its own: nothing is spoken, stored or sent anywhere.
+  if (body.textOnly === true) {
+    if (mode !== "ai") return Response.json({ error: 'textOnly needs mode "ai"' }, { status: 400 });
+    return Response.json({ textOnly: true, scriptText, provider, ...(textModel ? { textModel } : {}) });
+  }
+
   const stripped = stripSfxTags(scriptText);
   if (stripped.removed) scriptText = stripped.text;
   if (!scriptText) {

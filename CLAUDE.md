@@ -93,6 +93,15 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   https only, same-origin paths, 5 MB body cap) to the Chips Voice server and the hub in `chips-voice/`. The tabs are switched off
   (a "not connected" card) until `VOICE_URL`+`VOICE_KEY` / `HUB_URL`+`HUB_KEY` are set; `GET /api/options` reports `features`.
   The page itself is public and holds no secrets; the session credential lives in `sessionStorage`.
+- **Write first, then speak; preview before saving.** `mode: "ai"` with `textOnly: true` returns just the written line; the UI shows it for
+  editing, then speaks it as plain "say" text with `preview: true` (audio returned, nothing stored). `[sfx:name]` and `[music:name vol=0.2]`
+  tags are mixed in the browser (`public/generate/mixer.js`: synthesised built-in effects, library files, a music bed), and the mixed WAV is saved
+  with `POST /api/clips` (raw audio body, details in the `x-clip-meta` header). Per-model tone and tag support is in `lib/cues.ts` (`docs/CUES.md`).
+- **Personas** (`lib/personas.ts`, `lib/persona-store.ts`, `/api/personas`, Personas tab): character brief, tone, voice, speech model; CHIP is built in.
+  `POST /api/personas/generate` drafts one with the writing model; `persona` on `/api/generate` shapes the AI-written line and sets default delivery.
+- **Sound library** (`lib/library/`, `/api/library`, Library tab, `docs/LIBRARY.md`): sfx and music folders read from OwnCloud (WebDAV) and/or Google
+  Drive (service account), read-only. Files are only fetched by name from a fresh listing, never by a client-supplied path. Not yet read by the premix Action.
+- **Premix** (`scripts/premix.mjs`, `.github/workflows/premix.yml`, `premix/`): scripts with `[sfx:]` tags mixed with ffmpeg in GitHub Actions.
 - **Station hand-off is optional and never fails a generation.** When `STATION_URL` and
   `STATION_INGEST_TOKEN` are set, `handleGenerate` posts the WAV to the station after
   `saveClip`. A station error is reported in the response's `handoff` field but the request

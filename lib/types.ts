@@ -22,6 +22,8 @@ export interface GenerateRequest {
   handoff?: boolean;
   /** A persona id from GET /api/personas: its character shapes AI-written lines and its tone, voice and speech model are the defaults. */
   persona?: string;
+  /** mode "ai" only: return the written line and stop, before any speech service is called. The UI shows it for editing first. */
+  textOnly?: boolean;
   /** Return the audio without saving it or sending it to the station; the Generate tab uses this to preview a clip. */
   preview?: boolean;
   /** Audio treatment or voice changer the station applies on arrival. Defaults to STATION_FX. */

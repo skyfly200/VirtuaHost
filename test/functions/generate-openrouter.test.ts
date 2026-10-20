@@ -107,6 +107,15 @@ describe("generate with OpenRouter", () => {
     expect((await handleGenerate(post({ mode: "ai", prompt: "x", persona: "nobody" }))).status).toBe(400);
   });
 
+  it("writes the line without calling the speech service when asked for text only", async () => {
+    const res = await handleGenerate(post({ mode: "ai", prompt: "hype friday", textOnly: true }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ textOnly: true, scriptText: "Written by the model.", textModel: "openai/gpt-4o-mini" });
+    expect(mockedSpeech).not.toHaveBeenCalled();
+    expect(mockedSave).not.toHaveBeenCalled();
+    expect((await handleGenerate(post({ mode: "say", text: "hi", textOnly: true }))).status).toBe(400);
+  });
+
   it("wraps PCM from Google models in a WAV header and stores the file type", async () => {
     mockedSpeech.mockResolvedValue({ audio: Buffer.from([1, 2, 3, 4]), format: "pcm" });
     await handleGenerate(post({ mode: "say", text: "hi" }));
