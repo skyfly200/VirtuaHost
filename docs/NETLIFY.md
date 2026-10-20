@@ -24,7 +24,13 @@ Menu names below are as Netlify usually labels them; if a screen differs, the se
 | Variable | Value | Needed |
 |----------|-------|--------|
 | `ACCESS_KEY` | a long random secret: run `openssl rand -hex 24` and paste the result (16+ characters) | **yes** |
-| `GEMINI_API_KEY` | from Google AI Studio | yes |
+| `OPENROUTER_API_KEY` | from openrouter.ai/keys. **One AI key is required: this one (recommended) or `GEMINI_API_KEY`.** With OpenRouter you choose the writing and voice models in the console | yes (or Gemini) |
+| `GEMINI_API_KEY` | from Google AI Studio; used directly (fixed models) only when there is no OpenRouter key | alternative |
+| `OPENROUTER_TEXT_MODEL`, `OPENROUTER_SPEECH_MODEL` | default writing and speech models (slugs from openrouter.ai/models) | no |
+| `OPENROUTER_TEXT_MODELS`, `OPENROUTER_SPEECH_MODELS` | comma lists shown in the console; a speech entry can carry its default voice as `slug\|Voice` | no |
+| `OPENROUTER_VOICE` | voice to use when the model entry has none | no |
+| `OPENROUTER_ALLOW_ANY_MODEL` | `true` lets anyone with the access key type any model slug (they could pick costly ones) | no |
+| `PROVIDER` | `openrouter` or `gemini` to force one when both keys are set | no |
 | `STATION_NAME` | e.g. `Way High Radio` (used in the DJ prompt) | no |
 | `GEMINI_TTS_VOICE` | a Gemini voice name (default `Kore`) | no |
 | `STATION_URL` | `https://your-chips-voice-server` | to hand clips to the station |
@@ -33,10 +39,12 @@ Menu names below are as Netlify usually labels them; if a screen differs, the se
 | `STATION_PREEMPT` | `true` lets it cut in over a live DJ | no |
 | `STATION_FX` | e.g. `underground` or `hull` (applied by the station) | no |
 
-   Mark `ACCESS_KEY`, `GEMINI_API_KEY` and `STATION_INGEST_TOKEN` as secret values if Netlify offers that option. Netlify Blobs needs no setting: it is provided by the Netlify runtime.
-3. Deploy. Check: open the site, paste the access key into the box at the top of the test console, make a clip, and play it. From a terminal: `curl -X POST https://<site>/api/generate -H "x-api-key: $ACCESS_KEY" -H 'content-type: application/json' -d '{"mode":"say","text":"Hello"}'`. The same call without the header should return 401.
-4. Hand-off check: with `STATION_URL` set, the response includes a `handoff` field. A station error is reported there but the request still succeeds (the clip is stored).
-5. Scripts sent to this site may contain `[sfx:name]` tags; it strips them (Gemini voices do not mix effects). To get sound effects mixed in, speak through the Chips Voice server.
+   Mark `ACCESS_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY` and `STATION_INGEST_TOKEN` as secret values if Netlify offers that option. Netlify Blobs needs no setting: it is provided by the Netlify runtime.
+3. If a clip fails with "GEMINI_API_KEY is not set" or "No AI provider is configured", no AI key reached the function: add `OPENROUTER_API_KEY` (or `GEMINI_API_KEY`) under Site configuration, Environment variables, make sure its scope includes Functions, and trigger a new deploy (variables apply on the next deploy).
+4. Deploy. Check: open the site, paste the access key into the box at the top of the test console, make a clip, and play it. From a terminal: `curl -X POST https://<site>/api/generate -H "x-api-key: $ACCESS_KEY" -H 'content-type: application/json' -d '{"mode":"say","text":"Hello"}'`. The same call without the header should return 401.
+5. Models: the console's model lists come from `OPENROUTER_TEXT_MODELS` / `OPENROUTER_SPEECH_MODELS` (defaults are built in). The speech request format could not be tested against OpenRouter itself, so if a model or voice is rejected the console shows OpenRouter's own message: adjust the model, voice or list and try again.
+6. Hand-off check: with `STATION_URL` set, the response includes a `handoff` field. A station error is reported there but the request still succeeds (the clip is stored).
+7. Scripts sent to this site may contain `[sfx:name]` tags; it strips them (Gemini voices do not mix effects). To get sound effects mixed in, speak through the Chips Voice server.
 
 ## Site B: Voice Lab and Control Panel
 
@@ -48,7 +56,7 @@ Menu names below are as Netlify usually labels them; if a screen differs, the se
    - Chips Voice server: `CORS_ORIGIN=https://<site-b>` (comma-separated for several).
    - Hub: `HUB_CORS_ORIGIN=https://<site-b>`.
    Without this the browser shows "Cannot reach ... check CORS".
-4. Keep sites A and B separate: they have different contents and secrets. Do not put `GEMINI_API_KEY` or any server key in site B.
+4. Keep sites A and B separate: they have different contents and secrets. Do not put `OPENROUTER_API_KEY`, `GEMINI_API_KEY` or any server key in site B.
 
 ## Your server
 

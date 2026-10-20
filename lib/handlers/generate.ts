@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { writeDjLine, synthesizeSpeech, DEFAULT_VOICE } from "../gemini.js";
-import { pcmToWav } from "../wav.js";
+import { activeProvider, writeScript, speak, NO_PROVIDER_MESSAGE } from "../ai.js";
+import { pickTextModel, pickSpeechModel, type SpeechModel } from "../openrouter.js";
+import { cleanTone, findFormat } from "../formats.js";
 import { saveClip } from "../store.js";
 import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
 import { checkAuth } from "../auth.js";
@@ -42,9 +43,36 @@ export async function handleGenerate(req: Request): Promise<Response> {
     );
   }
 
+  const provider = activeProvider();
+  if (!provider) return Response.json({ error: NO_PROVIDER_MESSAGE }, { status: 503 });
+
+  const tone = cleanTone(body.tone);
+  if (body.tone !== undefined && typeof body.tone !== "string") {
+    return Response.json({ error: "tone must be text" }, { status: 400 });
+  }
+  const format = body.format ? findFormat(body.format) : undefined;
+  if (body.format && !format) {
+    return Response.json({ error: `Unknown format "${String(body.format).slice(0, 40)}"` }, { status: 400 });
+  }
+  const voice = typeof body.voice === "string" ? body.voice.trim().slice(0, 60) : undefined;
+
+  // Models can be chosen per request only when OpenRouter is the provider.
+  let textModel: string | undefined;
+  let speechModel: SpeechModel | undefined;
+  if (provider === "openrouter") {
+    const t = pickTextModel(typeof body.textModel === "string" ? body.textModel : undefined);
+    if ("error" in t) return Response.json({ error: t.error }, { status: 400 });
+    const sp = pickSpeechModel(typeof body.speechModel === "string" ? body.speechModel : undefined);
+    if ("error" in sp) return Response.json({ error: sp.error }, { status: 400 });
+    textModel = t.model;
+    speechModel = sp.model;
+  } else if (body.textModel || body.speechModel) {
+    return Response.json({ error: "Choosing models needs OPENROUTER_API_KEY; this site is using Gemini directly" }, { status: 400 });
+  }
+
   let scriptText: string;
   try {
-    scriptText = mode === "ai" ? await writeDjLine(input) : input;
+    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format })).text : input;
   } catch (err) {
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
   }
@@ -55,16 +83,13 @@ export async function handleGenerate(req: Request): Promise<Response> {
     return Response.json({ error: "The text contains only sound effect tags; add some words to speak" }, { status: 400 });
   }
 
-  let pcm: Buffer;
-  let mimeType: string;
+  let spoken;
   try {
-    ({ pcm, mimeType } = await synthesizeSpeech(scriptText));
+    spoken = await speak({ text: scriptText, provider, speechModel, voice, tone });
   } catch (err) {
     return Response.json({ error: `Speech synthesis failed: ${(err as Error).message}` }, { status: 502 });
   }
-  void mimeType; // Gemini's inline mimeType describes the raw PCM; the stored file is always audio/wav.
 
-  const wav = pcmToWav(pcm);
   const id = randomUUID();
   const metadata: ClipMetadata = {
     id,
@@ -72,19 +97,25 @@ export async function handleGenerate(req: Request): Promise<Response> {
     mode,
     input,
     scriptText,
-    voice: process.env.GEMINI_TTS_VOICE ?? DEFAULT_VOICE,
-    mimeType: "audio/wav",
-    byteSize: wav.length,
+    voice: spoken.voice,
+    mimeType: spoken.mimeType,
+    byteSize: spoken.audio.length,
+    provider,
+    speechModel: spoken.model,
+    ...(mode === "ai" && textModel ? { textModel } : {}),
+    ...(tone ? { tone } : {}),
+    ...(format ? { format: format.id } : {}),
   };
 
-  await saveClip(id, wav, metadata);
+  await saveClip(id, spoken.audio, metadata);
 
   // Hand the clip to the station server when one is configured. A failure here is reported but does not
   // fail the request: the clip is already generated and stored.
   let handoff;
   if (body.handoff !== false && handoffConfigured()) {
     const defaults = handoffDefaults();
-    handoff = await pushToStation(wav, {
+    handoff = await pushToStation(spoken.audio, {
+      contentType: spoken.mimeType,
       title: scriptText,
       text: scriptText,
       play: body.play ?? defaults.play,
@@ -94,7 +125,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   }
 
   return Response.json(
-    { id, scriptText, audioUrl: `/api/clips/${id}`, ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(handoff ? { handoff } : {}) },
+    { id, scriptText, audioUrl: `/api/clips/${id}`, provider, speechModel: spoken.model, ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(handoff ? { handoff } : {}) },
     { status: 201 },
   );
 }

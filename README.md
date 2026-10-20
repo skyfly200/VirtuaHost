@@ -27,9 +27,10 @@ generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTE
 1. `npm install`
 2. `netlify link` (or `netlify init`) to connect this directory to a Netlify
    site — this is what makes Netlify Blobs available locally.
-3. Copy `.env.example` to `.env` and set `GEMINI_API_KEY` (from
-   [Google AI Studio](https://aistudio.google.com/)) and `ACCESS_KEY` (a random secret,
-   16+ characters: `openssl rand -hex 24`). `STATION_NAME` and `GEMINI_TTS_VOICE` are optional.
+3. Copy `.env.example` to `.env` and set an AI key and `ACCESS_KEY` (a random secret,
+   16+ characters: `openssl rand -hex 24`). The AI key is `OPENROUTER_API_KEY`
+   (recommended: one key, choose the writing and voice models yourself) or `GEMINI_API_KEY`
+   (from [Google AI Studio](https://aistudio.google.com/), fixed models). `STATION_NAME` and `GEMINI_TTS_VOICE` are optional.
    For quick local experiments only, `AUTH_DISABLED=true` turns the key check off.
 4. `netlify dev`
 
@@ -70,11 +71,24 @@ or
 ```
 
 `mode: "say"` speaks the given `text` verbatim. `mode: "ai"` sends `prompt`
-to Gemini first to write a DJ line, then synthesizes that. Response:
+to the writing model first to write a DJ line, then synthesizes that. Optional fields:
+
+| Field | Meaning |
+|-------|---------|
+| `textModel`, `speechModel` | OpenRouter model slugs from `GET /api/options` (only with `OPENROUTER_API_KEY`; others get 400) |
+| `voice` | a voice the speech model understands (default: the model's own, or `OPENROUTER_VOICE`) |
+| `tone` | how it should sound, up to 100 characters, e.g. `warm, slow, a little tired` |
+| `format` | `station-id`, `song-intro`, `back-announce`, `promo`, `time-check`, `shoutout`: shapes AI-written lines |
+
+Response:
 
 ```json
-{ "id": "...", "scriptText": "...", "audioUrl": "/api/clips/..." }
+{ "id": "...", "scriptText": "...", "audioUrl": "/api/clips/...", "provider": "openrouter", "speechModel": "...", "textModel": "..." }
 ```
+
+### `GET /api/options`
+
+The provider in use, selectable models, tones, and the script formats with structure hints and examples (what the test console shows).
 
 ### `GET /api/clips`
 
