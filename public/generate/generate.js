@@ -1,5 +1,6 @@
 // Generate tab: make a clip with the AI (OpenRouter or Gemini). Pick what kind of line it is, the tone, the models and the voice.
 import { h, clear, toast, fmtDate, audioUrl } from '../shared/kit.js';
+import { parseTags, mix, toWav, effectNames, RATE } from './mixer.js';
 
 const GEMINI_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Zephyr', 'Orus'];
 const OTHER = '__other';
@@ -117,12 +118,23 @@ export async function mountGenerate(root, api) {
         h('li', {}, h('b', {}, 'Give the AI facts. '), 'It only knows what you put in the brief (artist, title, time, event details) and is told not to invent the rest.'),
         h('li', {}, h('b', {}, 'Delivery tags '), 'in square brackets are performed only by models that support them (see the note under the speech model). Others have them removed before speaking. Example: ', h('code', {}, '[softly]'), ', ', h('code', {}, '[excited]'), ', ', h('code', {}, '[laughs]'), ', ', h('code', {}, '[short pause]'), '.'),
         h('li', {}, h('b', {}, 'Tone '), 'guides the AI writer and is sent to the voice as a direction ("Say in a warm tone"). The same text can sound very different per model: generate, listen, adjust.'),
-        h('li', {}, h('b', {}, 'Sound effects '), 'like ', h('code', {}, '[sfx:ding]'), ' are removed here (these speech models cannot mix them). Use the Voice Lab or the station to add them.'))),
-      h('div', {}, h('button', { class: 'primary', id: 'generate-btn', onclick: submit }, 'Generate')),
+        h('li', {}, h('b', {}, 'Sound effects '), 'in "Say verbatim" text are mixed into the preview: ', h('code', {}, '[sfx:ding]'), ', ', h('code', {}, '[sfx:whoosh over]'), ' (over the next words), ', h('code', {}, '[sfx:crowd vol=0.5]'), ', ', h('code', {}, '[sfx:beep wait=0.5]'), `. Available: ${effectNames().join(', ')}.`))),
+      h('div', {}, h('button', { class: 'primary', id: 'generate-btn', onclick: submit }, 'Generate preview')),
       status);
   }
 
   const chosen = (key, customKey) => (state[key] === OTHER ? state[customKey].trim() : state[key]);
+
+  // ----- preview, then save -----
+  // Generating makes a draft only (nothing is stored or sent to the station). Sound effect tags in "Say verbatim" text are
+  // mixed in here in the browser, so the draft you hear is the file that gets saved.
+  const draftBox = h('div');
+  let draft = null;
+  const bytesOf = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  async function decodeToSamples(bytes) {
+    const buffer = await new OfflineAudioContext(1, 1, RATE).decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    return buffer.getChannelData(0);
+  }
 
   async function submit(e) {
     const value = state.text.trim();
@@ -130,27 +142,76 @@ export async function mountGenerate(root, api) {
     if (!value) { status.textContent = state.mode === 'say' ? 'Enter text to speak.' : 'Enter a brief for the AI.'; status.classList.add('bad'); return; }
     const button = e.currentTarget;
     button.disabled = true;
-    status.textContent = 'Generating (this calls the AI live and can take a few seconds)...';
+    status.textContent = 'Generating a preview (this calls the AI live and can take a few seconds)...';
     try {
-      const body = state.mode === 'say' ? { mode: 'say', text: value } : { mode: 'ai', prompt: value };
-      if (state.format) body.format = state.format;
-      if (state.tone.trim()) body.tone = state.tone.trim();
-      if (state.voice.trim()) body.voice = state.voice.trim();
+      const base = { preview: true };
+      if (state.format) base.format = state.format;
+      if (state.tone.trim()) base.tone = state.tone.trim();
+      if (state.voice.trim()) base.voice = state.voice.trim();
       if (options.models.choosable) {
         const speechModel = chosen('speechModel', 'speechCustom');
-        if (speechModel) body.speechModel = speechModel;
-        if (state.mode === 'ai') { const textModel = chosen('textModel', 'textCustom'); if (textModel) body.textModel = textModel; }
+        if (speechModel) base.speechModel = speechModel;
+        if (state.mode === 'ai') { const textModel = chosen('textModel', 'textCustom'); if (textModel) base.textModel = textModel; }
       }
-      const data = await api.post('/generate', body);
-      status.textContent = `Done${data.speechModel ? ` (${data.speechModel}${data.textModel ? `, written by ${data.textModel}` : ''})` : ''}: "${data.scriptText}"${data.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${data.toneIgnored ? ' This model ignores tone.' : ''}${data.handoff ? (data.handoff.sent ? ' Sent to the station.' : ` Station hand-off failed: ${data.handoff.error}`) : ''}`;
-      state.text = ''; textArea.value = '';
-      await loadClips();
+      const pieces = state.mode === 'say' ? parseTags(value) : [{ type: 'speech', text: value }];
+      const effects = pieces.filter((p) => p.type === 'sfx');
+      const unknown = effects.find((p) => !effectNames().includes(p.name));
+      if (unknown) throw new Error(`Unknown sound effect "${unknown.name}". Available: ${effectNames().join(', ')}`);
+      if (!pieces.some((p) => p.type === 'speech')) throw new Error('Add some words to speak as well as the sound effects.');
+
+      const results = [];
+      for (const piece of pieces) {
+        if (piece.type === 'sfx') { results.push(piece); continue; }
+        status.textContent = `Generating speech${pieces.length > 1 ? ` (${results.filter((r) => r.type === 'speech').length + 1} of ${pieces.filter((p) => p.type === 'speech').length})` : ''}...`;
+        const data = await api.post('/generate', { ...base, mode: state.mode, ...(state.mode === 'say' ? { text: piece.text } : { prompt: piece.text }) });
+        results.push({ type: 'speech', data });
+      }
+      const first = results.find((r) => r.type === 'speech').data;
+      let blob;
+      if (!effects.length) {
+        blob = new Blob([bytesOf(first.audio)], { type: first.mimeType });
+      } else {
+        const items = [];
+        for (const r of results) {
+          items.push(r.type === 'sfx' ? { kind: 'sfx', name: r.name, vol: r.vol, over: r.over, wait: r.wait } : { kind: 'speech', samples: await decodeToSamples(bytesOf(r.data.audio)) });
+        }
+        blob = new Blob([toWav(mix(items))], { type: 'audio/wav' });
+      }
+      const spoken = results.filter((r) => r.type === 'speech').map((r) => r.data.scriptText);
+      const scriptText = effects.length ? results.map((r) => (r.type === 'sfx' ? `[sfx:${r.name}${r.over ? ' over' : ''}${r.vol !== 1 ? ` vol=${r.vol}` : ''}${r.wait ? ` wait=${r.wait}` : ''}]` : r.data.scriptText)).join(' ') : first.scriptText;
+      showDraft({ blob, scriptText, input: value, first, effects: effects.map((p) => p.name), spoken });
+      status.textContent = `Preview ready${first.speechModel ? ` (${first.speechModel}${first.textModel ? `, written by ${first.textModel}` : ''})` : ''}. Listen, then save it or discard it.${first.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${first.toneIgnored ? ' This model ignores tone.' : ''}`;
     } catch (err) {
       status.textContent = err.message; status.classList.add('bad');
     } finally {
       button.disabled = false;
     }
   }
+
+  function showDraft(next) {
+    if (draft) URL.revokeObjectURL(draft.url);
+    draft = { ...next, url: URL.createObjectURL(next.blob) };
+    const player = h('audio', { controls: true, src: draft.url });
+    const saveStatus = h('span', { class: 'small muted', role: 'status' });
+    const saveButton = h('button', { class: 'primary', type: 'button', onclick: async () => {
+      saveButton.disabled = true; saveStatus.classList.remove('bad'); saveStatus.textContent = 'Saving...';
+      try {
+        const f = draft.first;
+        const meta = { mode: state.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: f.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects };
+        const saved = await api.request('POST', '/clips', { raw: draft.blob, contentType: draft.blob.type, headers: { 'x-clip-meta': encodeURIComponent(JSON.stringify(meta)) } });
+        toast(saved.handoff ? (saved.handoff.sent ? 'Saved and sent to the station.' : `Saved. Station hand-off failed: ${saved.handoff.error}`) : 'Saved to the library.', saved.handoff && !saved.handoff.sent ? 'error' : 'info');
+        discard(); state.text = ''; if (textArea) textArea.value = ''; status.textContent = '';
+        await loadClips();
+      } catch (err) { saveStatus.textContent = err.message; saveStatus.classList.add('bad'); saveButton.disabled = false; }
+    } }, 'Save to library');
+    clear(draftBox, h('div', { class: 'clip' },
+      h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'preview, not saved yet'), draft.effects.length ? h('span', { class: 'chip' }, `effects: ${[...new Set(draft.effects)].join(', ')}`) : null, h('span', {}, `${(draft.blob.size / 1024).toFixed(0)} KB`)),
+      h('p', { class: 'clip-script' }, draft.scriptText),
+      player,
+      h('div', { class: 'row' }, saveButton, h('button', { type: 'button', onclick: discard }, 'Discard'), saveStatus)));
+    player.play().catch(() => {});
+  }
+  function discard() { if (draft) URL.revokeObjectURL(draft.url); draft = null; clear(draftBox); }
 
   // ----- clips -----
   async function loadClips() {
@@ -180,7 +241,7 @@ export async function mountGenerate(root, api) {
   }
 
   clear(root, h('div', { class: 'stack' },
-    h('section', { class: 'card' }, h('h2', {}, 'Generate a clip'), note, form),
+    h('section', { class: 'card' }, h('h2', {}, 'Generate a clip'), note, form, draftBox),
     h('section', { class: 'card' }, h('h2', {}, 'Clips'), clipsBox)));
   paintForm();
   await loadClips();

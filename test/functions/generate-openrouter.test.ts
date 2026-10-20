@@ -85,6 +85,16 @@ describe("generate with OpenRouter", () => {
     expect(mockedSpeech.mock.calls[1][0].text).toBe("Hi [laughs] there");
   });
 
+  it("returns audio without saving or sending it when asked for a preview", async () => {
+    vi.mocked(handoffConfigured).mockReturnValue(true);
+    const res = await handleGenerate(post({ mode: "say", text: "Just listening", preview: true }));
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ preview: true, scriptText: "Just listening", audio: Buffer.from([9, 9, 9, 9]).toString("base64"), mimeType: "audio/mpeg" });
+    expect(mockedSave).not.toHaveBeenCalled();
+    expect(pushToStation).not.toHaveBeenCalled();
+  });
+
   it("wraps PCM from Google models in a WAV header and stores the file type", async () => {
     mockedSpeech.mockResolvedValue({ audio: Buffer.from([1, 2, 3, 4]), format: "pcm" });
     await handleGenerate(post({ mode: "say", text: "hi" }));

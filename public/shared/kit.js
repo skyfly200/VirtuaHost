@@ -35,10 +35,10 @@ export class ApiError extends Error {
 
 // A client for one API base, for example the site's /api, /api/hub or /api/voice. `session` = { url, headers }.
 export function createClient(session, { onUnauthorized } = {}) {
-  async function request(method, path, { body, raw, query, blob, contentType, signal } = {}) {
+  async function request(method, path, { body, raw, query, blob, contentType, signal, headers: extra } = {}) {
     const url = new URL(path.replace(/^\//, ''), session.url.endsWith('/') ? session.url : `${session.url}/`);
     for (const [k, v] of Object.entries(query || {})) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
-    const headers = { ...session.headers };
+    const headers = { ...session.headers, ...(extra || {}) };
     let payload;
     if (raw) { payload = raw; headers['content-type'] = contentType || raw.type || 'application/octet-stream'; } else if (body !== undefined) { payload = JSON.stringify(body); headers['content-type'] = 'application/json'; }
     let res;

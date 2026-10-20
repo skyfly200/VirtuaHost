@@ -3,9 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../lib/store.js", () => ({
   getClip: vi.fn(),
   listClips: vi.fn(),
+  saveClip: vi.fn(),
 }));
+vi.mock("../../lib/handoff.js", () => ({ handoffConfigured: vi.fn(() => false), handoffDefaults: vi.fn(), pushToStation: vi.fn() }));
 
-import { getClip, listClips } from "../../lib/store.js";
+import { getClip, listClips, saveClip } from "../../lib/store.js";
 import { handleClips } from "../../lib/handlers/clips.js";
 import type { ClipMetadata } from "../../lib/types.js";
 
@@ -35,8 +37,8 @@ describe("handleClips", () => {
     vi.clearAllMocks();
   });
 
-  it("rejects non-GET requests", async () => {
-    const req = new Request("http://localhost/api/clips", { method: "POST", headers: { "x-api-key": TEST_KEY } });
+  it("rejects other methods", async () => {
+    const req = new Request("http://localhost/api/clips", { method: "PUT", headers: { "x-api-key": TEST_KEY } });
     const res = await handleClips(req, undefined);
     expect(res.status).toBe(405);
   });
@@ -70,5 +72,27 @@ describe("handleClips", () => {
     expect(res.headers.get("Content-Length")).toBe("4");
     const buf = Buffer.from(await res.arrayBuffer());
     expect([...buf]).toEqual([1, 2, 3, 4]);
+  });
+
+  describe("saving audio the browser mixed", () => {
+    const wav = Buffer.from("RIFF\0\0\0\0WAVEdata", "latin1");
+    const save = (body: BodyInit | null, meta: unknown = { scriptText: "Hi there", effects: ["ding"], tone: "warm" }, type = "audio/wav") =>
+      handleClips(new Request("http://localhost/api/clips", { method: "POST", body, headers: { "x-api-key": TEST_KEY, "content-type": type, "x-clip-meta": encodeURIComponent(JSON.stringify(meta)) } }), undefined);
+
+    it("stores the audio with its details", async () => {
+      const res = await save(wav);
+      expect(res.status).toBe(201);
+      const { id } = (await res.json()) as { id: string };
+      expect(vi.mocked(saveClip).mock.calls[0][0]).toBe(id);
+      expect(vi.mocked(saveClip).mock.calls[0][2]).toMatchObject({ scriptText: "Hi there", effects: ["ding"], tone: "warm", mimeType: "audio/wav", byteSize: wav.length });
+    });
+
+    it("rejects the wrong type, non-audio bytes, a missing script and an oversized body", async () => {
+      expect((await save(wav, undefined, "text/plain")).status).toBe(400);
+      expect((await save(Buffer.from("not audio"))).status).toBe(400);
+      expect((await save(wav, {})).status).toBe(400);
+      expect((await save(Buffer.concat([wav, Buffer.alloc(5_600_000)]))).status).toBe(413);
+      expect(saveClip).not.toHaveBeenCalled();
+    });
   });
 });

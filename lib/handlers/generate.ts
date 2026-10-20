@@ -105,6 +105,13 @@ export async function handleGenerate(req: Request): Promise<Response> {
     return Response.json({ error: `Speech synthesis failed: ${(err as Error).message}` }, { status: 502 });
   }
 
+  if (body.preview === true) {
+    return Response.json({
+      preview: true, scriptText, audio: spoken.audio.toString("base64"), mimeType: spoken.mimeType, voice: spoken.voice, provider, speechModel: spoken.model,
+      ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}),
+    });
+  }
+
   const id = randomUUID();
   const metadata: ClipMetadata = {
     id,
