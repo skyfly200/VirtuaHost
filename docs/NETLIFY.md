@@ -62,7 +62,7 @@ Mark `LOGIN_USERS`, `SESSION_SECRET`, `ACCESS_KEY`, `OPENROUTER_API_KEY`, `GEMIN
 1. Deploy. Open the site and sign in. The Generate tab should load with the model lists.
 2. If a clip fails with "GEMINI_API_KEY is not set" or "No AI provider is configured", no AI key reached the function: add `OPENROUTER_API_KEY` (or `GEMINI_API_KEY`), make sure its scope includes Functions, and trigger a new deploy (variables apply on the next deploy).
 3. Make a clip and play it. From a terminal (needs `ACCESS_KEY`): `curl -X POST https://<site>/api/generate -H "x-api-key: $ACCESS_KEY" -H 'content-type: application/json' -d '{"mode":"say","text":"Hello"}'`. The same call without the header should return 401.
-4. Models: the lists come from `OPENROUTER_TEXT_MODELS` / `OPENROUTER_SPEECH_MODELS` (defaults are built in). The speech request format could not be tested against OpenRouter itself, so if a model or voice is rejected the UI shows OpenRouter's own message: adjust the model, voice or list and try again.
+4. Models: the lists come from `OPENROUTER_TEXT_MODELS` / `OPENROUTER_SPEECH_MODELS` (defaults are built in; speech models OpenRouter itself lists, with their voices, are added to the dropdown automatically). The speech request format could not be tested against OpenRouter itself, so if a model or voice is rejected the UI shows OpenRouter's own message: adjust the model, voice or list and try again.
 5. With `STATION_URL` set, the response includes a `handoff` field. A station error is reported there but the request still succeeds (the clip is stored).
 6. Scripts sent here may contain `[sfx:name]` tags; they are stripped (these voices do not mix effects). To get sound effects mixed in, speak through the Chips Voice server (Voice Lab).
 

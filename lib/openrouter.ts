@@ -16,12 +16,20 @@
 // through to the caller so a wrong voice or model name is visible.
 
 const DEFAULT_TEXT_MODELS = ["openai/gpt-4o-mini", "anthropic/claude-3.5-haiku", "meta-llama/llama-3.1-8b-instruct"];
-const DEFAULT_SPEECH_MODELS = ["google/gemini-3.1-flash-tts-preview|Kore", "deepgram/flux-tts:free", "hexgrad/kokoro-82m"];
+// Providers like Kokoro reject a request with no voice, so every built-in model carries one (the UI can still override it).
+const DEFAULT_SPEECH_MODELS = [
+  "google/gemini-3.1-flash-tts-preview|Kore",
+  "openai/gpt-4o-mini-tts-2025-12-15|alloy",
+  "mistralai/voxtral-mini-tts-2603",
+  "hexgrad/kokoro-82m|af_heart",
+];
 export const MODEL_SLUG = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 
 export interface SpeechModel {
   id: string;
   voice?: string;
+  /** Voices the model accepts, when OpenRouter reports them (its `supported_voices`). */
+  voices?: string[];
 }
 
 const list = (value: string | undefined): string[] => (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -52,7 +60,43 @@ export const defaultSpeechModel = (): SpeechModel => {
 };
 
 export function voiceFor(model: SpeechModel, requested?: string): string | undefined {
-  return requested?.trim() || model.voice || process.env.OPENROUTER_VOICE?.trim() || undefined;
+  return requested?.trim() || model.voice || process.env.OPENROUTER_VOICE?.trim() || model.voices?.[0] || undefined;
+}
+
+// Speech models OpenRouter itself lists (GET /models?output_modalities=speech), cached for a few minutes. Best effort: the
+// response shape (notably `supported_voices`) is not verified, and any failure just means the built-in list is used alone.
+let discovered: { at: number; models: SpeechModel[] } | undefined;
+const DISCOVERY_TTL_MS = 10 * 60_000;
+
+export async function discoverSpeechModels(): Promise<SpeechModel[]> {
+  if (discovered && Date.now() - discovered.at < DISCOVERY_TTL_MS) return discovered.models;
+  let models: SpeechModel[] = [];
+  try {
+    const res = await fetch(`${base()}/models?output_modalities=speech`, { headers: headers(), signal: AbortSignal.timeout(8_000) });
+    if (res.ok) {
+      const body = (await res.json()) as { data?: Array<{ id?: unknown; supported_voices?: unknown }> };
+      models = (body.data ?? []).flatMap((m) => {
+        if (typeof m.id !== "string" || !MODEL_SLUG.test(m.id)) return [];
+        const voices = Array.isArray(m.supported_voices) ? m.supported_voices.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length < 80).slice(0, 200) : [];
+        return [{ id: m.id, ...(voices.length ? { voices } : {}) }];
+      });
+    }
+  } catch {
+    // unreachable or not JSON: fall back to the built-in list
+  }
+  discovered = { at: Date.now(), models };
+  return models;
+}
+
+// The configured list plus whatever OpenRouter reports; configured entries keep their own default voice.
+export async function allSpeechModels(): Promise<SpeechModel[]> {
+  const configuredList = speechModels();
+  const extra = await discoverSpeechModels();
+  const merged = configuredList.map((m) => {
+    const live = extra.find((x) => x.id === m.id);
+    return live?.voices ? { ...m, voices: live.voices } : m;
+  });
+  return [...merged, ...extra.filter((x) => !configuredList.some((m) => m.id === x.id))];
 }
 
 // Resolves a requested model against the allowed list; returns an error message when it is not allowed.
@@ -61,9 +105,9 @@ export function pickTextModel(requested: string | undefined): { model: string } 
   if (textModels().includes(requested) || (allowAnyModel() && MODEL_SLUG.test(requested))) return { model: requested };
   return { error: `Unknown writing model "${requested.slice(0, 60)}". Allowed: ${textModels().join(", ")}` };
 }
-export function pickSpeechModel(requested: string | undefined): { model: SpeechModel } | { error: string } {
+export function pickSpeechModel(requested: string | undefined, extra: SpeechModel[] = []): { model: SpeechModel } | { error: string } {
   if (!requested) return { model: defaultSpeechModel() };
-  const found = speechModels().find((m) => m.id === requested);
+  const found = speechModels().find((m) => m.id === requested) ?? extra.find((m) => m.id === requested);
   if (found) return { model: found };
   if (allowAnyModel() && MODEL_SLUG.test(requested)) return { model: { id: requested } };
   return { error: `Unknown speech model "${requested.slice(0, 60)}". Allowed: ${speechModels().map((m) => m.id).join(", ")}` };
