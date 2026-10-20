@@ -58,7 +58,7 @@ export function createSpeaker(api, features) {
   const tagText = (r) => `[${r.type}:${r.name}${r.over ? ' over' : ''}${r.vol !== (r.type === 'music' ? 0.25 : 1) ? ` vol=${r.vol}` : ''}${r.wait ? ` wait=${r.wait}` : ''}]`;
 
   // One script, one voice. `base` is the /api/generate body without the text (persona, voice, speechModel, tone, ...).
-  async function render(text, base, { fx = '', onProgress = () => {} } = {}) {
+  async function render(text, base, { fx = '', fxAmount = 1, onProgress = () => {} } = {}) {
     const pieces = parseTags(text);
     const tagged = pieces.filter((p) => p.type !== 'speech');
     check(pieces);
@@ -79,14 +79,14 @@ export function createSpeaker(api, features) {
       blob = new Blob([bytesOf(first.audio)], { type: first.mimeType });
     } else {
       onProgress(tagged.length ? 'Mixing in the effects' : 'Applying the effect', { step: steps, total: steps });
-      blob = new Blob([toWav(applyFx(mix(await toItems(results)), fx))], { type: 'audio/wav' });
+      blob = new Blob([toWav(applyFx(mix(await toItems(results)), fx, fxAmount))], { type: 'audio/wav' });
     }
     const scriptText = tagged.length ? results.map((r) => (r.type === 'speech' ? r.data.scriptText : tagText(r))).join(' ') : first.scriptText;
     return { blob, scriptText, first, effects: tagged.map((p) => p.name) };
   }
 
   // A conversation: lines = [{ speaker, text, base }], each spoken with its own voice settings and joined with a short gap.
-  async function renderDialogue(lines, { gap = 0.3, fx = '', onProgress = () => {} } = {}) {
+  async function renderDialogue(lines, { gap = 0.3, fx = '', fxAmount = 1, onProgress = () => {} } = {}) {
     const results = [];
     const names = [];
     let beds = 0;
@@ -105,7 +105,7 @@ export function createSpeaker(api, features) {
     const first = results.find((r) => r.type === 'speech');
     if (!first) throw new Error('There is nothing to say yet.');
     onProgress('Mixing the conversation', { step: lines.length + 1, total: lines.length + 1 });
-    const blob = new Blob([toWav(applyFx(mix(await toItems(results)), fx))], { type: 'audio/wav' });
+    const blob = new Blob([toWav(applyFx(mix(await toItems(results)), fx, fxAmount))], { type: 'audio/wav' });
     return { blob, scriptText: lines.map((l) => `${l.speaker}: ${l.text}`).join('\n'), first: first.data, effects: names };
   }
 

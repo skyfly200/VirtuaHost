@@ -5,6 +5,7 @@ import { FX_PREVIEWS } from '../generate/fx.js';
 import { createPlayer } from '../shared/playbutton.js';
 import { stationName } from '../shared/station.js';
 import { createStatus } from '../shared/status.js';
+import { amountSlider } from '../shared/amount.js';
 
 const MAX_COMPARE = 4;
 
@@ -25,7 +26,7 @@ export function mountExplorer(box, persona, ctx) {
   const choosable = options.models.choosable;
   const models = choosable ? options.models.speech : [];
   const saved = Boolean(persona.id);   // an unsaved draft cannot be sent to the writer by id
-  const settings = { speechModel: persona.speechModel || (choosable ? options.models.defaultSpeech : ''), voice: persona.voice || '', tone: persona.tone || '', fx: '', artist: 'Boards of Canada', title: 'Roygbiv' };
+  const settings = { speechModel: persona.speechModel || (choosable ? options.models.defaultSpeech : ''), voice: persona.voice || '', tone: persona.tone || '', fx: '', fxAmount: 1, artist: 'Boards of Canada', title: 'Roygbiv' };
   const station = stationName(options.station) || 'the station';
   const fill = (t) => t.replace(/\{artist\}/g, settings.artist).replace(/\{title\}/g, settings.title).replace(/\{station\}/g, station);
   const rows = new Map();     // key -> [{ text, url, status, error }]
@@ -36,7 +37,7 @@ export function mountExplorer(box, persona, ctx) {
   const baseFor = (over = {}) => ({ ...(choosable && (over.speechModel ?? settings.speechModel) ? { speechModel: over.speechModel ?? settings.speechModel } : {}), ...((over.voice ?? settings.voice) ? { voice: over.voice ?? settings.voice } : {}), ...((over.tone ?? settings.tone) ? { tone: over.tone ?? settings.tone } : {}) });
 
   async function say(text, over = {}) {
-    const out = await speaker.render(fill(text), baseFor(over), { fx: over.fx ?? settings.fx });
+    const out = await speaker.render(fill(text), baseFor(over), { fx: over.fx ?? settings.fx, fxAmount: over.fxAmount ?? settings.fxAmount });
     return { url: URL.createObjectURL(out.blob), out };
   }
 
@@ -109,6 +110,12 @@ export function mountExplorer(box, persona, ctx) {
       grid);
   }
 
+  // Any change to the voice, tone, effect or sample names means the samples already made no longer match: make them again on the next press.
+  const invalidateAll = () => {
+    for (const rs of rows.values()) for (const r of rs) if (r.player) r.player.invalidate();
+    for (const c of compare) if (c.player) c.player.invalidate();
+  };
+
   // ----- the voice settings every sample uses -----
   const status = createStatus();
   const settingsBox = h('div');
@@ -117,13 +124,14 @@ export function mountExplorer(box, persona, ctx) {
     const voices = [...new Set([e && e.voice, ...((e && e.voices) || [])].filter(Boolean))];
     const cues = choosable ? (e || {}).cues : options.models.fixedCues;
     clear(settingsBox, h('div', { class: 'grid cols' },
-      choosable ? h('label', { class: 'field' }, 'Speech model', h('select', { onchange: (ev) => { settings.speechModel = ev.target.value; settings.voice = ''; paintSettings(); } }, models.map((m) => h('option', { value: m.id, selected: m.id === settings.speechModel }, m.id)))) : h('p', { class: 'muted small' }, 'Using Gemini directly; the model is fixed.'),
-      h('label', { class: 'field' }, 'Voice', h('input', { value: settings.voice, list: 'ex-voices', placeholder: (e && e.voice) || 'default', oninput: (ev) => { settings.voice = ev.target.value; } }), h('datalist', { id: 'ex-voices' }, voices.map((v) => h('option', { value: v })))),
-      h('label', { class: 'field' }, 'Tone', h('input', { value: settings.tone, placeholder: cues && cues.tone === 'none' ? 'this model ignores tone' : 'how it should sound', oninput: (ev) => { settings.tone = ev.target.value; } })),
-      h('label', { class: 'field' }, 'Effect (preview)', h('select', { onchange: (ev) => { settings.fx = ev.target.value; } }, h('option', { value: '' }, 'None'), Object.entries(FX_PREVIEWS).map(([k, f]) => h('option', { value: k, selected: k === settings.fx }, f.label))))),
+      choosable ? h('label', { class: 'field' }, 'Speech model', h('select', { onchange: (ev) => { settings.speechModel = ev.target.value; settings.voice = ''; invalidateAll(); paintSettings(); } }, models.map((m) => h('option', { value: m.id, selected: m.id === settings.speechModel }, m.id)))) : h('p', { class: 'muted small' }, 'Using Gemini directly; the model is fixed.'),
+      h('label', { class: 'field' }, 'Voice', h('input', { value: settings.voice, list: 'ex-voices', placeholder: (e && e.voice) || 'default', oninput: (ev) => { settings.voice = ev.target.value; invalidateAll(); } }), h('datalist', { id: 'ex-voices' }, voices.map((v) => h('option', { value: v })))),
+      h('label', { class: 'field' }, 'Tone', h('input', { value: settings.tone, placeholder: cues && cues.tone === 'none' ? 'this model ignores tone' : 'how it should sound', oninput: (ev) => { settings.tone = ev.target.value; invalidateAll(); } })),
+      h('label', { class: 'field' }, 'Effect (preview)', h('select', { onchange: (ev) => { settings.fx = ev.target.value; paintSettings(); invalidateAll(); } }, h('option', { value: '' }, 'None'), Object.entries(FX_PREVIEWS).map(([k, f]) => h('option', { value: k, selected: k === settings.fx }, f.label))))),
+    settings.fx ? amountSlider({ label: 'Effect amount', value: Math.round(settings.fxAmount * 100), onchange: (a) => { settings.fxAmount = a; invalidateAll(); } }) : null,
     h('div', { class: 'grid cols' },
-      h('label', { class: 'field' }, 'Sample artist', h('input', { value: settings.artist, oninput: (ev) => { settings.artist = ev.target.value; } })),
-      h('label', { class: 'field' }, 'Sample title', h('input', { value: settings.title, oninput: (ev) => { settings.title = ev.target.value; } }))),
+      h('label', { class: 'field' }, 'Sample artist', h('input', { value: settings.artist, oninput: (ev) => { settings.artist = ev.target.value; invalidateAll(); } })),
+      h('label', { class: 'field' }, 'Sample title', h('input', { value: settings.title, oninput: (ev) => { settings.title = ev.target.value; invalidateAll(); } }))),
     cues ? h('p', { class: 'small muted' }, `This model: tone ${cues.tone === 'none' ? 'is ignored' : 'works'}; tags like [laughs] are ${cues.tags === true ? 'performed' : cues.tags === false ? 'removed' : 'untested'}.`) : null);
   }
 
