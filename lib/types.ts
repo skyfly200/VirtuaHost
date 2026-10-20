@@ -22,6 +22,8 @@ export interface GenerateRequest {
   preempt?: boolean;
   /** Set false to skip sending the clip to the station at all. */
   handoff?: boolean;
+  /** A station profile id from GET /api/stations: its name and tagline go into AI-written lines, and its defaults (persona, voice, speech model) apply. */
+  station?: string;
   /** A persona id from GET /api/personas: its character shapes AI-written lines and its tone, voice and speech model are the defaults. */
   persona?: string;
   /** mode "ai" only: return the written line and stop, before any speech service is called. The UI shows it for editing first. */

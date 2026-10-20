@@ -5,6 +5,7 @@ import { cuesFor, GEMINI_DIRECT_CUES } from "../cues.js";
 import { features } from "./proxy.js";
 import { queueMode } from "../station-send.js";
 import { libraryFeatures } from "../library/index.js";
+import { getStation } from "../station-profile-store.js";
 import { TONES, FORMATS, MAX_TONE_LENGTH, fillStation } from "../formats.js";
 
 // What the test console offers: the provider in use, the models that can be chosen, tones, and script formats with examples.
@@ -16,7 +17,9 @@ export async function handleOptions(req: Request): Promise<Response> {
   }
 
   const provider = activeProvider();
-  const station = process.env.STATION_NAME || "the station";
+  // ?station=<id>: the examples and the name shown are for that station
+  const chosen = await getStation(new URL(req.url).searchParams.get("station") || undefined);
+  const station = chosen?.name || process.env.STATION_NAME || "the station";
   const openrouter = provider === "openrouter";
 
   return Response.json({

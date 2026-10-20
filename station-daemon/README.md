@@ -22,7 +22,7 @@ site (Netlify)  --  /api/queue, /api/station/*  <--poll--  station-daemon  --tel
 3. To keep it running, copy `station-daemon/station-daemon.service` to `/etc/systemd/system/`, edit the paths and key,
    then `systemctl enable --now station-daemon`.
 
-Other settings: `STATION_DIR` (default `./clips`), `POLL_SECONDS` (5), `KEEP_FILES` (200), `LIQUIDSOAP_HOST`/`PORT`
+Other settings: `STATION_ID` (the station profile id from the site's Stations tab: this daemon then collects only that station's clips and ones with no station; leave it out for a single-station site), `STATION_DIR` (default `./clips`), `POLL_SECONDS` (5), `KEEP_FILES` (200), `LIQUIDSOAP_HOST`/`PORT`
 (`127.0.0.1:1234`), `LIQUIDSOAP_QUEUE`/`LIQUIDSOAP_LIVE_QUEUE` (`announce` / `announce_live`).
 
 ## The virtual host

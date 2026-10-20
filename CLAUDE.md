@@ -35,7 +35,7 @@ that replicates it (virtual host, ElevenLabs dialogue, the "underground" audio t
 ## Architecture
 
 ```
-public/                    the web UI (static, no build step): sign-in, then Generate, Voice Lab, Personas, Flier, Schedules, Library and Stations tabs
+public/                    the web UI (static, no build step): sign-in, then Generate, Personas, Flier, Schedules, Library, Voice Lab, Stations (profiles) and Control (the hub) tabs
 netlify/functions/*.mts   thin Netlify Function adapters (routing/config only)
         |
 lib/handlers/*.ts         request handling logic, framework-agnostic (Request -> Response)
@@ -89,7 +89,7 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   `npm run hash-password -- <user>` makes an entry. There are no roles: every login can do everything.
 - **The UI and its proxy.** `public/index.html` is one page (`app.js`): login, then tabs. `generate/`, `lab/` and `panel/` are
   ES modules that draw into a tab, using clients from `shared/kit.js`. Every tab except Stations runs on this site's own `/api/*`
-  (Voice Lab included: `public/shared/speaker.js` speaks and mixes, `public/generate/fx.js` previews effects in the browser). Stations talks to
+  (Voice Lab included: `public/shared/speaker.js` speaks and mixes, `public/generate/fx.js` previews effects in the browser). Control (the old hub screen) talks to
   `/api/hub/*`, which `lib/handlers/proxy.ts` forwards (after the auth check, with `HUB_KEY`, https only, same-origin paths, 5 MB body cap) to the
   hub in `chips-voice/`; that tab is switched off (a "not connected" card) until `HUB_URL`+`HUB_KEY` are set. `GET /api/options` reports `features`.
   The page itself is public and holds no secrets; the session credential lives in `sessionStorage`.
@@ -97,6 +97,7 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   editing, then speaks it as plain "say" text with `preview: true` (audio returned, nothing stored). `[sfx:name]` and `[music:name vol=0.2]`
   tags are mixed in the browser (`public/generate/mixer.js`: synthesised built-in effects, library files, a music bed), and the mixed WAV is saved
   with `POST /api/clips` (raw audio body, details in the `x-clip-meta` header). Per-model tone and tag support is in `lib/cues.ts` (`docs/CUES.md`).
+- **Station profiles** (`lib/station-profile.ts`, `lib/station-profile-store.ts`, `/api/stations`, Stations tab, `docs/STATIONS.md`): data-only profiles (name, tagline, time zone, default persona/voice/model/fx, skip list, links, a note on its future connection) that work before any server exists. One is "active" (header picker, `public/shared/station.js`); generate, schedules, flier, the queue and clip `info.station` carry its id, and a daemon with `STATION_ID` collects only its own items.
 - **Personas** (`lib/personas.ts`, `lib/persona-library.ts`, `lib/persona-store.ts`, `/api/personas`, Personas tab): character brief, tone, voice, speech model, tags, emoji, line banks (song links, station IDs, promos, sign-offs, time-of-day); ten example personas ship built in (read-only). The tab has a sample explorer (`public/personas/explorer.js`), import/export and the virtual host settings.
   `POST /api/personas/generate` drafts one with the writing model; `persona` on `/api/generate` shapes the AI-written line and sets default delivery.
 - **Sound library** (`lib/library/`, `/api/library`, Library tab, `docs/LIBRARY.md`): sfx and music folders read from OwnCloud (WebDAV) and/or Google

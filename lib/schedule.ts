@@ -30,6 +30,8 @@ export interface Schedule {
   fx: string;
   /** Stop after this many runs (0 = no limit). */
   count: number;
+  /** The station profile it is for: its name goes into AI-written lines and the clips and queue items carry its id. */
+  stationId?: string;
   /** Never run after this instant (ISO 8601): an event promo stops when the event is over. Also the expiry of the clips it makes. */
   until?: string;
   /** Metadata for the clips it makes (kind, event, ...). */
@@ -162,6 +164,7 @@ export function buildSchedule(raw: unknown, now = Date.now()): Schedule {
     count: clamp(Math.floor(Number(r.count)) || 0, 0, 10000), runs: 0,
     ...(Number.isFinite(untilMs) ? { until: new Date(untilMs).toISOString() } : {}),
     ...(r.info ? { info: sanitizeInfo(r.info) } : {}),
+    ...(str(r.stationId, 60) ? { stationId: str(r.stationId, 60) } : {}),
     nextAt: new Date(first).toISOString(), createdAt: new Date(now).toISOString(),
   };
 }

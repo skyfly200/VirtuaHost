@@ -6,6 +6,7 @@ import { createSpeaker, parseDialogue, speakersOf } from '../shared/speaker.js';
 import { FX_PREVIEWS } from '../generate/fx.js';
 import { effectNames } from '../generate/mixer.js';
 import { createPlayer } from '../shared/playbutton.js';
+import { stationName } from '../shared/station.js';
 
 const MAX_SLOTS = 4;
 const PREF_KEY = 'djPrefs';
@@ -23,7 +24,7 @@ export async function mountLab(root, api) {
   const models = choosable ? options.models.speech : [];
   const state = {
     mode: 'single', gap: 0.3, brief: '', briefPersona: '',
-    text: `Welcome back to ${options.station || 'the station'}. [sfx:chime] This is a quick test of how a voice sounds.`,
+    text: `Welcome back to ${stationName(options.station) || 'the station'}. [sfx:chime] This is a quick test of how a voice sounds.`,
     cast: {},   // speaker name -> { persona, voice }
     slots: [],
   };

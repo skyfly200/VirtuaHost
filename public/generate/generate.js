@@ -2,6 +2,7 @@
 import { h, clear, toast, fmtDate, audioUrl } from '../shared/kit.js';
 import { effectNames } from './mixer.js';
 import { createSpeaker } from '../shared/speaker.js';
+import { stationId } from '../shared/station.js';
 
 const GEMINI_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Zephyr', 'Orus'];
 const OTHER = '__other';
@@ -17,7 +18,7 @@ export async function mountGenerate(root, api) {
   clear(root, h('p', { class: 'muted' }, 'Loading...'));
   let options;
   try {
-    options = await api.get('/options');
+    options = await api.get('/options', { query: { station: stationId() } });
   } catch (err) {
     clear(root, h('p', { class: 'bad' }, `Could not load options: ${err.message}`));
     return;
@@ -145,6 +146,7 @@ export async function mountGenerate(root, api) {
   const draftBox = h('div');
   let draft = null;
   const writerBase = () => ({
+    ...(stationId() ? { station: stationId() } : {}),
     ...(state.persona ? { persona: state.persona } : {}), ...(state.format ? { format: state.format } : {}), ...(state.tone.trim() ? { tone: state.tone.trim() } : {}),
     ...(options.models.choosable ? (() => { const m = chosen('textModel', 'textCustom'); return m ? { textModel: m } : {}; })() : {}),
   });
@@ -196,7 +198,7 @@ export async function mountGenerate(root, api) {
   async function makeAudio(value, meta) {
     status.classList.remove('bad');
     status.textContent = 'Generating a preview (this calls the speech service live and can take a few seconds)...';
-    const base = { ...(state.persona ? { persona: state.persona } : {}) };
+    const base = { ...(state.persona ? { persona: state.persona } : {}), ...(stationId() ? { station: stationId() } : {}) };
     if (state.tone.trim()) base.tone = state.tone.trim();
     if (state.voice.trim()) base.voice = state.voice.trim();
     if (options.models.choosable) {
@@ -226,7 +228,7 @@ export async function mountGenerate(root, api) {
       try {
         const f = draft.first;
         const meta = { mode: draft.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: draft.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects,
-          info: { ...(detail.title.trim() ? { title: detail.title.trim() } : {}), ...(detail.kind.trim() ? { kind: detail.kind.trim() } : {}), ...(detail.tags.trim() ? { tags: detail.tags.split(',').map((t) => t.trim()) } : {}), ...(detail.expires ? { expiresAt: new Date(detail.expires).toISOString() } : {}), ...(state.persona ? { persona: state.persona } : {}) } };
+          info: { ...(stationId() ? { station: stationId() } : {}), ...(detail.title.trim() ? { title: detail.title.trim() } : {}), ...(detail.kind.trim() ? { kind: detail.kind.trim() } : {}), ...(detail.tags.trim() ? { tags: detail.tags.split(',').map((t) => t.trim()) } : {}), ...(detail.expires ? { expiresAt: new Date(detail.expires).toISOString() } : {}), ...(state.persona ? { persona: state.persona } : {}) } };
         const saved = await api.request('POST', '/clips', { raw: draft.blob, contentType: draft.blob.type, headers: { 'x-clip-meta': encodeURIComponent(JSON.stringify(meta)) } });
         toast(saved.handoff ? (saved.handoff.sent ? 'Saved and sent to the station.' : `Saved. Station hand-off failed: ${saved.handoff.error}`) : 'Saved to the library.', saved.handoff && !saved.handoff.sent ? 'error' : 'info');
         discard(); state.text = ''; if (textArea) textArea.value = ''; status.textContent = '';

@@ -3,6 +3,7 @@
 import { h, clear, toast } from '../shared/kit.js';
 import { FX_PREVIEWS } from '../generate/fx.js';
 import { createPlayer } from '../shared/playbutton.js';
+import { stationName } from '../shared/station.js';
 
 const MAX_COMPARE = 4;
 
@@ -24,7 +25,7 @@ export function mountExplorer(box, persona, ctx) {
   const models = choosable ? options.models.speech : [];
   const saved = Boolean(persona.id);   // an unsaved draft cannot be sent to the writer by id
   const settings = { speechModel: persona.speechModel || (choosable ? options.models.defaultSpeech : ''), voice: persona.voice || '', tone: persona.tone || '', fx: '', artist: 'Boards of Canada', title: 'Roygbiv' };
-  const station = options.station || 'the station';
+  const station = stationName(options.station) || 'the station';
   const fill = (t) => t.replace(/\{artist\}/g, settings.artist).replace(/\{title\}/g, settings.title).replace(/\{station\}/g, station);
   const rows = new Map();     // key -> [{ text, url, status, error }]
   let compare = [];

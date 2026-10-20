@@ -3,6 +3,7 @@
 // The saved clip carries the event as metadata and an expiry, so nothing downstream plays it after the date (docs/CLIP-METADATA.md).
 import { h, clear, toast } from '../shared/kit.js';
 import { createSpeaker } from '../shared/speaker.js';
+import { currentStation, stationId, stationName } from '../shared/station.js';
 
 const MAX_SIDE = 1600;
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -34,7 +35,7 @@ export async function mountFlier(root, api) {
   await speaker.loadLibrary();
 
   const s = {
-    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', image: '', pasted: '', thumb: '',
+    tz: (currentStation() && currentStation().tz) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', image: '', pasted: '', thumb: '',
     event: null, personaId: '', count: 3, length: 'short', variants: [], chosen: 0, stopRule: 'end',
     audio: null, saved: null,
   };
@@ -59,7 +60,7 @@ export async function mountFlier(root, api) {
       if (!s.image && !s.pasted.trim()) { say('Choose a picture or paste the text first.', true); return; }
       read.disabled = true; say('Reading the flier (this uses the AI and can take a few seconds)...');
       try {
-        const { event } = await api.post('/flier/read', { ...(s.image ? { image: s.image } : {}), ...(s.pasted.trim() ? { text: s.pasted } : {}), tz: s.tz });
+        const { event } = await api.post('/flier/read', { ...(s.image ? { image: s.image } : {}), ...(s.pasted.trim() ? { text: s.pasted } : {}), tz: s.tz, station: stationId() || undefined });
         s.event = event; s.variants = []; s.audio = null; s.saved = null;
         say('Read. Check every detail below: the promo repeats exactly what is here.'); paint();
       } catch (err) { say(err.message, true); } finally { read.disabled = false; }
@@ -102,7 +103,7 @@ export async function mountFlier(root, api) {
     const write = h('button', { class: 'primary', type: 'button', onclick: async () => {
       write.disabled = true; say('Writing the promos...');
       try {
-        const out = await api.post('/flier/promo', { event: s.event, tz: s.tz, personaId: s.personaId, count: s.count, length: s.length });
+        const out = await api.post('/flier/promo', { event: s.event, tz: s.tz, personaId: s.personaId, count: s.count, length: s.length, station: stationId() || undefined });
         s.event = { ...s.event, ...out.event }; s.variants = out.variants; s.chosen = 0; s.audio = null; s.saved = null;
         say(`Written. Edit the one you like, then make the audio. The promo will say: "${out.event.whenSpoken || 'no date'}".`); paint();
       } catch (err) { say(err.message, true); } finally { write.disabled = false; }
@@ -123,7 +124,7 @@ export async function mountFlier(root, api) {
     return at ? new Date(at).toISOString() : undefined;
   }
   // The details that travel with the clip: what it is, the event, and when it stops being playable.
-  const infoFor = (expires) => ({ kind: 'promo', source: 'flier', title: s.event.name, tags: ['event', 'promo'], persona: s.personaId || undefined, event: s.event, ...(expires ? { expiresAt: expires } : {}) });
+  const infoFor = (expires) => ({ kind: 'promo', source: 'flier', title: s.event.name, tags: ['event', 'promo'], persona: s.personaId || undefined, ...(stationId() ? { station: stationId() } : {}), event: s.event, ...(expires ? { expiresAt: expires } : {}) });
   function audioCard() {
     const stop = h('select', { 'aria-label': 'Stop playing', onchange: (ev) => { s.stopRule = ev.target.value; paint(); } }, STOP.map(([v, t]) => h('option', { value: v, selected: v === s.stopRule }, t)));
     const expires = expiryFor(s.event);
@@ -164,7 +165,7 @@ export async function mountFlier(root, api) {
       ev.target.disabled = true;
       try {
         const minutes = Number(every.value) * 60;
-        const out = await api.post('/schedules', { name: `Promo: ${s.event.name}`, when: { type: 'interval', everyMinutes: minutes, startAt: new Date().toISOString() }, content: { kind: 'clip', clipId: s.saved.id }, personaId: s.personaId, send: 'air', until: expires, info: infoFor(expires) });
+        const out = await api.post('/schedules', { name: `Promo: ${s.event.name}`, when: { type: 'interval', everyMinutes: minutes, startAt: new Date().toISOString() }, content: { kind: 'clip', clipId: s.saved.id }, personaId: s.personaId, send: 'air', until: expires, info: infoFor(expires), stationId: stationId() || undefined });
         toast(`Scheduled: it will air ${every.options[every.selectedIndex].text} until ${when(expires)}.`, 'info'); void out;
       } catch (err) { toast(err.message, 'error'); } finally { ev.target.disabled = false; }
     } }, 'Repeat it until then');
@@ -180,7 +181,7 @@ export async function mountFlier(root, api) {
 
   clear(root, h('div', { class: 'stack' },
     h('section', { class: 'card' }, h('h2', {}, 'Flier to promo'),
-      h('p', { class: 'muted small' }, 'Turn an event flier into a promo clip in a persona\'s voice. The clip knows when the event ends and stops playing then, on its own.')),
+      h('p', { class: 'muted small' }, `For ${stationName('the station')}. Turn an event flier into a promo clip in a persona's voice. The clip knows when the event ends and stops playing then, on its own.`)),
     status, body));
   paint();
 }

@@ -4,6 +4,7 @@ import { h, clear, toast } from '../shared/kit.js';
 import { createSpeaker } from '../shared/speaker.js';
 import { mountExplorer } from './explorer.js';
 import { createPlayer } from '../shared/playbutton.js';
+import { stationName } from '../shared/station.js';
 
 const LINES = (value) => value.split('\n').map((l) => l.trim()).filter(Boolean);
 const blank = () => ({ name: '', emoji: '', tagline: '', description: '', instructions: '', tone: '', voice: '', speechModel: '', tags: [], templates: [], stationIds: [], promos: [], signOffs: [], timeLines: {} });
@@ -43,7 +44,7 @@ export async function mountPersonas(root, api) {
   const samples = new Map();
   function sampleFor(p) {
     if (!samples.has(p.id)) {
-      const station = options.station || 'the station';
+      const station = stationName(options.station) || 'the station';
       const line = (p.stationIds[0] || p.templates[0] || p.promos[0] || p.signOffs[0] || `Hello, this is ${p.name}.`).replace(/\{artist\}/g, 'Ada Lovelace').replace(/\{title\}/g, 'Analytical Love').replace(/\{station\}/g, station);
       samples.set(p.id, createPlayer({ label: `Hear ${p.name}`, load: async () => URL.createObjectURL((await speaker.render(line, { ...(p.speechModel && options.models.choosable ? { speechModel: p.speechModel } : {}), ...(p.voice ? { voice: p.voice } : {}), ...(p.tone ? { tone: p.tone } : {}) })).blob) }));
     }

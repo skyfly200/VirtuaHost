@@ -7,6 +7,8 @@ import { mountPersonas } from './personas/personas.js';
 import { mountLibrary } from './library/library.js';
 import { mountFlier } from './flier/flier.js';
 import { mountSchedules } from './schedules/schedules.js';
+import { mountStationProfiles } from './stations/stations.js';
+import { loadStations, allStations, currentStation, setStation } from './shared/station.js';
 import { mountPanel, unmountPanel } from './panel/panel.js';
 
 const app = $('#app');
@@ -81,7 +83,8 @@ function showApp(credential, options) {
     { id: 'schedules', label: 'Schedules', on: true },
     { id: 'library', label: 'Library', on: true },
     { id: 'lab', label: 'Voice Lab', on: true },
-    { id: 'stations', label: 'Stations', on: features.hub, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
+    { id: 'stations', label: 'Stations', on: true },
+    { id: 'control', label: 'Control', on: features.hub, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
       what: 'Control every station on one screen: now playing, skip, volume, playlists, broadcasts at the same moment, and host settings.' },
   ];
   const panel = h('div');
@@ -90,8 +93,10 @@ function showApp(credential, options) {
   window.addEventListener('vh-tab', (e) => { if (tabs.some((t) => t.id === e.detail && t.on)) select(e.detail); });
 
   const tabButtons = tabs.map((t) => h('button', { type: 'button', role: 'tab', onclick: () => select(t.id) }, t.label, t.on ? null : h('span', { class: 'off' }, 'off')));
+  let activeTab = '';
   const select = async (id) => {
     leave(); leave = () => {};
+    activeTab = id;
     tabButtons.forEach((b, i) => b.setAttribute('aria-selected', String(tabs[i].id === id)));
     const tab = tabs.find((t) => t.id === id);
     try { sessionStorage.setItem('tab', id); } catch { /* storage blocked */ }
@@ -102,21 +107,34 @@ function showApp(credential, options) {
     if (id === 'flier') await mountFlier(panel, clientFor('/api', credential));
     if (id === 'library') await mountLibrary(panel, clientFor('/api', credential));
     if (id === 'lab') await mountLab(panel, clientFor('/api', credential));
-    if (id === 'stations') { leave = unmountPanel; await mountPanel(panel, clientFor('/api/hub', credential)); }
+    if (id === 'stations') await mountStationProfiles(panel, clientFor('/api', credential));
+    if (id === 'control') { leave = unmountPanel; await mountPanel(panel, clientFor('/api/hub', credential)); }
   };
+
+  // The station you are working on: chosen here, used by every tab (shared/station.js).
+  const stationSlot = h('span', { class: 'small muted' });
+  const paintStations = () => {
+    const list = allStations();
+    clear(stationSlot, list.length ? h('label', { class: 'row small', title: 'The station you are working on' }, 'Station',
+      h('select', { 'aria-label': 'Active station', onchange: (e) => { setStation(e.target.value); select(activeTab); } },
+        list.map((s) => h('option', { value: s.id, selected: currentStation() && s.id === currentStation().id }, `${s.emoji ? `${s.emoji} ` : ''}${s.name}`)))) : options.station || '');
+  };
+  const api = clientFor('/api', credential);
+  window.addEventListener('vh-stations', async () => { await loadStations(api); paintStations(); });
 
   clear(app,
     h('header', { class: 'bar' },
       h('h1', {}, 'VirtuaHost DJ'),
       h('nav', { class: 'tabs', role: 'tablist' }, tabButtons),
       h('span', { class: 'grow' }),
-      options.station ? h('span', { class: 'small muted' }, options.station) : null,
+      stationSlot,
       h('button', { onclick: () => { setSession(''); location.reload(); } }, 'Sign out')),
     h('main', {}, panel));
 
   let first = 'generate';
   try { first = sessionStorage.getItem('tab') || first; } catch { /* storage blocked */ }
-  select(tabs.some((t) => t.id === first) ? first : 'generate');
+  // Stations load first so every tab starts with the right one.
+  loadStations(api).then(() => { paintStations(); select(tabs.some((t) => t.id === first) ? first : 'generate'); });
 }
 
 function offCard(tab) {

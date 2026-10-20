@@ -10,14 +10,15 @@ import { createDaemon, liquidsoapCommand, annotateUri } from "../daemon.mjs";
 // A site stand-in: a queue of items, the audio, and a record of acknowledgements.
 function fakeSite(items) {
   const acks = [];
+  const asked = [];
   const server = http.createServer((req, res) => {
     if (req.headers["x-station-key"] !== "k") { res.statusCode = 401; return res.end(); }
-    if (req.url === "/api/station/next") { res.setHeader("content-type", "application/json"); return res.end(JSON.stringify({ item: items.shift() ?? null })); }
+    if (req.url.startsWith("/api/station/next")) { asked.push(req.url); res.setHeader("content-type", "application/json"); return res.end(JSON.stringify({ item: items.shift() ?? null })); }
     if (req.url.startsWith("/api/station/clips/")) { res.setHeader("content-type", "audio/wav"); return req.url.endsWith("missing") ? (res.statusCode = 404, res.end()) : res.end(Buffer.from("RIFFxxxxWAVE")); }
     if (req.url === "/api/station/ack") { let b = ""; req.on("data", (d) => { b += d; }); req.on("end", () => { acks.push(JSON.parse(b)); res.end("{}"); }); return; }
     res.statusCode = 404; res.end();
   });
-  return new Promise((resolve) => server.listen(0, () => resolve({ url: `http://127.0.0.1:${server.address().port}`, acks, close: () => server.close() })));
+  return new Promise((resolve) => server.listen(0, () => resolve({ url: `http://127.0.0.1:${server.address().port}`, acks, asked, close: () => server.close() })));
 }
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "daemon-"));
 const item = (over = {}) => ({ id: "i1", title: "Hello", play: true, preempt: false, audioUrl: "/api/station/clips/c1", ...over });
@@ -124,4 +125,12 @@ test("never plays a clip whose expiry has passed", async () => {
 test("builds annotate URIs only when there is something to say", () => {
   assert.equal(annotateUri("/x.wav"), "/x.wav");
   assert.equal(annotateUri("/x.wav", { kind: "drop" }), 'annotate:genre="drop":/x.wav');
+});
+
+test("a daemon for one station asks only for that station's clips", async () => {
+  const site = await fakeSite([]);
+  const d = createDaemon({ site: site.url, key: "k", dir: tmp(), stationId: "krap-1a2b", command: async () => "", log: () => {} });
+  assert.equal(await d.tick(), "idle");
+  assert.deepEqual(site.asked, ["/api/station/next?station=krap-1a2b"]);
+  site.close();
 });

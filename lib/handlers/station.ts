@@ -19,7 +19,8 @@ export async function handleStation(req: Request): Promise<Response> {
   const path = new URL(req.url).pathname.replace(/\/+$/, "");
 
   if (path === "/api/station/next" && req.method === "GET") {
-    const item = await claimNext();
+    const wanted = new URL(req.url).searchParams.get("station") || undefined;   // a daemon for one station asks only for its own
+    const item = await claimNext(Date.now(), wanted);
     if (!item) return Response.json({ item: null });
     return Response.json({ item: { id: item.id, title: item.title, play: item.play, preempt: item.preempt, ...(item.fx ? { fx: item.fx } : {}), ...(item.info ? { info: item.info } : {}), ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}), audioUrl: `/api/station/clips/${item.clipId}` } });
   }

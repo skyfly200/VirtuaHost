@@ -3,6 +3,7 @@ import { activeProvider, complete, NO_PROVIDER_MESSAGE, readImage } from "../ai.
 import { IMAGE_URL, MAX_IMAGE_CHARS, normalizeEvent, parseJsonObject, parseVariants, PROMO_SYSTEM_PROMPT, promoFacts, READ_SYSTEM_PROMPT } from "../flier.js";
 import { pickTextModel } from "../openrouter.js";
 import { getPersona } from "../persona-store.js";
+import { getStation } from "../station-profile-store.js";
 import { validTimeZone } from "../schedule.js";
 
 const today = (tz: string) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", weekday: "long" }).format(new Date());
@@ -19,7 +20,8 @@ export async function handleFlier(req: Request): Promise<Response> {
 
   const provider = activeProvider();
   if (!provider) return Response.json({ error: NO_PROVIDER_MESSAGE }, { status: 503 });
-  const tz = typeof body.tz === "string" && validTimeZone(body.tz) ? body.tz : "UTC";
+  const station = typeof body.station === "string" ? await getStation(body.station) : null;
+  const tz = typeof body.tz === "string" && validTimeZone(body.tz) ? body.tz : station?.tz ?? "UTC";
   const textModel = provider === "openrouter" ? (pickTextModel(typeof body.textModel === "string" ? body.textModel : undefined) as { model?: string; error?: string }) : undefined;
   if (textModel?.error) return Response.json({ error: textModel.error }, { status: 400 });
 
@@ -53,7 +55,7 @@ export async function handleFlier(req: Request): Promise<Response> {
     if (body.personaId && !persona) return Response.json({ error: "Unknown persona" }, { status: 400 });
     let reply: string;
     try {
-      reply = await complete({ system: PROMO_SYSTEM_PROMPT(process.env.STATION_NAME || "the station", count, length, persona?.instructions), prompt: promoFacts(checked.event), provider, textModel: textModel?.model });
+      reply = await complete({ system: PROMO_SYSTEM_PROMPT(station?.name || process.env.STATION_NAME || "the station", count, length, persona?.instructions), prompt: promoFacts(checked.event), provider, textModel: textModel?.model });
     } catch (err) {
       return Response.json({ error: `Could not write the promo: ${(err as Error).message}` }, { status: 502 });
     }

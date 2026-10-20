@@ -19,6 +19,8 @@ export interface QueueItem {
   fx?: FxSetting;
   /** The clip's metadata, passed on to the station (and from there to Liquidsoap and other systems). */
   info?: ClipInfo;
+  /** The station profile this is for. A station's daemon only collects its own items (and those with no station). */
+  stationId?: string;
   /** Never played after this instant; an expired item is skipped, not delivered. */
   expiresAt?: string;
   status: QueueStatus;
@@ -46,6 +48,7 @@ export async function enqueue(input: { clipId: string; title: string; play: bool
   const item: QueueItem = {
     id: randomUUID(), status: "queued", createdAt: new Date().toISOString(), attempts: 0, ...input, title: input.title.slice(0, 200),
     ...(input.info?.expiresAt ? { expiresAt: input.info.expiresAt } : {}),
+    ...(input.info?.station ? { stationId: input.info.station } : {}),
   };
   await store().setJSON(keyOf(item), item);
   return item;
@@ -62,8 +65,9 @@ export async function listQueue(limit = 50): Promise<QueueItem[]> {
 
 // Hands the oldest waiting item to the station. A claim whose lease ran out (the daemon died mid-clip) is offered again,
 // up to MAX_ATTEMPTS, then marked failed. One daemon per station is assumed: two polling at once could claim the same item.
-export async function claimNext(now = Date.now()): Promise<QueueItem | null> {
+export async function claimNext(now = Date.now(), stationId?: string): Promise<QueueItem | null> {
   for (const item of await all()) {
+    if (stationId && item.stationId && item.stationId !== stationId) continue;   // another station's item: leave it for them
     const expired = item.status === "claimed" && item.claimedAt !== undefined && now - Date.parse(item.claimedAt) > LEASE_MS;
     if (item.status !== "queued" && !expired) continue;
     if (isExpired(item, now)) {

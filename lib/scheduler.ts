@@ -3,6 +3,7 @@ import { activeProvider, writeScript } from "./ai.js";
 import { findFormat } from "./formats.js";
 import { makeClip } from "./make-clip.js";
 import { getPersona } from "./persona-store.js";
+import { getStation } from "./station-profile-store.js";
 import { pickTextModel } from "./openrouter.js";
 import { isExpired } from "./clip-info.js";
 import { nextRun, type Schedule } from "./schedule.js";
@@ -15,7 +16,9 @@ const BUDGET_MS = 22_000;                  // a scheduled function has about 30 
 
 // Makes the clip for one schedule and sends it as asked. Returns a short result for the UI.
 export async function runSchedule(s: Schedule): Promise<string> {
-  const persona = s.personaId ? await getPersona(s.personaId) : null;
+  const station = s.stationId ? await getStation(s.stationId) : null;
+  const persona = s.personaId ? await getPersona(s.personaId) : station?.defaultPersonaId ? await getPersona(station.defaultPersonaId) : null;
+  const stationInfo = station && station.id !== "default" ? { station: station.id } : {};
   let clipId: string;
   let audio: Buffer | undefined;
   let mimeType = "audio/mpeg";
@@ -35,20 +38,20 @@ export async function runSchedule(s: Schedule): Promise<string> {
       if (!provider) throw new Error("no AI provider is configured");
       if (provider === "openrouter") textModel = (pickTextModel(undefined) as { model: string }).model;
       const format = s.content.format ? findFormat(s.content.format) : undefined;
-      text = (await writeScript({ prompt: s.content.prompt, provider, textModel, tone: s.tone || persona?.tone, format, persona: persona?.instructions })).text;
+      text = (await writeScript({ prompt: s.content.prompt, provider, textModel, tone: s.tone || persona?.tone, format, persona: persona?.instructions, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text;
       mode = "ai";
     } else {
       text = s.content.text;
     }
-    const info = { source: "schedule", ...(s.info ?? {}), ...(s.until ? { expiresAt: s.until } : {}) };
-    const made = await makeClip({ text, input: `schedule: ${s.name}`, mode, textModel, info, tone: s.tone || persona?.tone, voice: s.voice || persona?.voice, speechModel: s.speechModel || persona?.speechModel });
+    const info = { source: "schedule", ...stationInfo, ...(s.info ?? {}), ...(s.until ? { expiresAt: s.until } : {}) };
+    const made = await makeClip({ text, input: `schedule: ${s.name}`, mode, textModel, info, tone: s.tone || persona?.tone, voice: s.voice || persona?.voice || station?.defaultVoice, speechModel: s.speechModel || persona?.speechModel || station?.defaultSpeechModel });
     if (!made.ok) throw new Error(made.error);
     clipId = made.id; title = made.scriptText;
   }
 
   if (s.send === "none") return "saved";
   if (!queueMode()) return "saved (set STATION_MODE=queue to send schedules to the station)";
-  await sendToStation({ clipId, audio: audio ?? Buffer.alloc(0), mimeType, title, play: s.send === "air", preempt: s.preempt, fx: s.fx || undefined, ...(s.info || s.until ? { info: { ...(s.info ?? {}), ...(s.until ? { expiresAt: s.until } : {}) } } : {}) });
+  await sendToStation({ clipId, audio: audio ?? Buffer.alloc(0), mimeType, title, play: s.send === "air", preempt: s.preempt, fx: s.fx || station?.defaultFx || undefined, ...(s.info || s.until || stationInfo.station ? { info: { ...stationInfo, ...(s.info ?? {}), ...(s.until ? { expiresAt: s.until } : {}) } } : {}) });
   return s.send === "air" ? "queued for air" : "queued for the station library";
 }
 

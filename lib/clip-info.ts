@@ -29,6 +29,8 @@ export interface ClipInfo {
   kind?: string;
   tags?: string[];
   persona?: string;
+  /** The station profile id this clip is for (lib/station-profile.ts). */
+  station?: string;
   /** Where it came from: "flier", "host", "schedule", "generate", ... */
   source?: string;
   event?: EventInfo;
@@ -65,7 +67,7 @@ export function sanitizeEvent(raw: unknown): EventInfo | undefined {
 export function sanitizeInfo(raw: unknown): ClipInfo {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const info: ClipInfo = {};
-  for (const [key, max] of [["title", 160], ["artist", 120], ["album", 120], ["kind", 40], ["persona", 60], ["source", 40]] as const) {
+  for (const [key, max] of [["title", 160], ["artist", 120], ["album", 120], ["kind", 40], ["persona", 60], ["station", 60], ["source", 40]] as const) {
     const v = text(r[key], max);
     if (v) info[key] = v;
   }
@@ -127,6 +129,7 @@ export function writeId3(audio: Buffer, info: ClipInfo, ctx: TagContext): Buffer
   if (info.expiresAt) frames.push(txxx("expires", info.expiresAt));
   if (info.kind) frames.push(txxx("kind", info.kind));
   if (info.persona) frames.push(txxx("persona", info.persona));
+  if (info.station) frames.push(txxx("station", info.station));
   if (info.event?.startsAt) frames.push(txxx("event_starts", info.event.startsAt));
   if (info.event?.name) frames.push(txxx("event", info.event.name));
   if (ctx.clipId) frames.push(txxx("clip_id", ctx.clipId));

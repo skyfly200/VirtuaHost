@@ -3,8 +3,12 @@
 // treatment is applied, and one playable file comes back. Shared by the Generate tab, Voice Lab and the persona explorer.
 import { parseTags, mix, toWav, effectNames, RATE } from '../generate/mixer.js';
 import { applyFx } from '../generate/fx.js';
+import { stationId } from './station.js';
 
 export const bytesOf = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+// The active station's defaults (persona, voice, model) apply to anything the request leaves out.
+const withStation = (base) => (base.station || !stationId() ? base : { ...base, station: stationId() });
 
 export function createSpeaker(api, features) {
   const library = { sfx: [], music: [] };
@@ -65,7 +69,7 @@ export function createSpeaker(api, features) {
     for (const piece of pieces) {
       if (piece.type !== 'speech') { results.push(piece); continue; }
       onProgress(`Generating speech${total > 1 ? ` (${results.filter((r) => r.type === 'speech').length + 1} of ${total})` : ''}...`);
-      results.push({ type: 'speech', data: await api.post('/generate', { ...base, mode: 'say', preview: true, text: piece.text }) });
+      results.push({ type: 'speech', data: await api.post('/generate', { ...withStation(base), mode: 'say', preview: true, text: piece.text }) });
     }
     const first = results.find((r) => r.type === 'speech').data;
     let blob;
@@ -92,7 +96,7 @@ export function createSpeaker(api, features) {
       for (const piece of pieces) {
         if (piece.type === 'music') { if (++beds > 1) throw new Error('Use only one [music:...] bed per conversation.'); results.unshift(piece); names.push(piece.name); continue; }
         if (piece.type === 'sfx') { results.push(piece); names.push(piece.name); continue; }
-        results.push({ type: 'speech', data: await api.post('/generate', { ...line.base, mode: 'say', preview: true, text: piece.text }) });
+        results.push({ type: 'speech', data: await api.post('/generate', { ...withStation(line.base), mode: 'say', preview: true, text: piece.text }) });
       }
       if (n < lines.length - 1) results.push({ type: 'silence', seconds: gap });
     }
