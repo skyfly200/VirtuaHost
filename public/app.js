@@ -78,8 +78,7 @@ function showApp(credential, options) {
     { id: 'personas', label: 'Personas', on: true },
     { id: 'flier', label: 'Flier', on: true },
     { id: 'library', label: 'Library', on: true },
-    { id: 'lab', label: 'Voice Lab', on: features.voice, needs: 'a Chips Voice server', vars: 'VOICE_URL and VOICE_KEY',
-      what: 'Try voices, models, tone, effects and sound effects side by side, and audition host personas such as CHIP.' },
+    { id: 'lab', label: 'Voice Lab', on: true },
     { id: 'stations', label: 'Stations', on: features.hub, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
       what: 'Control every station on one screen: now playing, skip, volume, playlists, broadcasts at the same moment, and host settings.' },
   ];
@@ -97,7 +96,7 @@ function showApp(credential, options) {
     if (id === 'personas') await mountPersonas(panel, clientFor('/api', credential));
     if (id === 'flier') await mountFlier(panel, clientFor('/api', credential));
     if (id === 'library') await mountLibrary(panel, clientFor('/api', credential));
-    if (id === 'lab') await mountLab(panel, clientFor('/api/voice', credential));
+    if (id === 'lab') await mountLab(panel, clientFor('/api', credential));
     if (id === 'stations') { leave = unmountPanel; await mountPanel(panel, clientFor('/api/hub', credential)); }
   };
 
