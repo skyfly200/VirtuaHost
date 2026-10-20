@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../lib/gemini.js", () => ({ writeDjLine: vi.fn(), synthesizeSpeech: vi.fn(), DEFAULT_VOICE: "Kore" }));
 vi.mock("../../lib/store.js", () => ({ saveClip: vi.fn() }));
+vi.mock("../../lib/persona-store.js", async () => {
+  const { BUILTIN_PERSONAS } = await import("../../lib/personas.js");
+  return { getPersona: vi.fn(async (id: string) => BUILTIN_PERSONAS.find((p) => p.id === id) ?? null) };
+});
 vi.mock("../../lib/handoff.js", () => ({ handoffConfigured: vi.fn(), handoffDefaults: vi.fn(), pushToStation: vi.fn() }));
 // Real model configuration, but no network: only the two calls to OpenRouter are replaced.
 vi.mock("../../lib/openrouter.js", async (importOriginal) => ({
@@ -93,6 +97,14 @@ describe("generate with OpenRouter", () => {
     expect(body).toMatchObject({ preview: true, scriptText: "Just listening", audio: Buffer.from([9, 9, 9, 9]).toString("base64"), mimeType: "audio/mpeg" });
     expect(mockedSave).not.toHaveBeenCalled();
     expect(pushToStation).not.toHaveBeenCalled();
+  });
+
+  it("applies a persona: its character goes to the writer and its tone is the default", async () => {
+    const res = await handleGenerate(post({ mode: "ai", prompt: "next song", persona: "chip" }));
+    expect(res.status).toBe(201);
+    expect(mockedChat.mock.calls[0][0].system).toContain("Your character: You are CHIP");
+    expect(mockedSpeech.mock.calls[0][0].tone).toContain("weathered");
+    expect((await handleGenerate(post({ mode: "ai", prompt: "x", persona: "nobody" }))).status).toBe(400);
   });
 
   it("wraps PCM from Google models in a WAV header and stores the file type", async () => {

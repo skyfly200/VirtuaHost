@@ -20,13 +20,16 @@ export async function mountGenerate(root, api) {
     return;
   }
 
+  let personas = [];
+  try { personas = (await api.get('/personas')).personas; } catch { /* the picker is optional */ }
+
   const prefs = loadPrefs();
   const state = {
-    mode: prefs.mode === 'ai' ? 'ai' : 'say', format: prefs.format || '', tone: prefs.tone || '',
+    mode: prefs.mode === 'ai' ? 'ai' : 'say', format: prefs.format || '', persona: personas.some((p) => p.id === prefs.persona) ? prefs.persona : '', tone: prefs.tone || '',
     textModel: prefs.textModel || options.models.defaultText, speechModel: prefs.speechModel || options.models.defaultSpeech, voice: prefs.voice || '',
     textCustom: '', speechCustom: '', text: '',
   };
-  const persist = () => savePrefs({ mode: state.mode, format: state.format, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice });
+  const persist = () => savePrefs({ mode: state.mode, format: state.format, persona: state.persona, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice });
   const formatOf = () => options.formats.find((f) => f.id === state.format);
 
   const note = options.warning
@@ -100,6 +103,9 @@ export async function mountGenerate(root, api) {
     clear(form,
       h('div', { class: 'row' },
         ['say', 'ai'].map((mode) => h('button', { type: 'button', class: state.mode === mode ? 'seg on' : 'seg', onclick: () => { state.mode = mode; persist(); paintForm(); } }, mode === 'say' ? 'Say verbatim' : 'Ask the AI to write it'))),
+      personas.length ? h('label', { class: 'field' }, 'Persona (who is speaking; optional)',
+        h('select', { onchange: (e) => { state.persona = e.target.value; const p = personas.find((x) => x.id === state.persona); if (p && p.tone) { state.tone = p.tone; } persist(); paintForm(); } },
+          h('option', { value: '' }, 'None'), personas.map((p) => h('option', { value: p.id, selected: p.id === state.persona }, p.name)))) : null,
       h('label', { class: 'field' }, 'What kind of line is it?',
         h('select', { onchange: (e) => { state.format = e.target.value; persist(); paintForm(); } },
           h('option', { value: '' }, 'Free-form'), options.formats.map((x) => h('option', { value: x.id, selected: x.id === state.format }, x.label)))),
@@ -144,7 +150,7 @@ export async function mountGenerate(root, api) {
     button.disabled = true;
     status.textContent = 'Generating a preview (this calls the AI live and can take a few seconds)...';
     try {
-      const base = { preview: true };
+      const base = { preview: true, ...(state.persona ? { persona: state.persona } : {}) };
       if (state.format) base.format = state.format;
       if (state.tone.trim()) base.tone = state.tone.trim();
       if (state.voice.trim()) base.voice = state.voice.trim();

@@ -20,6 +20,8 @@ export interface GenerateRequest {
   preempt?: boolean;
   /** Set false to skip sending the clip to the station at all. */
   handoff?: boolean;
+  /** A persona id from GET /api/personas: its character shapes AI-written lines and its tone, voice and speech model are the defaults. */
+  persona?: string;
   /** Return the audio without saving it or sending it to the station; the Generate tab uses this to preview a clip. */
   preview?: boolean;
   /** Audio treatment or voice changer the station applies on arrival. Defaults to STATION_FX. */

@@ -3,6 +3,7 @@ import { activeProvider, writeScript, speak, NO_PROVIDER_MESSAGE } from "../ai.j
 import { pickTextModel, pickSpeechModel, speechModels, defaultSpeechModel, discoverSpeechModels, type SpeechModel } from "../openrouter.js";
 import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "../cues.js";
 import { cleanTone, findFormat } from "../formats.js";
+import { getPersona } from "../persona-store.js";
 import { saveClip } from "../store.js";
 import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
 import { checkAuth } from "../auth.js";
@@ -47,7 +48,14 @@ export async function handleGenerate(req: Request): Promise<Response> {
   const provider = activeProvider();
   if (!provider) return Response.json({ error: NO_PROVIDER_MESSAGE }, { status: 503 });
 
-  const tone = cleanTone(body.tone);
+  let persona;
+  if (body.persona !== undefined) {
+    if (typeof body.persona !== "string") return Response.json({ error: "persona must be an id" }, { status: 400 });
+    persona = await getPersona(body.persona);
+    if (!persona) return Response.json({ error: `Unknown persona "${body.persona.slice(0, 50)}"` }, { status: 400 });
+  }
+
+  const tone = cleanTone(body.tone ?? persona?.tone);
   if (body.tone !== undefined && typeof body.tone !== "string") {
     return Response.json({ error: "tone must be text" }, { status: 400 });
   }
@@ -55,7 +63,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   if (body.format && !format) {
     return Response.json({ error: `Unknown format "${String(body.format).slice(0, 40)}"` }, { status: 400 });
   }
-  const voice = typeof body.voice === "string" ? body.voice.trim().slice(0, 60) : undefined;
+  const voice = typeof body.voice === "string" ? body.voice.trim().slice(0, 60) : persona?.voice;
 
   // Models can be chosen per request only when OpenRouter is the provider.
   let textModel: string | undefined;
@@ -63,7 +71,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   if (provider === "openrouter") {
     const t = pickTextModel(typeof body.textModel === "string" ? body.textModel : undefined);
     if ("error" in t) return Response.json({ error: t.error }, { status: 400 });
-    const requestedSpeech = typeof body.speechModel === "string" ? body.speechModel : undefined;
+    const requestedSpeech = typeof body.speechModel === "string" ? body.speechModel : persona?.speechModel;
     // Models OpenRouter lists but the configured list lacks are looked up only when asked for.
     const listed = !requestedSpeech || speechModels().some((m) => m.id === requestedSpeech);
     const sp = pickSpeechModel(requestedSpeech, listed ? [] : await discoverSpeechModels());
@@ -76,7 +84,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
 
   let scriptText: string;
   try {
-    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format })).text : input;
+    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format, persona: persona?.instructions })).text : input;
   } catch (err) {
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
   }
