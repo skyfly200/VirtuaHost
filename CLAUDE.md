@@ -100,7 +100,7 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
 - **Personas** (`lib/personas.ts`, `lib/persona-store.ts`, `/api/personas`, Personas tab): character brief, tone, voice, speech model; CHIP is built in.
   `POST /api/personas/generate` drafts one with the writing model; `persona` on `/api/generate` shapes the AI-written line and sets default delivery.
 - **Sound library** (`lib/library/`, `/api/library`, Library tab, `docs/LIBRARY.md`): sfx and music folders read from OwnCloud (WebDAV) and/or Google
-  Drive (service account), read-only. Files are only fetched by name from a fresh listing, never by a client-supplied path. Not yet read by the premix Action.
+  Drive (service account), read-only. Files are only fetched by name from a fresh listing, never by a client-supplied path. The premix script reads it too (with `SITE_URL`/`ACCESS_KEY`).
 - **Premix** (`scripts/premix.mjs`, `.github/workflows/premix.yml`, `premix/`): scripts with `[sfx:]` tags mixed with ffmpeg in GitHub Actions.
 - **Station queue and daemon** (`lib/queue-store.ts`, `lib/station-send.ts`, `/api/queue`, `/api/station/*`, `station-daemon/`): with `STATION_MODE=queue`
   every saved clip is queued in Blobs; the zero-dependency daemon on the streaming server polls with `STATION_KEY`, downloads, applies the Chips Voice fx

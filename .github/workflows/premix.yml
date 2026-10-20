@@ -20,6 +20,10 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Check scripts and sound effect tags
+        # With SITE_URL and ACCESS_KEY set, effects and music from the cloud library are checked too.
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
         run: node scripts/premix.mjs --dry-run
       - name: Mix
         # SITE_URL (a variable) and ACCESS_KEY (a secret) are set in the repository settings.
