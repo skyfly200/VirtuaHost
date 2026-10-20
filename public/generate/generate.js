@@ -4,6 +4,8 @@ import { effectNames } from './mixer.js';
 import { createSpeaker } from '../shared/speaker.js';
 import { stationId } from '../shared/station.js';
 import { createStatus } from '../shared/status.js';
+import { amountSlider } from '../shared/amount.js';
+import { FX_PREVIEWS } from './fx.js';
 
 const GEMINI_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Zephyr', 'Orus'];
 const OTHER = '__other';
@@ -36,9 +38,10 @@ export async function mountGenerate(root, api) {
   const state = {
     mode: prefs.mode === 'ai' ? 'ai' : 'say', format: prefs.format || '', persona: personas.some((p) => p.id === prefs.persona) ? prefs.persona : '', tone: prefs.tone || '',
     textModel: prefs.textModel || options.models.defaultText, speechModel: prefs.speechModel || options.models.defaultSpeech, voice: prefs.voice || '',
+    fx: FX_PREVIEWS[prefs.fx] ? prefs.fx : '', fxAmount: typeof prefs.fxAmount === 'number' ? Math.min(1, Math.max(0, prefs.fxAmount)) : 1,
     textCustom: '', speechCustom: '', text: takePrefill(),
   };
-  const persist = () => savePrefs({ mode: state.mode, format: state.format, persona: state.persona, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice });
+  const persist = () => savePrefs({ mode: state.mode, format: state.format, persona: state.persona, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice, fx: state.fx, fxAmount: state.fxAmount });
   const formatOf = () => options.formats.find((f) => f.id === state.format);
 
   const note = options.warning
@@ -127,6 +130,13 @@ export async function mountGenerate(root, api) {
         modelSelect('speechModel', 'speechCustom', options.models.speech.map((m) => m.id), 'Speech model'),
         h('label', { class: 'field' }, 'Voice', voiceInput, voiceList)),
       cueBox,
+      // An audio treatment applied to the finished clip (voice and any mixed-in sounds) before you hear it and save it.
+      h('div', { class: 'grid cols' },
+        h('label', { class: 'field' }, 'Effect on the audio',
+          h('select', { 'aria-label': 'Effect', onchange: (e) => { state.fx = e.target.value; persist(); paintForm(); } }, h('option', { value: '' }, 'None'),
+            Object.entries(FX_PREVIEWS).map(([k, f]) => h('option', { value: k, selected: k === state.fx }, f.label)))),
+        state.fx ? amountSlider({ label: 'Effect amount', value: Math.round(state.fxAmount * 100), onchange: (a) => { state.fxAmount = a; persist(); } }) : null),
+      state.fx ? h('p', { class: 'muted small' }, 'Applied in the browser and saved into the audio. It is a preview-quality version of the station\'s treatment of the same name; the station can still apply its own on top.') : null,
       h('details', { class: 'tips' }, h('summary', {}, 'Writing tips and structure'), h('ul', {},
         h('li', {}, h('b', {}, 'Keep it short. '), 'One to three sentences is 5 to 15 seconds on air. Shape: a hook, the information, then a sign-off or station name.'),
         h('li', {}, h('b', {}, 'Say it the way it should sound. '), 'Write times and numbers as spoken ("nine thirty", not "9:30"), and add commas where you want a breath.'),
@@ -206,9 +216,9 @@ export async function mountGenerate(root, api) {
       const speechModel = chosen('speechModel', 'speechCustom');
       if (speechModel) base.speechModel = speechModel;
     }
-    const out = await speaker.render(value, base, { onProgress: (m, p) => status.busy(m, p) });
+    const out = await speaker.render(value, base, { fx: state.fx, fxAmount: state.fxAmount, onProgress: (m, p) => status.busy(m, p) });
     const first = out.first;
-    showDraft({ blob: out.blob, scriptText: out.scriptText, input: meta.input, mode: meta.mode, textModel: meta.textModel, first, effects: out.effects });
+    showDraft({ blob: out.blob, scriptText: out.scriptText, input: meta.input, mode: meta.mode, textModel: meta.textModel, first, effects: out.effects, fx: state.fx ? { name: state.fx, amount: state.fxAmount } : null });
     status.ok(`Preview ready${first.speechModel ? ` (${first.speechModel}${meta.textModel ? `, written by ${meta.textModel}` : ''})` : ''}. Listen, then save it or discard it.${first.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${first.toneIgnored ? ' This model ignores tone.' : ''}`);
   }
 
@@ -229,7 +239,7 @@ export async function mountGenerate(root, api) {
       try {
         const f = draft.first;
         const meta = { mode: draft.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: draft.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects,
-          info: { ...(stationId() ? { station: stationId() } : {}), ...(detail.title.trim() ? { title: detail.title.trim() } : {}), ...(detail.kind.trim() ? { kind: detail.kind.trim() } : {}), ...(detail.tags.trim() ? { tags: detail.tags.split(',').map((t) => t.trim()) } : {}), ...(detail.expires ? { expiresAt: new Date(detail.expires).toISOString() } : {}), ...(state.persona ? { persona: state.persona } : {}) } };
+          info: { ...(stationId() ? { station: stationId() } : {}), ...(draft.fx ? { extra: { effect: draft.fx.name, effect_amount: String(Math.round(draft.fx.amount * 100)) } } : {}), ...(detail.title.trim() ? { title: detail.title.trim() } : {}), ...(detail.kind.trim() ? { kind: detail.kind.trim() } : {}), ...(detail.tags.trim() ? { tags: detail.tags.split(',').map((t) => t.trim()) } : {}), ...(detail.expires ? { expiresAt: new Date(detail.expires).toISOString() } : {}), ...(state.persona ? { persona: state.persona } : {}) } };
         const saved = await api.request('POST', '/clips', { raw: draft.blob, contentType: draft.blob.type, headers: { 'x-clip-meta': encodeURIComponent(JSON.stringify(meta)) } });
         toast(saved.handoff ? (saved.handoff.sent ? 'Saved and sent to the station.' : `Saved. Station hand-off failed: ${saved.handoff.error}`) : 'Saved to the library.', saved.handoff && !saved.handoff.sent ? 'error' : 'info');
         discard(); state.text = ''; if (textArea) textArea.value = ''; status.clear();
@@ -237,7 +247,7 @@ export async function mountGenerate(root, api) {
       } catch (err) { saveStatus.fail(err.message); saveButton.disabled = false; }
     } }, 'Save to library');
     clear(draftBox, h('div', { class: 'clip' },
-      h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'preview, not saved yet'), draft.effects.length ? h('span', { class: 'chip' }, `effects: ${[...new Set(draft.effects)].join(', ')}`) : null, h('span', {}, `${(draft.blob.size / 1024).toFixed(0)} KB`)),
+      h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'preview, not saved yet'), draft.effects.length ? h('span', { class: 'chip' }, `sounds: ${[...new Set(draft.effects)].join(', ')}`) : null, draft.fx ? h('span', { class: 'chip' }, `effect: ${FX_PREVIEWS[draft.fx.name].label} ${Math.round(draft.fx.amount * 100)}%`) : null, h('span', {}, `${(draft.blob.size / 1024).toFixed(0)} KB`)),
       h('p', { class: 'clip-script' }, draft.scriptText),
       player, details,
       h('div', { class: 'row' }, saveButton, h('button', { type: 'button', onclick: discard }, 'Discard'), saveStatus.el)));

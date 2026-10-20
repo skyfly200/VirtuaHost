@@ -145,7 +145,7 @@ export async function mountLab(root, api) {
   function useInGenerate(slot) {
     try {
       const prefs = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
-      Object.assign(prefs, { persona: slot.persona, ...(slot.speechModel ? { speechModel: slot.speechModel } : {}), voice: slot.voice, tone: slot.tone });
+      Object.assign(prefs, { persona: slot.persona, ...(slot.speechModel ? { speechModel: slot.speechModel } : {}), voice: slot.voice, tone: slot.tone, fx: slot.fx, fxAmount: slot.fxAmount });
       localStorage.setItem(PREF_KEY, JSON.stringify(prefs));
       toast('The Generate tab will start with these settings.', 'info');
     } catch { toast('Could not save the settings in this browser.', 'error'); }
