@@ -19,10 +19,10 @@ import { cuesFor } from "./cues.js";
 
 const DEFAULT_TEXT_MODELS = ["openai/gpt-4o-mini", "anthropic/claude-3.5-haiku", "meta-llama/llama-3.1-8b-instruct"];
 // Providers like Kokoro reject a request with no voice, so every built-in model carries one (the UI can still override it).
+// Only models known to exist are built in. Everything else OpenRouter offers is found by asking it (allSpeechModels below), and when
+// that list can be read, a built-in model that is not on it is hidden instead of failing later with "does not exist".
 const DEFAULT_SPEECH_MODELS = [
   "google/gemini-3.1-flash-tts-preview|Kore",
-  "openai/gpt-4o-mini-tts-2025-12-15|alloy",
-  "mistralai/voxtral-mini-tts-2603",
   "hexgrad/kokoro-82m|af_heart",
 ];
 export const MODEL_SLUG = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
@@ -94,12 +94,19 @@ export async function discoverSpeechModels(): Promise<SpeechModel[]> {
 export async function allSpeechModels(): Promise<SpeechModel[]> {
   const configuredList = speechModels();
   const extra = await discoverSpeechModels();
-  const merged = configuredList.map((m) => {
+  // With no list of your own (OPENROUTER_SPEECH_MODELS), the built-in models OpenRouter does not list are left out.
+  const builtInOnly = list(process.env.OPENROUTER_SPEECH_MODELS).length === 0;
+  const pinned = process.env.OPENROUTER_SPEECH_MODEL?.trim();
+  const kept = builtInOnly && extra.length ? configuredList.filter((m) => m.id === pinned || extra.some((x) => x.id === m.id)) : configuredList;
+  const merged = kept.map((m) => {
     const live = extra.find((x) => x.id === m.id);
     return live?.voices ? { ...m, voices: live.voices } : m;
   });
-  return [...merged, ...extra.filter((x) => !configuredList.some((m) => m.id === x.id))];
+  return [...merged, ...extra.filter((x) => !kept.some((m) => m.id === x.id))];
 }
+
+// An unknown model is the most common way speech fails; say what to do about it.
+export const MODEL_GONE = /does not exist|No endpoints found|not a valid model|model not found/i;
 
 // Resolves a requested model against the allowed list; returns an error message when it is not allowed.
 export function pickTextModel(requested: string | undefined): { model: string } | { error: string } {
@@ -222,8 +229,10 @@ export async function speech(options: { model: string; voice?: string; text: str
     }),
     signal: AbortSignal.timeout(40_000),
   });
-  if (!res.ok) throw new Error(await errorMessage(res));
-  if ((res.headers.get("content-type") ?? "").includes("json")) throw new Error(await errorMessage(res));
+  if (!res.ok || (res.headers.get("content-type") ?? "").includes("json")) {
+    const message = await errorMessage(res);
+    throw new Error(MODEL_GONE.test(message) ? `${message}. That speech model is not available on OpenRouter right now: pick another in the Speech model list.` : message);
+  }
   const audio = Buffer.from(await res.arrayBuffer());
   if (!audio.length) throw new Error(`${options.model} returned no audio`);
   return { audio, format };

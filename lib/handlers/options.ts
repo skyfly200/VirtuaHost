@@ -22,6 +22,11 @@ export async function handleOptions(req: Request): Promise<Response> {
   const station = chosen?.name || process.env.STATION_NAME || "the station";
   const openrouter = provider === "openrouter";
 
+  const speech = openrouter ? (await allSpeechModels()).map((m) => ({ ...m, cues: cuesFor(m.id) })) : [];
+  // The default must be a model that is offered: a configured default that OpenRouter does not list would only fail.
+  const wanted = defaultSpeechModel().id;
+  const defaultSpeech = speech.some((m) => m.id === wanted) ? wanted : speech[0]?.id ?? wanted;
+
   return Response.json({
     provider,
     features: { ...features(), library: libraryFeatures(), stationQueue: queueMode() },
@@ -29,7 +34,7 @@ export async function handleOptions(req: Request): Promise<Response> {
     station,
     // Models can only be chosen with OpenRouter; with Gemini direct the models are fixed.
     models: openrouter
-      ? { choosable: true, allowAny: allowAnyModel(), text: textModels(), speech: (await allSpeechModels()).map((m) => ({ ...m, cues: cuesFor(m.id) })), defaultText: defaultTextModel(), defaultSpeech: defaultSpeechModel().id }
+      ? { choosable: true, allowAny: allowAnyModel(), text: textModels(), speech, defaultText: defaultTextModel(), defaultSpeech }
       : { choosable: false, fixedCues: GEMINI_DIRECT_CUES, allowAny: false, text: [], speech: [], defaultText: "", defaultSpeech: "" },
     tones: TONES,
     maxToneLength: MAX_TONE_LENGTH,

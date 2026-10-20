@@ -190,3 +190,33 @@ describe("delivery cues by model", () => {
     expect(stripDeliveryTags("No tags here.")).toEqual({ text: "No tags here.", removed: false });
   });
 });
+
+describe("models that do not exist", () => {
+  it("hides built-in speech models OpenRouter does not list, but keeps ones you configured", async () => {
+    vi.resetModules();
+    const { allSpeechModels } = await import("../../lib/openrouter.js");
+    fetchMock.mockResolvedValue(jsonResponse({ data: [{ id: "google/gemini-3.1-flash-tts-preview" }, { id: "real/tts", supported_voices: ["v1"] }] }));
+    const ids = (await allSpeechModels()).map((m) => m.id);
+    expect(ids).toEqual(["google/gemini-3.1-flash-tts-preview", "real/tts"]);      // kokoro is built in but not listed: hidden
+
+    vi.resetModules();
+    vi.stubEnv("OPENROUTER_SPEECH_MODELS", "hexgrad/kokoro-82m|af_heart");
+    const again = await import("../../lib/openrouter.js");
+    fetchMock.mockResolvedValue(jsonResponse({ data: [{ id: "real/tts" }] }));
+    expect((await again.allSpeechModels()).map((m) => m.id)).toEqual(["hexgrad/kokoro-82m", "real/tts"]);   // yours stays
+  });
+
+  it("keeps the built-in list when OpenRouter cannot be asked", async () => {
+    vi.resetModules();
+    const { allSpeechModels } = await import("../../lib/openrouter.js");
+    fetchMock.mockRejectedValue(new Error("offline"));
+    expect((await allSpeechModels()).map((m) => m.id)).toEqual(["google/gemini-3.1-flash-tts-preview", "hexgrad/kokoro-82m"]);
+  });
+
+  it("explains a missing model instead of just repeating the error", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: { message: "Model openai/gpt-4o-mini-tts-2025-12-15 does not exist" } }, 400));
+    await expect(speech({ model: "openai/gpt-4o-mini-tts-2025-12-15", text: "hi" })).rejects.toThrow(/does not exist.*pick another in the Speech model list/s);
+    fetchMock.mockResolvedValue(jsonResponse({ error: { message: "Invalid voice" } }, 400));
+    await expect(speech({ model: "x/tts", text: "hi" })).rejects.not.toThrow(/pick another/);
+  });
+});
