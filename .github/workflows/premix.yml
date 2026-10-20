@@ -4,6 +4,11 @@ on:
   push:
     paths: ["premix/**", "scripts/premix.mjs"]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Also save the finished files to the site's clip library"
+        type: boolean
+        default: false
 
 jobs:
   premix:
@@ -22,7 +27,7 @@ jobs:
         env:
           SITE_URL: ${{ vars.SITE_URL }}
           ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
-        run: node scripts/premix.mjs
+        run: node scripts/premix.mjs ${{ (inputs.publish || vars.PREMIX_PUBLISH == 'true') && '--publish' || '' }}
       - uses: actions/upload-artifact@v4
         if: ${{ vars.SITE_URL != '' }}
         with:

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getClip, listClips, saveClip } from "../store.js";
 import { checkAuth } from "../auth.js";
-import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
+import { sendToStation, stationConfigured } from "../station-send.js";
 import type { ClipMetadata } from "../types.js";
 
 const MAX_UPLOAD_BYTES = 5_500_000; // Netlify functions accept request bodies of about 6 MB
@@ -51,15 +51,11 @@ async function handleSave(req: Request): Promise<Response> {
 
   // Same as /api/generate: the clip is saved either way, a station problem is only reported.
   let handoff;
-  if (meta.handoff !== false && handoffConfigured()) {
-    const defaults = handoffDefaults();
-    handoff = await pushToStation(audio, {
-      contentType: mimeType,
-      title: scriptText,
-      text: scriptText,
-      play: typeof meta.play === "boolean" ? meta.play : defaults.play,
-      preempt: typeof meta.preempt === "boolean" ? meta.preempt : defaults.preempt,
-      fx: defaults.fx,
+  if (meta.handoff !== false && stationConfigured()) {
+    handoff = await sendToStation({
+      clipId: id, audio, mimeType, title: scriptText,
+      play: typeof meta.play === "boolean" ? meta.play : undefined,
+      preempt: typeof meta.preempt === "boolean" ? meta.preempt : undefined,
     });
   }
   return Response.json({ id, audioUrl: `/api/clips/${id}`, ...(handoff ? { handoff } : {}) }, { status: 201 });

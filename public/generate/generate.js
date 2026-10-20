@@ -288,10 +288,19 @@ export async function mountGenerate(root, api) {
           h('span', { class: 'chip' }, clip.mode), h('span', {}, fmtDate(Date.parse(clip.createdAt))), h('span', {}, clip.voice),
           clip.speechModel ? h('span', { class: 'chip' }, clip.speechModel) : null, clip.tone ? h('span', { class: 'chip' }, clip.tone) : null),
         h('p', { class: 'clip-script' }, clip.scriptText),
-        playButton(clip.id))) : h('p', { class: 'empty' }, 'No clips yet. Generate one above.'));
+        h('div', { class: 'row' }, playButton(clip.id), ...sendButtons(clip.id)))) : h('p', { class: 'empty' }, 'No clips yet. Generate one above.'));
     } catch (err) {
       clear(clipsBox, h('p', { class: 'empty' }, `Failed to load clips: ${err.message}`));
     }
+  }
+  // With STATION_MODE=queue a saved clip can be sent to the station daemon, to go on air now or just to be kept there.
+  function sendButtons(id) {
+    if (!(options.features && options.features.stationQueue)) return [];
+    const send = (play) => async (e) => {
+      const button = e.currentTarget; button.disabled = true;
+      try { await api.post('/queue', { clipId: id, play }); toast(play ? 'Queued to go on air.' : 'Queued for the station library.', 'info'); } catch (err) { toast(err.message, 'error'); } finally { button.disabled = false; }
+    };
+    return [h('button', { type: 'button', onclick: send(true) }, 'Send to air'), h('button', { type: 'button', onclick: send(false) }, 'Send to station library')];
   }
   // An <audio src> cannot send the sign-in, so the audio is fetched first and played from memory.
   function playButton(id) {

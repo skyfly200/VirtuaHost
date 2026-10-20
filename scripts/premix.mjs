@@ -3,12 +3,16 @@
 // loudness-normalised. Meant for scripts known ahead of time (station IDs, promos, scheduled shows); run by
 // .github/workflows/premix.yml, or by hand.
 //
-//   node scripts/premix.mjs [--dry-run] [--in premix] [--out premix-out] [file.txt ...]
+//   node scripts/premix.mjs [--dry-run] [--publish] [--in premix] [--out premix-out] [file.txt ...]
 //
 //   SITE_URL, ACCESS_KEY   the deployed site and its machine key (not needed with --dry-run)
 //
-// A script is premix/<name>.txt. Leading "# key: value" lines set voice, tone, speechModel and loudness (LUFS, default
-// -16, "off" to skip); the rest is the text, with tags like [sfx:ding], [sfx:whoosh over], [sfx:crowd vol=0.5].
+// --publish saves each finished file to the site's clip library (POST /api/clips). With the site in STATION_MODE=queue, a
+// "# send: air" header also queues it to go on air, and "# send: library" queues it for the station to keep; without a
+// send header it is only saved.
+//
+// A script is premix/<name>.txt. Leading "# key: value" lines set voice, tone, speechModel, loudness (LUFS, default
+// -16, "off" to skip) and send (air | library); the rest is the text, with tags like [sfx:ding], [sfx:whoosh over], [sfx:crowd vol=0.5].
 // Sound effects: the built-ins, plus any premix/sfx/<name>.mp3|wav|ogg (these override a built-in of the same name).
 import fs from "node:fs";
 import os from "node:os";
@@ -25,6 +29,7 @@ const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
 const option = (name, fallback) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : fallback; };
 const dry = flag("--dry-run");
+const publish = flag("--publish");
 const inDir = path.resolve(option("--in", "premix"));
 const outDir = path.resolve(option("--out", "premix-out"));
 const named = args.filter((a, i) => !a.startsWith("--") && args[i - 1] !== "--in" && args[i - 1] !== "--out");
@@ -53,6 +58,17 @@ async function speak(text, meta) {
   const clip = await fetch(`${site}${data.audioUrl}`, { headers: { "x-api-key": key } });
   if (!clip.ok) throw new Error(`could not download the clip (${clip.status})`);
   return Buffer.from(await clip.arrayBuffer());
+}
+
+async function publishClip(buffer, name, meta, text, effects) {
+  const site = (process.env.SITE_URL || "").replace(/\/+$/, "");
+  const key = process.env.ACCESS_KEY;
+  const send = meta.send === "air" || meta.send === "library" ? meta.send : null;
+  const details = { mode: "say", input: text, scriptText: text.slice(0, 2000), voice: meta.voice || "", tone: meta.tone, speechModel: meta.speechModel, effects, handoff: send !== null, ...(send ? { play: send === "air" } : {}) };
+  const res = await fetch(`${site}/api/clips`, { method: "POST", headers: { "content-type": "audio/mpeg", "x-api-key": key, "x-clip-meta": encodeURIComponent(JSON.stringify(details)) }, body: buffer });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`publish failed (${res.status}): ${data.error ?? "no detail"}`);
+  return data;
 }
 
 const loudnorm = (buffer, lufs) => audio.withTempDir(async (tmp) => {
@@ -98,7 +114,12 @@ async function main() {
       const lufs = meta.loudness === "off" ? null : Number(meta.loudness) || -16;
       const final = lufs === null ? mixed : await loudnorm(mixed, lufs);
       fs.writeFileSync(path.join(outDir, `${name}.mp3`), final);
-      console.log(`done ${name} (${Math.round(final.length / 1024)} KB)`);
+      let note = "";
+      if (publish) {
+        const saved = await publishClip(final, name, meta, text, plan ? plan.filter((i) => i.kind === "sfx").map((i) => i.name) : []);
+        note = ` -> saved as ${saved.id}${saved.handoff ? (saved.handoff.sent ? ", sent to the station" : `, station hand-off failed: ${saved.handoff.error}`) : ""}`;
+      }
+      console.log(`done ${name} (${Math.round(final.length / 1024)} KB)${note}`);
     } catch (err) {
       failed += 1;
       console.error(`FAIL ${name}: ${err.message}`);

@@ -5,7 +5,7 @@ import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "../cues.js";
 import { cleanTone, findFormat } from "../formats.js";
 import { getPersona } from "../persona-store.js";
 import { saveClip } from "../store.js";
-import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
+import { sendToStation, stationConfigured } from "../station-send.js";
 import { checkAuth } from "../auth.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
 
@@ -148,16 +148,8 @@ export async function handleGenerate(req: Request): Promise<Response> {
   // Hand the clip to the station server when one is configured. A failure here is reported but does not
   // fail the request: the clip is already generated and stored.
   let handoff;
-  if (body.handoff !== false && handoffConfigured()) {
-    const defaults = handoffDefaults();
-    handoff = await pushToStation(spoken.audio, {
-      contentType: spoken.mimeType,
-      title: scriptText,
-      text: scriptText,
-      play: body.play ?? defaults.play,
-      preempt: body.preempt ?? defaults.preempt,
-      fx: body.fx ?? defaults.fx,
-    });
+  if (body.handoff !== false && stationConfigured()) {
+    handoff = await sendToStation({ clipId: id, audio: spoken.audio, mimeType: spoken.mimeType, title: scriptText, play: body.play, preempt: body.preempt, fx: body.fx });
   }
 
   return Response.json(

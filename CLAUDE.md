@@ -10,7 +10,7 @@ DJ script lines and synthesizes them to speech. This is deliberately just
 the generation/storage core — a webhook (e.g. WhatsApp via Twilio),
 scheduling are future work that will call `POST /api/generate`. Getting clips onto a live
 Icecast/Liquidsoap stream is handled by the separate Chips Voice server in `chips-voice/`:
-`lib/handoff.ts` posts each generated clip to its `/ingest` endpoint (see `docs/INTEGRATION.md`).
+`lib/handoff.ts` posts each generated clip to its `/ingest` endpoint (or, with `STATION_MODE=queue`, the station daemon collects it) (see `docs/INTEGRATION.md`).
 `krap-station/` holds the KRAP ElevenLabs voice scripts and RadioDJ helper (Sylvia's; leave them as they are).
 
 **New to this repo, especially Sylvia: read `docs/FOR-SYLVIA.md` first.** It maps each KRAP script to the server-side feature
@@ -102,6 +102,10 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
 - **Sound library** (`lib/library/`, `/api/library`, Library tab, `docs/LIBRARY.md`): sfx and music folders read from OwnCloud (WebDAV) and/or Google
   Drive (service account), read-only. Files are only fetched by name from a fresh listing, never by a client-supplied path. Not yet read by the premix Action.
 - **Premix** (`scripts/premix.mjs`, `.github/workflows/premix.yml`, `premix/`): scripts with `[sfx:]` tags mixed with ffmpeg in GitHub Actions.
+- **Station queue and daemon** (`lib/queue-store.ts`, `lib/station-send.ts`, `/api/queue`, `/api/station/*`, `station-daemon/`): with `STATION_MODE=queue`
+  every saved clip is queued in Blobs; the zero-dependency daemon on the streaming server polls with `STATION_KEY`, downloads, applies the Chips Voice fx
+  preset (ffmpeg), pushes to Liquidsoap's `announce`/`announce_live` queue and acks. Outbound-only from the station. Leases expire after 90 s (3 attempts).
+  Tests: `npm run test:daemon`. `scripts/premix.mjs --publish` can save premixed files (and queue them with `# send: air|library`).
 - **Station hand-off is optional and never fails a generation.** When `STATION_URL` and
   `STATION_INGEST_TOKEN` are set, `handleGenerate` posts the WAV to the station after
   `saveClip`. A station error is reported in the response's `handoff` field but the request
