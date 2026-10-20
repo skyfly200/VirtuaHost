@@ -13,8 +13,8 @@ integrated later. It is independent of the VirtuaHost code in the repository roo
 
 ## Update: what lives here now
 
-Besides the server (`googleTextToSpeech1/`), this folder holds `hub/` (controls several stations), `agent-radiodj/` (RadioDJ on Windows) and `web/` (the Voice Lab and
-Control Panel), each with its own tests; see [../docs/HUB.md](../docs/HUB.md). `eslint.config.js` and `vitest.config.ts` still skip `chips-voice/`.
+Besides the server (`googleTextToSpeech1/`), this folder holds `hub/` (controls several stations) and `agent-radiodj/` (RadioDJ on Windows), each with its own tests (their UI is the
+Voice Lab and Stations tabs in the repository's `public/` folder); see [../docs/HUB.md](../docs/HUB.md). `eslint.config.js` and `vitest.config.ts` still skip `chips-voice/`.
 
 ## Where the two overlap (for the integration)
 

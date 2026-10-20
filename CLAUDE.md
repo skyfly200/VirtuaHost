@@ -35,7 +35,7 @@ that replicates it (virtual host, ElevenLabs dialogue, the "underground" audio t
 ## Architecture
 
 ```
-index.html                 static test console (no build step) for /api/generate and /api/clips
+public/                    the web UI (static, no build step): sign-in, Generate, Voice Lab and Stations tabs
 netlify/functions/*.mts   thin Netlify Function adapters (routing/config only)
         |
 lib/handlers/*.ts         request handling logic, framework-agnostic (Request -> Response)
@@ -81,12 +81,18 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   Gemini call itself fails (script generation or speech synthesis), and
   `400` for malformed/missing request fields — this distinguishes "your
   request was bad" from "the upstream model call failed" for callers.
-- **One shared access key.** `lib/auth.ts#checkAuth` guards `/api/generate` and `/api/clips[/:id]`
-  (called first in each handler, so adapters cannot skip it). The key is the `ACCESS_KEY` env var (16+ characters),
-  sent as `x-api-key` or `Authorization: Bearer`. With no key set the API answers 503 rather than being open;
-  `AUTH_DISABLED=true` is the explicit local-dev opt-out. `index.html` itself is public and holds no secrets:
-  it asks for the key, keeps it in `sessionStorage`, and plays audio via fetch (an `<audio src>` cannot send headers).
-  There are no per-user accounts, and the eventual WhatsApp allowlist is still scoped for the command layer.
+- **Sign-in.** `lib/auth.ts#checkAuth` guards every `/api/*` function (called first in each handler, so adapters cannot skip it).
+  Two ways in, either is enough: a login session token (`Authorization: Bearer`, from `POST /api/login`; users in `LOGIN_USERS`
+  as `name:scrypt.<salt>.<hash>`, tokens signed with `SESSION_SECRET`, stateless HMAC in `lib/session.ts`, wrong passwords
+  throttled through Netlify Blobs in `lib/throttle.ts`) or the optional machine key `ACCESS_KEY` (`x-api-key` or Bearer). With
+  neither configured the API answers 503 rather than being open; `AUTH_DISABLED=true` is the explicit local-dev opt-out.
+  `npm run hash-password -- <user>` makes an entry. There are no roles: every login can do everything.
+- **The UI and its proxy.** `public/index.html` is one page (`app.js`): login, then tabs. `generate/`, `lab/` and `panel/` are
+  ES modules that draw into a tab, using clients from `shared/kit.js`. Voice Lab and Stations talk to this site's
+  `/api/voice/*` and `/api/hub/*`, which `lib/handlers/proxy.ts` forwards (after the auth check, with `VOICE_KEY` / `HUB_KEY`,
+  https only, same-origin paths, 5 MB body cap) to the Chips Voice server and the hub in `chips-voice/`. The tabs are switched off
+  (a "not connected" card) until `VOICE_URL`+`VOICE_KEY` / `HUB_URL`+`HUB_KEY` are set; `GET /api/options` reports `features`.
+  The page itself is public and holds no secrets; the session credential lives in `sessionStorage`.
 - **Station hand-off is optional and never fails a generation.** When `STATION_URL` and
   `STATION_INGEST_TOKEN` are set, `handleGenerate` posts the WAV to the station after
   `saveClip`. A station error is reported in the response's `handoff` field but the request
@@ -95,4 +101,4 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
 - **Sound-effect tags.** `[sfx:name]` in a script is mixed in by the Chips Voice server; `handleGenerate`
   strips them before Gemini speaks (`sfxTagsRemoved`). Setup for script/API/AutoDJ/chat/MCP: `docs/SETUP.md`.
 - **Several stations.** `chips-voice/hub/` (zero-dependency Node) controls stations that speak the agent API (a Chips Voice server, or `chips-voice/agent-radiodj/` for RadioDJ);
-  `chips-voice/web/` holds two static apps (Voice Lab, Control Panel). Tests: `node --test test/*.test.js` inside `hub/` and `agent-radiodj/`. See `docs/HUB.md`.
+  Their UI is the Voice Lab and Stations tabs in `public/` (see above). Tests: `node --test test/*.test.js` inside `hub/` and `agent-radiodj/`. See `docs/HUB.md`.

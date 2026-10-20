@@ -158,4 +158,4 @@ See [SETUP.md](SETUP.md) for the setup paths (script, API, stream server AutoDJ)
 
 ## 8. Several stations
 
-One hub can control several Chips Voice/Liquidsoap servers and RadioDJ machines, start a broadcast on all of them together, share playlists and copy host settings; two web apps (Voice Lab, Control Panel) sit in front of it. See [HUB.md](HUB.md).
+One hub can control several Chips Voice/Liquidsoap servers and RadioDJ machines, start a broadcast on all of them together, share playlists and copy host settings; the site's Voice Lab and Stations tabs sit in front of it. See [HUB.md](HUB.md).

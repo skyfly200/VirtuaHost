@@ -90,7 +90,7 @@ and say_on_air/play_clip/schedule/skip/volume/host_say (on air; their descriptio
 
 ## Deploying on Netlify
 
-See [NETLIFY.md](NETLIFY.md) for the two sites (VirtuaHost generator, and the Voice Lab / Control Panel) and the settings each needs.
+See [NETLIFY.md](NETLIFY.md): one site with logins, the AI key, and (later) the Voice Lab and Stations tabs once the radio side is connected.
 
 ## Persona: CHIP
 

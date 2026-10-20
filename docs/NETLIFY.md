@@ -1,81 +1,98 @@
 # Deploying on Netlify
 
-Two Netlify sites from this one repository, plus your own server for the parts Netlify cannot run.
+One Netlify site does everything the web side needs: it makes the clips (the AI), shows the UI (Generate, Voice Lab, Stations tabs), and signs people in.
+The radio side (the Chips Voice server, the hub, the RadioDJ agent) runs on your own machines, because Netlify cannot run long-lived processes or reach a local RadioDJ.
+You can ignore the radio side until you have it: the Voice Lab and Stations tabs simply show "not connected yet" until you add its address and key.
 
-| Site | What it is | Base directory | Publish directory | Build command |
-|------|-----------|----------------|-------------------|---------------|
-| **A. VirtuaHost** | Gemini DJ generator: functions `/api/generate`, `/api/clips`, test console, Netlify Blobs | (repository root) | (leave empty; the root `index.html` is served) | `npm run build` (already in `netlify.toml`) |
-| **B. Web apps** | Voice Lab and Control Panel (static) | `chips-voice/web` | `.` | none |
-
-Your server (VPS with Icecast): the Chips Voice server, the hub, and the RadioDJ agent on Windows. Netlify cannot run these (long-running processes, timers, files, a telnet link to Liquidsoap).
 Menu names below are as Netlify usually labels them; if a screen differs, the setting names are what matter.
 
 ## Before you start
 
-- **Both servers must be on HTTPS.** Sites on Netlify are HTTPS, and browsers refuse to let them call `http://` addresses. Put the Chips Voice server and the hub behind Caddy or nginx with a certificate (`chips-voice/docs/DEPLOY-VPS.md`). The same applies to `STATION_URL` for site A.
-- **Site A is protected by one shared key.** `/api/generate` and `/api/clips` refuse requests without the `ACCESS_KEY` (401), and answer 503 if it is not set, so the site is never open by accident. Each unauthorised request is rejected before Gemini is called, so it costs no quota. The key is one shared secret: anyone who has it can generate clips, so share it only with people you trust and rotate it (change the variable, redeploy) if it leaks. There is no rate limiting. The page itself and the web apps (site B) are public but hold no secrets.
-- **Function time limits.** Gemini speech can take several seconds. Check your Netlify plan's current function time limit, and test a long `mode: "ai"` request after deploying.
+- **Everything that Netlify talks to must be on HTTPS** (`STATION_URL`, `HUB_URL`, `VOICE_URL`): put those servers behind Caddy or nginx with a certificate (`chips-voice/docs/DEPLOY-VPS.md`).
+- **Sign-in protects the whole site's API.** `/api/*` refuses anyone who is not signed in (401), and answers 503 if no sign-in is configured, so the site is never open by accident. A request that is not signed in is rejected before the AI is called, so it costs nothing. The login page itself is public and holds no secrets.
+- **Function time limits.** AI speech can take several seconds. Check your Netlify plan's current function time limit, and test a long `mode: "ai"` request after deploying.
 
-## Site A: VirtuaHost
+## 1. Create the site
 
-1. Netlify: Add new site, Import an existing project, choose GitHub and the repository. Leave Base and Publish directories empty. The build command and functions folder come from `netlify.toml`.
-2. Site configuration, Environment variables. Add:
+Netlify: Add new site, Import an existing project, choose GitHub and the repository (or your fork: see the last section). Leave Base directory empty. The build command (`npm run build`), the publish folder (`public`) and the functions folder come from `netlify.toml`.
+
+## 2. Make logins
+
+Each person gets a username and a password. The site stores only a hash of the password, in an environment variable.
+
+1. On your computer, in a clone of the repository: `npm install`, then `npm run hash-password -- alice` and type a password (it is not shown). It prints a line like `alice:scrypt.9f2c....`
+2. For several people, make one line each and join them with commas: `alice:scrypt.aaa...,bob:scrypt.bbb...`
+3. Make a signing secret: `openssl rand -hex 32` (any random string of 32 or more characters).
+
+Add these to the site's environment variables:
+
+| Variable | Value |
+|----------|-------|
+| `LOGIN_USERS` | the `name:hash` lines from step 1 or 2 |
+| `SESSION_SECRET` | the secret from step 3. Changing it signs everyone out |
+| `SESSION_HOURS` | optional, how long a login lasts (default 12) |
+
+To add or remove a person later, edit `LOGIN_USERS` and redeploy; a removed person is signed out. Failed sign-ins are slowed down: after 8 wrong attempts from one address, that address is blocked for ten minutes.
+
+`ACCESS_KEY` still works, now as an optional key for scripts and `curl` (`x-api-key: <key>`), and the login page offers "Use an access key instead" while it is set. Once everyone has a login you can delete `ACCESS_KEY` so passwords are the only way in.
+
+## 3. Add the AI key and the other settings
 
 | Variable | Value | Needed |
 |----------|-------|--------|
-| `ACCESS_KEY` | a long random secret: run `openssl rand -hex 24` and paste the result (16+ characters) | **yes** |
-| `OPENROUTER_API_KEY` | from openrouter.ai/keys. **One AI key is required: this one (recommended) or `GEMINI_API_KEY`.** With OpenRouter you choose the writing and voice models in the console | yes (or Gemini) |
+| `OPENROUTER_API_KEY` | from openrouter.ai/keys. **One AI key is required: this one (recommended) or `GEMINI_API_KEY`.** With OpenRouter you choose the writing and voice models in the UI | yes (or Gemini) |
 | `GEMINI_API_KEY` | from Google AI Studio; used directly (fixed models) only when there is no OpenRouter key | alternative |
 | `OPENROUTER_TEXT_MODEL`, `OPENROUTER_SPEECH_MODEL` | default writing and speech models (slugs from openrouter.ai/models) | no |
-| `OPENROUTER_TEXT_MODELS`, `OPENROUTER_SPEECH_MODELS` | comma lists shown in the console; a speech entry can carry its default voice as `slug\|Voice` | no |
+| `OPENROUTER_TEXT_MODELS`, `OPENROUTER_SPEECH_MODELS` | comma lists shown in the UI; a speech entry can carry its default voice as `slug\|Voice` | no |
 | `OPENROUTER_VOICE` | voice to use when the model entry has none | no |
-| `OPENROUTER_ALLOW_ANY_MODEL` | `true` lets anyone with the access key type any model slug (they could pick costly ones) | no |
+| `OPENROUTER_ALLOW_ANY_MODEL` | `true` lets any signed-in person type any model slug (they could pick costly ones) | no |
 | `PROVIDER` | `openrouter` or `gemini` to force one when both keys are set | no |
-| `STATION_NAME` | e.g. `Way High Radio` (used in the DJ prompt) | no |
+| `STATION_NAME` | e.g. `Way High Radio` (used in the DJ prompt and the examples) | no |
 | `GEMINI_TTS_VOICE` | a Gemini voice name (default `Kore`) | no |
-| `STATION_URL` | `https://your-chips-voice-server` | to hand clips to the station |
+| `STATION_URL` | `https://your-chips-voice-server`, to hand every generated clip to the station | later |
 | `STATION_INGEST_TOKEN` | the server's `INGEST_TOKEN` | with `STATION_URL` |
 | `STATION_AUTOPLAY` | `true` puts every generated clip on air | no |
 | `STATION_PREEMPT` | `true` lets it cut in over a live DJ | no |
 | `STATION_FX` | e.g. `underground` or `hull` (applied by the station) | no |
 
-   Mark `ACCESS_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY` and `STATION_INGEST_TOKEN` as secret values if Netlify offers that option. Netlify Blobs needs no setting: it is provided by the Netlify runtime.
-3. If a clip fails with "GEMINI_API_KEY is not set" or "No AI provider is configured", no AI key reached the function: add `OPENROUTER_API_KEY` (or `GEMINI_API_KEY`) under Site configuration, Environment variables, make sure its scope includes Functions, and trigger a new deploy (variables apply on the next deploy).
-4. Deploy. Check: open the site, paste the access key into the box at the top of the test console, make a clip, and play it. From a terminal: `curl -X POST https://<site>/api/generate -H "x-api-key: $ACCESS_KEY" -H 'content-type: application/json' -d '{"mode":"say","text":"Hello"}'`. The same call without the header should return 401.
-5. Models: the console's model lists come from `OPENROUTER_TEXT_MODELS` / `OPENROUTER_SPEECH_MODELS` (defaults are built in). The speech request format could not be tested against OpenRouter itself, so if a model or voice is rejected the console shows OpenRouter's own message: adjust the model, voice or list and try again.
-6. Hand-off check: with `STATION_URL` set, the response includes a `handoff` field. A station error is reported there but the request still succeeds (the clip is stored).
-7. Scripts sent to this site may contain `[sfx:name]` tags; it strips them (Gemini voices do not mix effects). To get sound effects mixed in, speak through the Chips Voice server.
+Mark `LOGIN_USERS`, `SESSION_SECRET`, `ACCESS_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY` and `STATION_INGEST_TOKEN` as secret values if Netlify offers that option. Netlify Blobs (where clips are stored) needs no setting: it is provided by the Netlify runtime.
 
-## Site B: Voice Lab and Control Panel
+## 4. Deploy and check
 
-1. Add new site, same repository. Base directory `chips-voice/web`, Publish directory `.`, no build command. (`chips-voice/web/netlify.toml` documents this and adds basic security headers.)
-2. Open `https://<site-b>/lab/` and `/panel/`. First screen: the server address and a key.
-   - Voice Lab connects to the **Chips Voice server** (its `API_KEY`, or the admin username and password).
-   - Control Panel connects to the **hub** (its `HUB_KEY`).
-3. On your servers, allow the site's address:
-   - Chips Voice server: `CORS_ORIGIN=https://<site-b>` (comma-separated for several).
-   - Hub: `HUB_CORS_ORIGIN=https://<site-b>`.
-   Without this the browser shows "Cannot reach ... check CORS".
-4. Keep sites A and B separate: they have different contents and secrets. Do not put `OPENROUTER_API_KEY`, `GEMINI_API_KEY` or any server key in site B.
+1. Deploy. Open the site and sign in. The Generate tab should load with the model lists.
+2. If a clip fails with "GEMINI_API_KEY is not set" or "No AI provider is configured", no AI key reached the function: add `OPENROUTER_API_KEY` (or `GEMINI_API_KEY`), make sure its scope includes Functions, and trigger a new deploy (variables apply on the next deploy).
+3. Make a clip and play it. From a terminal (needs `ACCESS_KEY`): `curl -X POST https://<site>/api/generate -H "x-api-key: $ACCESS_KEY" -H 'content-type: application/json' -d '{"mode":"say","text":"Hello"}'`. The same call without the header should return 401.
+4. Models: the lists come from `OPENROUTER_TEXT_MODELS` / `OPENROUTER_SPEECH_MODELS` (defaults are built in). The speech request format could not be tested against OpenRouter itself, so if a model or voice is rejected the UI shows OpenRouter's own message: adjust the model, voice or list and try again.
+5. With `STATION_URL` set, the response includes a `handoff` field. A station error is reported there but the request still succeeds (the clip is stored).
+6. Scripts sent here may contain `[sfx:name]` tags; they are stripped (these voices do not mix effects). To get sound effects mixed in, speak through the Chips Voice server (Voice Lab).
 
-## Your server
+## 5. Later: connect the radio side
 
-Set up the Chips Voice server per `docs/SETUP.md` (use case C), then the hub and any RadioDJ agents per `docs/HUB.md`. Summary of what must be reachable:
+When the Chips Voice server and the hub are running (see `docs/SETUP.md` and `docs/HUB.md`), add these and redeploy; the two tabs turn on by themselves:
+
+| Variable | Value | Turns on |
+|----------|-------|----------|
+| `VOICE_URL`, `VOICE_KEY` | the Chips Voice server's https address and its `API_KEY` | Voice Lab |
+| `HUB_URL`, `HUB_KEY` | the hub's https address and its `HUB_KEY` | Stations |
+
+Who calls whom:
 
 | Who calls | Needs to reach | How it is protected |
 |-----------|----------------|---------------------|
-| Site A functions | Chips Voice `/ingest` | `INGEST_TOKEN` (audio only), HTTPS |
-| Voice Lab (browser) | Chips Voice server | API key or login token, HTTPS, CORS |
-| Control Panel (browser) | Hub | hub key exchanged for a 12 h token, HTTPS, CORS |
-| Hub | Each station / agent | per-station key, kept in the hub; RadioDJ agent behind a VPN or HTTPS proxy |
+| You (browser) | this site | username and password |
+| This site's functions | Chips Voice `/ingest` (the hand-off) | `INGEST_TOKEN` (audio only), HTTPS |
+| This site's functions | the voice server and the hub (the tabs) | server keys kept in the site's variables, HTTPS |
+| The hub | each station / agent | per-station key kept in the hub; the RadioDJ agent behind a VPN or HTTPS proxy |
 
-## Vercel instead?
-
-The static web apps (site B) work the same on Vercel: Root Directory `chips-voice/web`, Framework "Other", no build command. VirtuaHost itself (site A) is written for Netlify Functions and Blobs, so it stays on Netlify.
+Uploads through the site (a broadcast file, a sound effect) are capped at about 5 MB by Netlify's function limits.
 
 ## If you cannot connect the GitHub repository
 
-Netlify needs admin rights on a repository (or an owner's approval of its GitHub app) to link it. If you are only a collaborator: fork the repository to your own account and connect the fork (pull updates with GitHub's Sync fork), or deploy from your computer with the Netlify CLI (`netlify link`, then `netlify deploy --build --prod` for site A; `netlify deploy --dir chips-voice/web --prod` for site B). CLI deploys are manual.
+Netlify needs admin rights on a repository (or an owner's approval of its GitHub app) to link it. If you are only a collaborator: fork the repository to your own account and connect the fork (pull updates with GitHub's Sync fork), or deploy from your computer with the Netlify CLI (`netlify link`, then `netlify deploy --build --prod`). CLI deploys are manual.
+
+## Vercel instead?
+
+VirtuaHost is written for Netlify Functions and Netlify Blobs, so it stays on Netlify.
 
 ## Updating
 

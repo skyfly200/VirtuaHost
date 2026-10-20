@@ -3,7 +3,7 @@
 ## What exists
 
 ```
-Browser (Netlify / Vercel)  [original UI; the Voice Lab and Control Panel in chips-voice/web are the newer ones]   VPS
+Browser (Netlify / Vercel)  [original UI; the Voice Lab and Stations tabs in the root public/ folder are the newer ones]   VPS
 ┌──────────────────────────┐   HTTPS + login token   ┌─────────────────────────────────────────┐
 │ Vue 2 + Vuetify UI       │ ───────────────────>│ nginx (TLS) -> Express backend :3000     │
 │  Login screen            │
@@ -29,7 +29,7 @@ ElevenLabs, OpenRouter, Piper) and AI providers (OpenRouter, Anthropic, OpenAI, 
 clip library with reuse, favorites, tags and a disk cap; schedules; signed stream links; sharing to Google Drive
 (rclone) and ownCloud; AI drafting (text and conversations); rate limits and length caps; login and API keys; ffmpeg effects; sound effects
 (`[sfx:name]`); multi-voice dialogue; the server-side virtual host with personas (CHIP); hand-off from Netlify (`/ingest`); chat (Twilio, Telegram) and MCP control;
-the multi-station hub, the RadioDJ agent and the Voice Lab / Control Panel web apps ([../../docs/HUB.md](../../docs/HUB.md)).
+the multi-station hub, the RadioDJ agent and the Voice Lab / Stations tabs of the site ([../../docs/HUB.md](../../docs/HUB.md)).
 Automated tests: 135 (server), 15 (hub), 6 (RadioDJ agent), 39 (VirtuaHost root).
 
 Still open:
@@ -44,7 +44,7 @@ Still open:
 | Scheduling | No calendar view, no "run now", no time-of-day recurrence (only fixed intervals). |
 | Library | Evicted clips are regenerated, not restored from the cloud copy. |
 | Package | Still named `express-locallibrary-tutorial`. |
-| Old UI | The Vue UI in `tts-ui/` has not been changed to use the hub; the new static apps in `web/` are the multi-station and voice-tuning front ends. |
+| Old UI | The Vue UI in `tts-ui/` has not been changed to use the hub; the Voice Lab and Stations tabs of the site's UI (`public/`) are the multi-station and voice-tuning front ends. |
 
 The sections below are the original design notes; they now describe what was built.
 

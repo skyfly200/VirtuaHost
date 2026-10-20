@@ -1,0 +1,27 @@
+.login { max-width: 380px; margin: 12vh auto 0; padding: 0 16px; }
+.login h1 { font-size: 22px; margin: 0 0 4px; }
+.login form { display: grid; gap: 12px; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button { border: 0; background: none; color: var(--muted); padding: 6px 12px; border-radius: 8px; font-weight: 600; }
+.tabs button[aria-selected="true"] { background: var(--chip); color: var(--ink); }
+.tabs button .off { font-weight: 500; font-size: 11px; margin-left: 4px; opacity: .8; }
+.hint { font-size: 13px; color: var(--muted); background: var(--bg); border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; }
+.hint b { color: var(--ink); }
+.note.warn { color: var(--bad); }
+.chip-btn, .seg { border-radius: 999px; padding: 3px 12px; font-size: 13px; }
+.seg { border-radius: 8px; flex: 1; padding: 8px; }
+.chip-btn.on, .seg.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.label { font-size: 12px; color: var(--muted); margin: 4px 0; font-weight: 600; }
+.tips { font-size: 13px; color: var(--muted); }
+.tips summary { cursor: pointer; color: var(--ink); }
+.tips ul { margin: 8px 0 0; padding-left: 18px; }
+.tips li { margin-bottom: 4px; }
+code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: .85em; }
+.clip { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 6px; }
+.clip:first-child { border-top: 0; padding-top: 0; }
+.clip-script { margin: 0; }
+.clip audio { width: 100%; }
+.stack { display: grid; gap: 16px; }
+.off-card { text-align: center; padding: 28px 16px; }
+.off-card h2 { font-size: 18px; }
+.off-card ol { text-align: left; max-width: 520px; margin: 12px auto 0; color: var(--muted); font-size: 14px; }
