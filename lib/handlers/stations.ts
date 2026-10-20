@@ -34,7 +34,7 @@ export async function handleStations(req: Request, id: string | undefined, actio
 
   if (action === "summary" && req.method === "GET") {
     const mine = id === "default" ? (s: string | undefined) => !s || s === "default" : (s: string | undefined) => s === id;
-    const [clips, schedules, queue, host] = await Promise.all([listClips(), listSchedules(), listQueue(200), getHostStatus()]);
+    const [clips, schedules, queue, host] = await Promise.all([listClips(), listSchedules(), listQueue(200), getHostStatus(id === "default" ? undefined : id)]);
     const own = schedules.filter((s) => mine(s.stationId));
     return Response.json({
       clips: clips.filter((c) => mine(c.info?.station)).length,

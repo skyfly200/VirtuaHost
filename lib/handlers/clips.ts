@@ -3,6 +3,7 @@ import { embedTags, sanitizeInfo } from "../clip-info.js";
 import { getClip, listClips, saveClip } from "../store.js";
 import { checkAuth } from "../auth.js";
 import { sendToStation, stationConfigured } from "../station-send.js";
+import { getStation } from "../station-profile-store.js";
 import type { ClipMetadata } from "../types.js";
 
 const MAX_UPLOAD_BYTES = 5_500_000; // Netlify functions accept request bodies of about 6 MB
@@ -58,7 +59,7 @@ async function handleSave(req: Request): Promise<Response> {
   let handoff;
   if (meta.handoff !== false && stationConfigured()) {
     handoff = await sendToStation({
-      clipId: id, audio: tagged, mimeType, title: scriptText, info,
+      clipId: id, audio: tagged, mimeType, title: scriptText, info, station: info.station ? await getStation(info.station) : null,
       play: typeof meta.play === "boolean" ? meta.play : undefined,
       preempt: typeof meta.preempt === "boolean" ? meta.preempt : undefined,
     });

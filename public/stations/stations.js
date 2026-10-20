@@ -3,8 +3,9 @@
 // Connecting a real Icecast / Liquidsoap / hub later is a separate step (station-daemon/README.md); nothing here needs one.
 import { h, clear, toast } from '../shared/kit.js';
 import { loadStations, setStation, currentStation, allStations } from '../shared/station.js';
+import { mountHostCard } from '../shared/hostcard.js';
 
-const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultVoice: '', skipArtists: [], notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
+const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultVoice: '', skipArtists: [], autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
 const LINES = (v) => v.split('\n').map((l) => l.trim()).filter(Boolean);
 const clock = (tz) => { try { return new Intl.DateTimeFormat([], { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date()); } catch { return ''; } };
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -21,6 +22,7 @@ export async function mountStationProfiles(root, api) {
 
   const gridBox = h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px' });
   const editorBox = h('div');
+  const hostBox = h('section', { class: 'card' });
   let editing = null;
 
   const changed = async () => { stations = await loadStations(api); window.dispatchEvent(new CustomEvent('vh-stations')); paintGrid(); };
@@ -76,7 +78,7 @@ export async function mountStationProfiles(root, api) {
 
   function paintEditor() {
     const c = editing;
-    if (!c) { clear(editorBox); return; }
+    if (!c) { clear(editorBox); clear(hostBox); return; }
     const text = (label, key, props = {}) => h('label', { class: 'field' }, label, h('input', { ...props, value: c[key] || '', oninput: (e) => { c[key] = e.target.value; } }));
     const area = (label, key, rows = 3, props = {}) => h('label', { class: 'field' }, label, Object.assign(h('textarea', { rows, ...props, oninput: (e) => { c[key] = e.target.value; } }), { value: c[key] || '' }));
     const listField = (label, key, rows, placeholder) => h('label', { class: 'field' }, label, Object.assign(h('textarea', { rows, placeholder, oninput: (e) => { c[key] = LINES(e.target.value); } }), { value: (c[key] || []).join('\n') }));
@@ -125,6 +127,11 @@ export async function mountStationProfiles(root, api) {
         text('Voice', 'defaultVoice', { placeholder: 'model default' }),
         fxPresets.length ? select('Audio treatment at the station', 'defaultFx', fxPresets.map((f) => [f, f]), 'None') : null),
       listField('Skip list: spots and relays, one artist per line (the host says nothing over or about them)', 'skipArtists', 3, 'Jingle Radio'),
+      h('h3', {}, 'Sending clips to this station'),
+      h('p', { class: 'muted small' }, 'Defaults for clips made for this station. A request, a schedule or a button press can still choose differently.'),
+      h('div', { class: 'grid cols' },
+        h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: Boolean(c.autoplay), onchange: (e) => { c.autoplay = e.target.checked; } }), 'Put new clips on air as soon as they arrive'),
+        h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: Boolean(c.preempt), onchange: (e) => { c.preempt = e.target.checked; } }), 'May cut in over a live DJ')),
       h('h3', {}, 'Connection (later)'),
       h('p', { class: 'muted small' }, 'Record what this station will connect to once it has a server. It is only a note for now; nothing connects.'),
       h('div', { class: 'grid cols' },
@@ -133,6 +140,9 @@ export async function mountStationProfiles(root, api) {
         h('label', { class: 'field' }, 'Note', h('input', { value: c.connection.note || '', placeholder: 'e.g. VPS ready in May', oninput: (e) => { c.connection.note = e.target.value; } }))),
       area('Notes', 'notes', 3),
       h('div', { class: 'row' }, save, del, h('button', { type: 'button', onclick: () => { editing = null; paintEditor(); } }, 'Close'))));
+    // The virtual host is configured per station, so it belongs to a saved one.
+    if (c.id) mountHostCard(hostBox, api, { personas, station: c });
+    else clear(hostBox, h('h3', {}, 'Virtual host'), h('p', { class: 'muted small' }, 'Save the station first, then set up its virtual host here.'));
   }
 
   const importInput = h('input', { type: 'file', accept: '.json,application/json', multiple: true, hidden: true, onchange: (e) => { importFiles([...e.target.files]); e.target.value = ''; } });
@@ -144,6 +154,6 @@ export async function mountStationProfiles(root, api) {
       h('p', { class: 'muted small' }, 'Set stations up now, before they have servers. The one marked "working on" (also in the header) is used by every other tab: its name in AI-written lines, its time zone for schedules and promos, its default persona, voice and treatment, and clips are tagged with it.'),
       allStations().length === 1 && allStations()[0].builtin ? h('p', { class: 'note warn small' }, 'This is a placeholder named from the site\'s STATION_NAME setting. Add your own station to replace it.') : null,
       gridBox),
-    editorBox));
+    editorBox, hostBox));
   paintGrid();
 }

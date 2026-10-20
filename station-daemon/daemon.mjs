@@ -151,7 +151,7 @@ async function main() {
   });
   // The virtual host: switched on and configured from the site; this loop only runs the station's half of it.
   const icecast = icecastReaders({ url: process.env.ICECAST_STATUS_URL || "http://127.0.0.1:8000/status-json.xsl", mount: process.env.ICECAST_MOUNT || "/stream", liveMount: process.env.ICECAST_LIVE_MOUNT || "/live" });
-  const hostLoop = createHostLoop({ api: daemon.api, nowPlaying: icecast.nowPlaying, isLive: icecast.isLive, deliver: daemon.deliver });
+  const hostLoop = createHostLoop({ api: daemon.api, nowPlaying: icecast.nowPlaying, isLive: icecast.isLive, deliver: daemon.deliver, stationId: process.env.STATION_ID || "" });
   const hostEvery = Math.max(1, Number(process.env.HOST_POLL_SECONDS) || 2) * 1000;
   (async () => { for (;;) { await hostLoop.tick(); await new Promise((r) => setTimeout(r, hostEvery)); } })();
 

@@ -95,3 +95,48 @@ describe("the station in use", () => {
     expect((await claimNext(Date.now(), "a"))?.title).toBe("for A");
   });
 });
+
+describe("per-station settings", () => {
+  it("keeps the virtual host's settings and status separate for each station", async () => {
+    const { handleHost } = await import("../../lib/handlers/host.js");
+    const { handleStation } = await import("../../lib/handlers/station.js");
+    vi.stubEnv("STATION_KEY", "station-key-0123456789abcdef");
+    const mk = async (name: string, extra: object = {}) => ((await (await call("POST", undefined, { name, ...extra })).json()) as { station: { id: string } }).station.id;
+    const a = await mk("Alpha", { defaultPersonaId: "night-owl", defaultFx: "hull", skipArtists: ["Alpha Spot"] });
+    const b = await mk("Beta");
+    const host = (method: string, station: string | null, body?: unknown, path = "/api/host") => handleHost(new Request(`http://localhost${path}${station ? `?station=${station}` : ""}`, { method, headers: { "x-api-key": KEY, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
+
+    // a station's own profile is where its host starts
+    const start = (await (await host("GET", a)).json()) as { config: { personaId: string; fx: string; skipArtists: string[]; enabled: boolean } };
+    expect(start.config).toMatchObject({ personaId: "night-owl", fx: "hull", skipArtists: ["Alpha Spot"], enabled: false });
+    expect(((await (await host("GET", b)).json()) as { config: { personaId: string } }).config.personaId).toBe("chip");
+
+    // changing one leaves the other alone
+    await host("PUT", a, { enabled: true, every: 4 });
+    expect(((await (await host("GET", a)).json()) as { config: { enabled: boolean; every: number } }).config).toMatchObject({ enabled: true, every: 4 });
+    expect(((await (await host("GET", b)).json()) as { config: { enabled: boolean; every: number } }).config).toMatchObject({ enabled: false, every: 1 });
+    expect((await host("GET", "nope-0000")).status).toBe(404);
+
+    // the daemon for each station sees its own settings and reports its own status
+    const daemon = (method: string, path: string, station: string, body?: unknown) => handleStation(new Request(`http://localhost${path}?station=${station}`, { method, headers: { "x-station-key": "station-key-0123456789abcdef", "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
+    expect(((await (await daemon("GET", "/api/station/host", a)).json()) as { config: { every: number } }).config.every).toBe(4);
+    expect(((await (await daemon("GET", "/api/station/host", b)).json()) as { config: { every: number } }).config.every).toBe(1);
+    await daemon("POST", "/api/station/host/status", a, { current: { artist: "X", title: "Song A" } });
+    expect(((await (await host("GET", a)).json()) as { status: { current: { title: string } } }).status.current.title).toBe("Song A");
+    expect(((await (await host("GET", b)).json()) as { status: unknown }).status).toBeNull();
+  });
+
+  it("applies a station's own send defaults to its clips", async () => {
+    vi.stubEnv("STATION_MODE", "queue");
+    const { sendToStation } = await import("../../lib/station-send.js");
+    const mk = async (extra: object) => (await import("../../lib/station-profile-store.js")).getStation(((await (await call("POST", undefined, { name: "S", ...extra })).json()) as { station: { id: string } }).station.id);
+    const loud = await mk({ autoplay: true, preempt: true, defaultFx: "hull" });
+    const quiet = await mk({});
+    await sendToStation({ clipId: "c", audio: Buffer.from([1]), mimeType: "audio/wav", title: "loud", station: loud });
+    await sendToStation({ clipId: "c", audio: Buffer.from([1]), mimeType: "audio/wav", title: "quiet", station: quiet });
+    await sendToStation({ clipId: "c", audio: Buffer.from([1]), mimeType: "audio/wav", title: "asked", station: loud, play: false, preempt: false });   // a request wins
+    const { listQueue } = await import("../../lib/queue-store.js");
+    const byTitle = Object.fromEntries((await listQueue()).map((i) => [i.title, [i.play, i.preempt, i.fx]]));
+    expect(byTitle).toEqual({ loud: [true, true, "hull"], quiet: [false, false, undefined], asked: [false, false, "hull"] });
+  });
+});

@@ -5,6 +5,7 @@
 import { isExpired, type ClipInfo } from "./clip-info.js";
 import { handoffConfigured, handoffDefaults, pushToStation, type FxSetting, type HandoffResult } from "./handoff.js";
 import { enqueue } from "./queue-store.js";
+import type { Station } from "./station-profile.js";
 
 export const queueMode = (): boolean => process.env.STATION_MODE?.trim().toLowerCase() === "queue";
 export const stationConfigured = (): boolean => queueMode() || handoffConfigured();
@@ -19,14 +20,16 @@ export interface SendOptions {
   fx?: FxSetting;
   /** The clip's metadata; an expired clip is not sent. */
   info?: ClipInfo;
+  /** The station it is for: its own send defaults (autoplay, preempt, audio treatment) come before the site-wide ones. */
+  station?: Station | null;
 }
 
 export async function sendToStation(options: SendOptions): Promise<HandoffResult & { queued?: boolean; queueId?: string }> {
   if (isExpired(options.info)) return { sent: false, error: "The clip has already expired, so it was not sent" };
   const defaults = handoffDefaults();
-  const play = options.play ?? defaults.play;
-  const preempt = options.preempt ?? defaults.preempt;
-  const fx = options.fx ?? defaults.fx;
+  const play = options.play ?? options.station?.autoplay ?? defaults.play;
+  const preempt = options.preempt ?? options.station?.preempt ?? defaults.preempt;
+  const fx = options.fx ?? (options.station?.defaultFx || undefined) ?? defaults.fx;
   if (queueMode()) {
     try {
       const item = await enqueue({ clipId: options.clipId, title: options.title, play, preempt, ...(fx ? { fx } : {}), ...(options.info ? { info: options.info } : {}) });

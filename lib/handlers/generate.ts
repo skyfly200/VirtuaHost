@@ -163,7 +163,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   // fail the request: the clip is already generated and stored.
   let handoff;
   if (body.handoff !== false && stationConfigured()) {
-    handoff = await sendToStation({ clipId: id, audio, mimeType: spoken.mimeType, title: scriptText, info, play: body.play, preempt: body.preempt, fx: body.fx });
+    handoff = await sendToStation({ clipId: id, audio, mimeType: spoken.mimeType, title: scriptText, info, station, play: body.play, preempt: body.preempt, fx: body.fx });
   }
 
   return Response.json(

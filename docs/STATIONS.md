@@ -13,6 +13,16 @@ a station, and choose **Work on this station** (or pick it in the header). Every
 | Call sign, frequency, genres, city, links, contact, notes | Shown on the card and available to other tools; nothing depends on them. |
 | Connection | A note of what the station will connect to later (Chips Voice, RadioDJ, Icecast, a hub id). Nothing connects. |
 
+## Settings that belong to each station
+
+Open a saved station in the Stations tab (Edit) and you get its own:
+
+- **Sending clips**: put new clips on air as soon as they arrive, and may cut in over a live DJ. A request, a schedule or a button press still wins; with no station these come from `STATION_AUTOPLAY` / `STATION_PREEMPT`.
+- **Defaults** for how new clips sound (persona, speech model, voice) and the audio treatment the station applies (`defaultFx`).
+- **Virtual host**: on/off, how often, persona, lines (example lines or the AI), audio treatment, skip list, whether it may cut in over a live DJ. It starts from the station's own persona, voice, treatment and skip list; what you save on top wins. Its status (now playing, the waiting link, counters) is reported per station.
+
+A daemon started with `STATION_ID=<id>` reads and reports exactly that station's host settings; another station's daemon never sees them.
+
 ## What gets tagged with the station
 
 Clips made while a station is active carry `info.station` (its id, also an ID3 `station` frame), schedules and flier repeats record

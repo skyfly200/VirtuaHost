@@ -71,6 +71,19 @@ export function applyHostPatch(current: HostConfig, patch: unknown): HostConfig 
   return next;
 }
 
+// A station's own profile fills in the host's starting settings (its persona, voice, treatment and skip list); anything saved on top wins.
+export function hostDefaultsFor(station: { defaultPersonaId?: string; defaultVoice?: string; defaultSpeechModel?: string; defaultFx?: string; skipArtists?: string[]; preempt?: boolean } | null | undefined): Partial<HostConfig> {
+  if (!station) return {};
+  return {
+    ...(station.defaultPersonaId ? { personaId: station.defaultPersonaId } : {}),
+    ...(station.defaultVoice ? { voice: station.defaultVoice } : {}),
+    ...(station.defaultSpeechModel ? { speechModel: station.defaultSpeechModel } : {}),
+    ...(station.defaultFx ? { fx: station.defaultFx } : {}),
+    ...(station.skipArtists && station.skipArtists.length ? { skipArtists: station.skipArtists } : {}),
+    ...(typeof station.preempt === "boolean" ? { preempt: station.preempt } : {}),
+  };
+}
+
 export const isSkipped = (artist: string, title: string, config: HostConfig): boolean =>
   !title || config.skipArtists.map((a) => a.toLowerCase()).includes(artist.toLowerCase());
 

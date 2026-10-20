@@ -34,6 +34,9 @@ export interface Station {
   defaultVoice?: string;
   /** Artists that are spots or relays on this station. */
   skipArtists: string[];
+  /** Per-station send defaults: put new clips on air as soon as they arrive, and let them cut in over a live DJ. A request still overrides. */
+  autoplay?: boolean;
+  preempt?: boolean;
   notes?: string;
   /** What this station will connect to, once it has a server. Nothing here is a secret and nothing needs to be running. */
   connection: { kind: ConnectionKind; hubStationId?: string; note?: string };
@@ -85,6 +88,7 @@ export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } 
       links,
       ...opt("defaultPersonaId", text(r.defaultPersonaId, 60)), ...opt("defaultFx", text(r.defaultFx, 40)), ...opt("defaultSpeechModel", text(r.defaultSpeechModel, 100)), ...opt("defaultVoice", text(r.defaultVoice, 60)),
       skipArtists: list(r.skipArtists, 100, 100),
+      ...(typeof r.autoplay === "boolean" ? { autoplay: r.autoplay } : {}), ...(typeof r.preempt === "boolean" ? { preempt: r.preempt } : {}),
       ...opt("notes", text(r.notes, 1000)),
       connection: { kind, ...opt("hubStationId", text(conn.hubStationId, 60)), ...opt("note", text(conn.note, 200)) },
     },

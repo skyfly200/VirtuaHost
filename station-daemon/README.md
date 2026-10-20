@@ -33,6 +33,8 @@ often, skip list for spots and relays, whether it may cut in over a live DJ). Th
 watches Icecast's `status-json.xsl`, asks the site for a link about the track that just started, and plays it as the *next* track begins,
 with Liquidsoap ducking the music. It never talks over a spot on the skip list, and stays quiet while a live DJ is on (unless allowed).
 
+The host's settings are per station: set `STATION_ID` and the daemon reads and reports that station's own host settings (docs/STATIONS.md).
+
 Extra settings: `ICECAST_STATUS_URL` (default `http://127.0.0.1:8000/status-json.xsl`), `ICECAST_MOUNT` (`/stream`),
 `ICECAST_LIVE_MOUNT` (`/live`), `HOST_POLL_SECONDS` (2). The daemon reports what it is doing back to the site, so the Personas tab shows
 now playing, the waiting link and counters, and warns when the daemon has gone quiet.
