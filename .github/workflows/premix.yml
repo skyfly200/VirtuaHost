@@ -1,0 +1,31 @@
+name: Premix
+
+on:
+  push:
+    paths: ["premix/**", "scripts/premix.mjs"]
+  workflow_dispatch:
+
+jobs:
+  premix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Check scripts and sound effect tags
+        run: node scripts/premix.mjs --dry-run
+      - name: Mix
+        # SITE_URL (a variable) and ACCESS_KEY (a secret) are set in the repository settings.
+        if: ${{ vars.SITE_URL != '' }}
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          ACCESS_KEY: ${{ secrets.ACCESS_KEY }}
+        run: node scripts/premix.mjs
+      - uses: actions/upload-artifact@v4
+        if: ${{ vars.SITE_URL != '' }}
+        with:
+          name: premix
+          path: premix-out/*.mp3
+          if-no-files-found: error
