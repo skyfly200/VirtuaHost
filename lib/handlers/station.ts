@@ -21,7 +21,7 @@ export async function handleStation(req: Request): Promise<Response> {
   if (path === "/api/station/next" && req.method === "GET") {
     const item = await claimNext();
     if (!item) return Response.json({ item: null });
-    return Response.json({ item: { id: item.id, title: item.title, play: item.play, preempt: item.preempt, ...(item.fx ? { fx: item.fx } : {}), audioUrl: `/api/station/clips/${item.clipId}` } });
+    return Response.json({ item: { id: item.id, title: item.title, play: item.play, preempt: item.preempt, ...(item.fx ? { fx: item.fx } : {}), ...(item.info ? { info: item.info } : {}), ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}), audioUrl: `/api/station/clips/${item.clipId}` } });
   }
 
   const clip = /^\/api\/station\/clips\/([A-Za-z0-9-]{1,64})$/.exec(path);

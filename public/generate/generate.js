@@ -1,6 +1,7 @@
 // Generate tab: make a clip with the AI (OpenRouter or Gemini). Pick what kind of line it is, the tone, the models and the voice.
 import { h, clear, toast, fmtDate, audioUrl } from '../shared/kit.js';
-import { parseTags, mix, toWav, effectNames, RATE } from './mixer.js';
+import { effectNames } from './mixer.js';
+import { createSpeaker } from '../shared/speaker.js';
 
 const GEMINI_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Zephyr', 'Orus'];
 const OTHER = '__other';
@@ -23,22 +24,9 @@ export async function mountGenerate(root, api) {
   let personas = [];
   try { personas = (await api.get('/personas')).personas; } catch { /* the picker is optional */ }
 
-  // Sounds from the connected cloud library (OwnCloud / Google Drive), usable as [sfx:name] and [music:name].
-  const library = { sfx: [], music: [] };
-  if (options.features && options.features.library && (options.features.library.sfx || options.features.library.music)) {
-    try { for (const item of (await api.get('/library')).items) (library[item.kind] || []).push(item); } catch { /* built-in effects still work */ }
-  }
-  const libraryItem = (kind, name) => library[kind].find((i) => i.name === name);
-  const sampleCache = new Map();
-  async function librarySamples(kind, name) {
-    const key = `${kind}/${name}`;
-    if (!sampleCache.has(key)) {
-      const item = libraryItem(kind, name);
-      const blob = await api.get(`/library/${encodeURIComponent(item.source)}/${kind}/${encodeURIComponent(item.name)}`, { blob: true });
-      sampleCache.set(key, await decodeToSamples(new Uint8Array(await blob.arrayBuffer())));
-    }
-    return sampleCache.get(key);
-  }
+  // Speaking and mixing (built-in effects, the cloud library, music beds) is shared with Voice Lab: public/shared/speaker.js.
+  const speaker = createSpeaker(api, options.features);
+  const library = await speaker.loadLibrary();
 
   const prefs = loadPrefs();
   const state = {
@@ -154,12 +142,6 @@ export async function mountGenerate(root, api) {
   // mixed in here in the browser, so the draft you hear is the file that gets saved.
   const draftBox = h('div');
   let draft = null;
-  const bytesOf = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  async function decodeToSamples(bytes) {
-    const buffer = await new OfflineAudioContext(1, 1, RATE).decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-    return buffer.getChannelData(0);
-  }
-
   const writerBase = () => ({
     ...(state.persona ? { persona: state.persona } : {}), ...(state.format ? { format: state.format } : {}), ...(state.tone.trim() ? { tone: state.tone.trim() } : {}),
     ...(options.models.choosable ? (() => { const m = chosen('textModel', 'textCustom'); return m ? { textModel: m } : {}; })() : {}),
@@ -212,45 +194,16 @@ export async function mountGenerate(root, api) {
   async function makeAudio(value, meta) {
     status.classList.remove('bad');
     status.textContent = 'Generating a preview (this calls the speech service live and can take a few seconds)...';
-    const base = { preview: true, mode: 'say', ...(state.persona ? { persona: state.persona } : {}) };
+    const base = { ...(state.persona ? { persona: state.persona } : {}) };
     if (state.tone.trim()) base.tone = state.tone.trim();
     if (state.voice.trim()) base.voice = state.voice.trim();
     if (options.models.choosable) {
       const speechModel = chosen('speechModel', 'speechCustom');
       if (speechModel) base.speechModel = speechModel;
     }
-    const pieces = parseTags(value);
-    const tagged = pieces.filter((p) => p.type !== 'speech');
-    for (const p of tagged) {
-      if (p.type === 'sfx' && !effectNames().includes(p.name) && !libraryItem('sfx', p.name)) throw new Error(`Unknown sound effect "${p.name}". Available: ${[...effectNames(), ...library.sfx.map((i) => i.name)].join(', ')}`);
-      if (p.type === 'music' && !libraryItem('music', p.name)) throw new Error(library.music.length ? `Unknown music "${p.name}". Available: ${library.music.map((i) => i.name).join(', ')}` : 'No music library is connected (see docs/LIBRARY.md).');
-    }
-    if (!pieces.some((p) => p.type === 'speech')) throw new Error('Add some words to speak as well as the sound effects.');
-
-    const results = [];
-    const speechCount = pieces.filter((p) => p.type === 'speech').length;
-    for (const piece of pieces) {
-      if (piece.type !== 'speech') { results.push(piece); continue; }
-      status.textContent = `Generating speech${speechCount > 1 ? ` (${results.filter((r) => r.type === 'speech').length + 1} of ${speechCount})` : ''}...`;
-      results.push({ type: 'speech', data: await api.post('/generate', { ...base, text: piece.text }) });
-    }
-    const first = results.find((r) => r.type === 'speech').data;
-    let blob;
-    if (!tagged.length) {
-      blob = new Blob([bytesOf(first.audio)], { type: first.mimeType });
-    } else {
-      status.textContent = 'Mixing...';
-      const items = [];
-      for (const r of results) {
-        if (r.type === 'speech') items.push({ kind: 'speech', samples: await decodeToSamples(bytesOf(r.data.audio)) });
-        else if (r.type === 'music') items.push({ kind: 'music', vol: r.vol, samples: await librarySamples('music', r.name) });
-        else items.push({ kind: 'sfx', name: r.name, vol: r.vol, over: r.over, wait: r.wait, ...(effectNames().includes(r.name) ? {} : { samples: await librarySamples('sfx', r.name) }) });
-      }
-      blob = new Blob([toWav(mix(items))], { type: 'audio/wav' });
-    }
-    const tagText = (r) => `[${r.type}:${r.name}${r.over ? ' over' : ''}${r.vol !== (r.type === 'music' ? 0.25 : 1) ? ` vol=${r.vol}` : ''}${r.wait ? ` wait=${r.wait}` : ''}]`;
-    const scriptText = tagged.length ? results.map((r) => (r.type === 'speech' ? r.data.scriptText : tagText(r))).join(' ') : first.scriptText;
-    showDraft({ blob, scriptText, input: meta.input, mode: meta.mode, textModel: meta.textModel, first, effects: tagged.map((p) => p.name) });
+    const out = await speaker.render(value, base, { onProgress: (m) => { status.textContent = m; } });
+    const first = out.first;
+    showDraft({ blob: out.blob, scriptText: out.scriptText, input: meta.input, mode: meta.mode, textModel: meta.textModel, first, effects: out.effects });
     status.textContent = `Preview ready${first.speechModel ? ` (${first.speechModel}${meta.textModel ? `, written by ${meta.textModel}` : ''})` : ''}. Listen, then save it or discard it.${first.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${first.toneIgnored ? ' This model ignores tone.' : ''}`;
   }
 

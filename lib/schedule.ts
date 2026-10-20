@@ -1,6 +1,7 @@
 // Schedules: clips that are made and sent to the station on a timetable. Pure rules here (validation, "when is the next
 // one"); storage is lib/schedule-store.ts and the runner is lib/scheduler.ts, called every minute by a Netlify scheduled function.
 import { randomBytes } from "node:crypto";
+import { sanitizeInfo, type ClipInfo } from "./clip-info.js";
 
 export type When =
   | { type: "once"; at: string }
@@ -29,6 +30,10 @@ export interface Schedule {
   fx: string;
   /** Stop after this many runs (0 = no limit). */
   count: number;
+  /** Never run after this instant (ISO 8601): an event promo stops when the event is over. Also the expiry of the clips it makes. */
+  until?: string;
+  /** Metadata for the clips it makes (kind, event, ...). */
+  info?: ClipInfo;
   runs: number;
   nextAt: string | null;
   lastRunAt?: string;
@@ -141,8 +146,11 @@ export function buildSchedule(raw: unknown, now = Date.now()): Schedule {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const when = sanitizeWhen(r.when, now);
   const content = sanitizeContent(r.content);
+  const untilMs = r.until ? Date.parse(String(r.until)) : NaN;
+  if (r.until && !Number.isFinite(untilMs)) throw new Error("until must be a date and time");
   const first = nextRun(when, now - 1);   // a time right now still counts
   if (first === null) throw new Error("That time has already passed");
+  if (Number.isFinite(untilMs) && first > untilMs) throw new Error("The first run would be after the end date");
   const label = content.kind === "text" ? content.text : content.kind === "ai" ? content.prompt : "saved clip";
   return {
     id: randomBytes(6).toString("hex"),
@@ -152,6 +160,8 @@ export function buildSchedule(raw: unknown, now = Date.now()): Schedule {
     send: r.send === "air" || r.send === "library" ? r.send : "none",
     preempt: r.preempt === true, fx: str(r.fx, 40),
     count: clamp(Math.floor(Number(r.count)) || 0, 0, 10000), runs: 0,
+    ...(Number.isFinite(untilMs) ? { until: new Date(untilMs).toISOString() } : {}),
+    ...(r.info ? { info: sanitizeInfo(r.info) } : {}),
     nextAt: new Date(first).toISOString(), createdAt: new Date(now).toISOString(),
   };
 }

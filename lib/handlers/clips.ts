@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { embedTags, sanitizeInfo } from "../clip-info.js";
 import { getClip, listClips, saveClip } from "../store.js";
 import { checkAuth } from "../auth.js";
 import { sendToStation, stationConfigured } from "../station-send.js";
@@ -31,15 +32,19 @@ async function handleSave(req: Request): Promise<Response> {
   const effects = Array.isArray(meta.effects) ? meta.effects.filter((e): e is string => typeof e === "string").map((e) => e.slice(0, 40)).slice(0, 20) : [];
 
   const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  const info = sanitizeInfo({ title: scriptText.slice(0, 60), source: "browser", ...(meta.info && typeof meta.info === "object" ? meta.info : {}) });
+  const tagged = embedTags(audio, mimeType, info, { script: scriptText, createdAt, clipId: id, station: process.env.STATION_NAME });
   const metadata: ClipMetadata = {
     id,
-    createdAt: new Date().toISOString(),
+    createdAt,
     mode: meta.mode === "ai" ? "ai" : "say",
     input: text("input", 2000) ?? scriptText,
     scriptText,
     voice: text("voice", 60) ?? "",
     mimeType,
-    byteSize: audio.length,
+    byteSize: tagged.length,
+    info,
     ...(text("provider", 20) ? { provider: text("provider", 20) } : {}),
     ...(text("textModel", 100) ? { textModel: text("textModel", 100) } : {}),
     ...(text("speechModel", 100) ? { speechModel: text("speechModel", 100) } : {}),
@@ -47,13 +52,13 @@ async function handleSave(req: Request): Promise<Response> {
     ...(text("format", 40) ? { format: text("format", 40) } : {}),
     ...(effects.length ? { effects } : {}),
   };
-  await saveClip(id, audio, metadata);
+  await saveClip(id, tagged, metadata);
 
   // Same as /api/generate: the clip is saved either way, a station problem is only reported.
   let handoff;
   if (meta.handoff !== false && stationConfigured()) {
     handoff = await sendToStation({
-      clipId: id, audio, mimeType, title: scriptText,
+      clipId: id, audio: tagged, mimeType, title: scriptText, info,
       play: typeof meta.play === "boolean" ? meta.play : undefined,
       preempt: typeof meta.preempt === "boolean" ? meta.preempt : undefined,
     });
@@ -78,6 +83,12 @@ export async function handleClips(req: Request, id: string | undefined): Promise
   const clip = await getClip(id);
   if (!clip) {
     return Response.json({ error: "Clip not found" }, { status: 404 });
+  }
+
+  // GET /api/clips/:id/meta: the same details that are written into the audio file, as JSON for other systems.
+  if (new URL(req.url).pathname.replace(/\/+$/, "").endsWith("/meta")) {
+    const { id: clipId, createdAt, scriptText, voice, mimeType, byteSize, provider, speechModel, tone, effects, info } = clip.metadata;
+    return Response.json({ id: clipId, createdAt, scriptText, voice, mimeType, byteSize, provider, speechModel, tone, effects, ...(info ?? {}) });
   }
 
   return new Response(clip.data, {

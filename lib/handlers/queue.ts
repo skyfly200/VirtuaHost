@@ -1,4 +1,5 @@
 import { checkAuth } from "../auth.js";
+import { isExpired } from "../clip-info.js";
 import { enqueue, finish, getItem, listQueue } from "../queue-store.js";
 import { getClip } from "../store.js";
 
@@ -17,8 +18,10 @@ export async function handleQueue(req: Request, id: string | undefined): Promise
     if (!body || typeof body.clipId !== "string") return Response.json({ error: "clipId is required" }, { status: 400 });
     const clip = await getClip(body.clipId);
     if (!clip) return Response.json({ error: "Clip not found" }, { status: 404 });
+    if (isExpired(clip.metadata.info)) return Response.json({ error: "That clip has expired (its event is over), so it will not be sent" }, { status: 409 });
     const item = await enqueue({
       clipId: body.clipId,
+      ...(clip.metadata.info ? { info: clip.metadata.info } : {}),
       title: clip.metadata.scriptText,
       play: body.play === true,
       preempt: body.preempt === true,

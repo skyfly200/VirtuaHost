@@ -2,6 +2,7 @@
 // Same rules as POST /api/generate: sound-effect tags are removed (these speech models cannot mix them), delivery tags are
 // removed for models that would read them aloud, and tone is sent the way the model takes it.
 import { randomUUID } from "node:crypto";
+import { embedTags, sanitizeInfo, type ClipInfo } from "./clip-info.js";
 import { activeProvider, speak, NO_PROVIDER_MESSAGE } from "./ai.js";
 import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "./cues.js";
 import { cleanTone } from "./formats.js";
@@ -21,6 +22,8 @@ export interface MakeClipOptions {
   speechModel?: string;
   textModel?: string;
   format?: string;
+  /** Metadata for other systems (kind, event, expiresAt, ...). Embedded in the audio and kept with the clip. */
+  info?: ClipInfo;
 }
 
 export type MadeClip = { ok: true; id: string; scriptText: string; mimeType: string; speechModel: string; voice: string } | { ok: false; status: number; error: string };
@@ -52,11 +55,14 @@ export async function makeClip(options: MakeClipOptions): Promise<MadeClip> {
   }
 
   const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  const info = sanitizeInfo({ title: scriptText.slice(0, 60), source: "make-clip", ...(options.info ?? {}) });
+  const audio = embedTags(spoken.audio, spoken.mimeType, info, { script: scriptText, createdAt, clipId: id, station: process.env.STATION_NAME });
   const metadata: ClipMetadata = {
-    id, createdAt: new Date().toISOString(), mode: options.mode ?? "say", input: options.input.slice(0, 2000), scriptText, voice: spoken.voice,
-    mimeType: spoken.mimeType, byteSize: spoken.audio.length, provider, speechModel: spoken.model,
+    id, createdAt, mode: options.mode ?? "say", input: options.input.slice(0, 2000), scriptText, voice: spoken.voice,
+    mimeType: spoken.mimeType, byteSize: audio.length, provider, speechModel: spoken.model, info,
     ...(options.textModel ? { textModel: options.textModel } : {}), ...(tone ? { tone } : {}), ...(options.format ? { format: options.format } : {}),
   };
-  await saveClip(id, spoken.audio, metadata);
+  await saveClip(id, audio, metadata);
   return { ok: true, id, scriptText, mimeType: spoken.mimeType, speechModel: spoken.model, voice: spoken.voice };
 }

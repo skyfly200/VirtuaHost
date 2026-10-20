@@ -90,4 +90,29 @@ describe("running schedules", () => {
     await runDueSchedules(at("2030-01-01T07:00:10Z"));
     expect((await listSchedules())[0]).toMatchObject({ lastResult: "error: Speech synthesis failed: down", nextAt: "2030-01-02T07:00:00.000Z" });
   });
+
+  it("stops at its end date and stamps the clips it makes with that expiry", async () => {
+    const until = "2030-01-01T09:00:00.000Z";
+    await saveSchedule(buildSchedule({ name: "Promo", when: { type: "interval", everyMinutes: 60, startAt: "2030-01-01T06:00:00Z" }, content: { kind: "text", text: "Come to the party" }, send: "air", until, info: { kind: "promo", event: { name: "Party" } } }, at("2030-01-01T05:00:00Z")));
+    await runDueSchedules(at("2030-01-01T06:00:05Z"));
+    expect(vi.mocked(makeClip).mock.calls[0][0].info).toMatchObject({ source: "schedule", kind: "promo", expiresAt: until, event: { name: "Party" } });
+    expect(vi.mocked(sendToStation).mock.calls[0][0].info).toMatchObject({ expiresAt: until });
+
+    await runDueSchedules(at("2030-01-01T07:00:05Z"));
+    await runDueSchedules(at("2030-01-01T08:00:05Z"));
+    const last = (await listSchedules())[0];
+    expect(last).toMatchObject({ runs: 3, nextAt: "2030-01-01T09:00:00.000Z", enabled: true });   // 09:00 is the end itself
+    await runDueSchedules(at("2030-01-01T09:00:05Z"));
+    expect((await listSchedules())[0]).toMatchObject({ enabled: false, nextAt: null, lastResult: "ended: past its end date" });
+    expect(makeClip).toHaveBeenCalledTimes(3);
+  });
+
+  it("will not run a saved clip whose event is over, and rejects a start after the end date", async () => {
+    const { getClip } = await import("../../lib/store.js");
+    vi.mocked(getClip).mockResolvedValue({ data: new ArrayBuffer(2), metadata: { id: "c", scriptText: "old", mimeType: "audio/wav", info: { expiresAt: "2001-01-01T00:00:00.000Z" } } } as never);
+    await saveSchedule(make({ content: { kind: "clip", clipId: "c" } }));
+    await runDueSchedules(at("2030-01-01T07:00:10Z"));
+    expect((await listSchedules())[0].lastResult).toMatch(/error: the clip has expired/);
+    expect(() => buildSchedule({ when: { type: "once", at: "2030-06-01T10:00:00Z" }, content: { kind: "text", text: "x" }, until: "2030-05-01T00:00:00Z" }, at("2030-01-01T00:00:00Z"))).toThrow(/after the end date/);
+  });
 });

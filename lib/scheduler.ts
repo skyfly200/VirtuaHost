@@ -4,6 +4,7 @@ import { findFormat } from "./formats.js";
 import { makeClip } from "./make-clip.js";
 import { getPersona } from "./persona-store.js";
 import { pickTextModel } from "./openrouter.js";
+import { isExpired } from "./clip-info.js";
 import { nextRun, type Schedule } from "./schedule.js";
 import { listSchedules, saveSchedule } from "./schedule-store.js";
 import { getClip } from "./store.js";
@@ -23,6 +24,7 @@ export async function runSchedule(s: Schedule): Promise<string> {
   if (s.content.kind === "clip") {
     const clip = await getClip(s.content.clipId);
     if (!clip) throw new Error("the saved clip was deleted");
+    if (isExpired(clip.metadata.info)) throw new Error("the clip has expired (its event is over)");
     clipId = s.content.clipId; title = clip.metadata.scriptText; mimeType = clip.metadata.mimeType; audio = Buffer.from(clip.data);
   } else {
     let text: string;
@@ -38,14 +40,15 @@ export async function runSchedule(s: Schedule): Promise<string> {
     } else {
       text = s.content.text;
     }
-    const made = await makeClip({ text, input: `schedule: ${s.name}`, mode, textModel, tone: s.tone || persona?.tone, voice: s.voice || persona?.voice, speechModel: s.speechModel || persona?.speechModel });
+    const info = { source: "schedule", ...(s.info ?? {}), ...(s.until ? { expiresAt: s.until } : {}) };
+    const made = await makeClip({ text, input: `schedule: ${s.name}`, mode, textModel, info, tone: s.tone || persona?.tone, voice: s.voice || persona?.voice, speechModel: s.speechModel || persona?.speechModel });
     if (!made.ok) throw new Error(made.error);
     clipId = made.id; title = made.scriptText;
   }
 
   if (s.send === "none") return "saved";
   if (!queueMode()) return "saved (set STATION_MODE=queue to send schedules to the station)";
-  await sendToStation({ clipId, audio: audio ?? Buffer.alloc(0), mimeType, title, play: s.send === "air", preempt: s.preempt, fx: s.fx || undefined });
+  await sendToStation({ clipId, audio: audio ?? Buffer.alloc(0), mimeType, title, play: s.send === "air", preempt: s.preempt, fx: s.fx || undefined, ...(s.info || s.until ? { info: { ...(s.info ?? {}), ...(s.until ? { expiresAt: s.until } : {}) } } : {}) });
   return s.send === "air" ? "queued for air" : "queued for the station library";
 }
 
@@ -53,7 +56,7 @@ export async function runSchedule(s: Schedule): Promise<string> {
 function advance(s: Schedule, now: number, result: string): Schedule {
   const done: Schedule = { ...s, lastRunAt: new Date(now).toISOString(), lastResult: result.slice(0, 200) };
   const next = nextRun(s.when, now);
-  const finished = s.count > 0 && done.runs >= s.count;
+  const finished = (s.count > 0 && done.runs >= s.count) || (s.until !== undefined && next !== null && next > Date.parse(s.until));
   done.nextAt = finished || next === null ? null : new Date(next).toISOString();
   if (done.nextAt === null) done.enabled = false;
   return done;
@@ -65,6 +68,11 @@ export async function runDueSchedules(now = Date.now()): Promise<{ ran: number; 
   for (const s of await listSchedules()) {
     if (!s.enabled || !s.nextAt || Date.parse(s.nextAt) > now) continue;
     if (Date.now() - now > BUDGET_MS) break;                                   // the rest wait for the next minute
+    if (s.until && Date.parse(s.until) <= now) {                                 // the event is over: never run it again
+      await saveSchedule({ ...s, enabled: false, nextAt: null, lastResult: "ended: past its end date" });
+      skipped += 1;
+      continue;
+    }
     if (now - Date.parse(s.nextAt) > GRACE_MS) {
       await saveSchedule(advance(s, now, "missed (the site was not running at that time)"));
       skipped += 1;

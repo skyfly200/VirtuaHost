@@ -12,6 +12,10 @@
 //   HOST_POLL_SECONDS   how often the virtual host looks at what is playing (default 2)
 //   LIQUIDSOAP_QUEUE    queue for normal clips (default announce); LIQUIDSOAP_LIVE_QUEUE for preempting ones (default announce_live)
 //
+// Metadata (what the clip is, who it is about, when it expires) arrives with each item. It is written next to the clip as
+// <id>.json for other systems, and passed to Liquidsoap as annotate metadata (title, artist, genre, comment, expires, ...) so it
+// shows up in the stream's now-playing. A clip whose expiry has passed is never played: it is reported "skipped".
+//
 // Per item: download the audio, apply the requested effect with ffmpeg (the Chips Voice presets, e.g. "underground"; a failed
 // effect plays the clip unprocessed), keep a copy, push it to Liquidsoap when it is meant for air, then report played or failed.
 import fs from "node:fs";
@@ -36,6 +40,25 @@ export function liquidsoapCommand(command, { host = "127.0.0.1", port = 1234 } =
   });
 }
 
+// "annotate:key=\"value\",...:/path" for Liquidsoap, so a clip's details become its metadata on air.
+const quote = (v) => `"${String(v).replace(/[\r\n]+/g, " ").replace(/\\/g, "\\\\").replace(/"/g, '\\"').slice(0, 300)}"`;
+export function annotateUri(file, info = {}, extra = {}) {
+  const pairs = {
+    title: info.title || (info.event && info.event.name) || extra.title || "",
+    artist: info.artist || "",
+    album: info.album || "",
+    genre: info.kind || "",
+    comment: extra.comment || "",
+    expires: info.expiresAt || "",
+    event: (info.event && info.event.name) || "",
+    persona: info.persona || "",
+    source: info.source || "",
+  };
+  const body = Object.entries(pairs).filter(([, v]) => v).map(([k, v]) => `${k}=${quote(v)}`).join(",");
+  return body ? `annotate:${body}:${file}` : file;
+}
+const isExpired = (item, now) => { const at = Date.parse(item.expiresAt || (item.info && item.info.expiresAt) || ""); return Number.isFinite(at) && at <= now; };
+
 // The Chips Voice effect presets, when the repository's chips-voice folder is alongside; otherwise effects are skipped.
 export function loadFx() {
   try {
@@ -49,7 +72,7 @@ export function loadFx() {
   }
 }
 
-export function createDaemon({ site, key, dir, fetchImpl = fetch, command, applyFx = null, keep = 200, log = console.log }) {
+export function createDaemon({ site, key, dir, fetchImpl = fetch, command, applyFx = null, keep = 200, log = console.log, now = Date.now }) {
   const base = site.replace(/\/+$/, "");
   const headers = { "x-station-key": key };
   fs.mkdirSync(dir, { recursive: true });
@@ -63,12 +86,13 @@ export function createDaemon({ site, key, dir, fetchImpl = fetch, command, apply
 
   function prune() {
     const files = fs.readdirSync(dir).map((f) => ({ f, t: fs.statSync(path.join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t);
-    for (const old of files.slice(keep)) fs.rmSync(path.join(dir, old.f), { force: true });
+    for (const old of files.slice(keep * 2)) fs.rmSync(path.join(dir, old.f), { force: true });
   }
 
   // Fetches an item's audio, applies its effect, keeps a copy, and puts it on air when it is meant for air.
   // item: { id, title, audioUrl, fx?, play, preempt }
   async function deliver(item) {
+    if (isExpired(item, now())) { log(`expired, not played: ${item.title.slice(0, 60)}`); return "expired"; }
     const res = await call(item.audioUrl);
     let audio = Buffer.from(await res.arrayBuffer());
     let ext = (res.headers.get("content-type") || "").includes("mpeg") ? "mp3" : "wav";
@@ -77,13 +101,16 @@ export function createDaemon({ site, key, dir, fetchImpl = fetch, command, apply
     }
     const file = path.resolve(dir, `${item.id}.${ext}`);
     fs.writeFileSync(file, audio);
+    // The details beside the clip, for systems that read files rather than the stream.
+    fs.writeFileSync(path.resolve(dir, `${item.id}.json`), JSON.stringify({ id: item.id, file: path.basename(file), title: item.title, play: item.play, preempt: item.preempt, fx: item.fx, expiresAt: item.expiresAt, ...(item.info || {}) }, null, 2));
     if (item.play) {
-      const reply = await command(`${item.preempt ? "announce_live" : "announce"}.push ${file}`);
+      const reply = await command(`${item.preempt ? "announce_live" : "announce"}.push ${annotateUri(file, item.info, { comment: item.title })}`);
       log(`on air: ${item.title.slice(0, 60)} (${reply})`);
     } else {
       log(`stored: ${item.title.slice(0, 60)}`);
     }
     prune();
+    return "delivered";
   }
 
   // Handles at most one queued item. Returns "idle", "played" or "failed"; throws only when the site cannot be reached.
@@ -91,7 +118,7 @@ export function createDaemon({ site, key, dir, fetchImpl = fetch, command, apply
     const { item } = await (await call("/api/station/next")).json();
     if (!item) return "idle";
     try {
-      await deliver(item);
+      if ((await deliver(item)) === "expired") { await ack(item.id, "skipped", "expired"); return "skipped"; }
       await ack(item.id, "played");
       return "played";
     } catch (err) {

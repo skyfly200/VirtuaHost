@@ -84,7 +84,19 @@ describe("handleClips", () => {
       expect(res.status).toBe(201);
       const { id } = (await res.json()) as { id: string };
       expect(vi.mocked(saveClip).mock.calls[0][0]).toBe(id);
-      expect(vi.mocked(saveClip).mock.calls[0][2]).toMatchObject({ scriptText: "Hi there", effects: ["ding"], tone: "warm", mimeType: "audio/wav", byteSize: wav.length });
+      expect(vi.mocked(saveClip).mock.calls[0][2]).toMatchObject({ scriptText: "Hi there", effects: ["ding"], tone: "warm", mimeType: "audio/wav" });
+      // the saved file carries the details: bigger than what was sent, and starts the same
+      const [, saved, stored] = vi.mocked(saveClip).mock.calls[0];
+      expect(saved.length).toBeGreaterThan(wav.length);
+      expect(stored.byteSize).toBe(saved.length);
+      expect(stored.info).toMatchObject({ title: "Hi there", source: "browser" });
+    });
+
+    it("keeps the metadata the browser sends: event, kind and expiry", async () => {
+      const info = { kind: "promo", expiresAt: "2030-04-12T23:00:00Z", event: { name: "Spring Fling", venue: "The Barn" }, junk: 1 };
+      expect((await save(wav, { scriptText: "Join us", info })).status).toBe(201);
+      expect(vi.mocked(saveClip).mock.calls[0][2].info).toMatchObject({ kind: "promo", expiresAt: "2030-04-12T23:00:00.000Z", event: { name: "Spring Fling", venue: "The Barn" } });
+      expect(vi.mocked(saveClip).mock.calls[0][2].info).not.toHaveProperty("junk");
     });
 
     it("rejects the wrong type, non-audio bytes, a missing script and an oversized body", async () => {
@@ -94,5 +106,12 @@ describe("handleClips", () => {
       expect((await save(Buffer.concat([wav, Buffer.alloc(5_600_000)]))).status).toBe(413);
       expect(saveClip).not.toHaveBeenCalled();
     });
+  });
+
+  it("serves a clip's metadata as JSON for other systems", async () => {
+    mockedGetClip.mockResolvedValue({ data: new ArrayBuffer(4), metadata: { ...sampleMetadata, info: { kind: "promo", expiresAt: "2030-04-12T23:00:00.000Z", event: { name: "Spring Fling" } } } });
+    const res = await handleClips(new Request("http://localhost/api/clips/abc/meta", { headers: { "x-api-key": TEST_KEY } }), "abc");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: "abc", scriptText: "hello", kind: "promo", expiresAt: "2030-04-12T23:00:00.000Z", event: { name: "Spring Fling" } });
   });
 });

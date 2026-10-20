@@ -87,4 +87,30 @@ describe("station queue", () => {
     expect(((await (await station("/api/station/next")).json()) as { item: unknown }).item).toBeNull();
     expect((await user("DELETE", item.id)).status).toBe(409);
   });
+
+  it("passes a clip's metadata to the station, and never delivers an expired clip", async () => {
+    const info = { kind: "promo", event: { name: "Spring Fling" }, expiresAt: new Date(Date.now() + 3600_000).toISOString() };
+    await sendToStation({ clipId: "clip1", audio: Buffer.from([1]), mimeType: "audio/wav", title: "promo", info });
+    const got = (await (await station("/api/station/next")).json()) as { item: { info: unknown; expiresAt: string } };
+    expect(got.item).toMatchObject({ info: { kind: "promo", event: { name: "Spring Fling" } }, expiresAt: info.expiresAt });
+
+    // refused when already over
+    const expired = { ...info, expiresAt: "2001-01-01T00:00:00.000Z" };
+    expect(await sendToStation({ clipId: "clip1", audio: Buffer.from([1]), mimeType: "audio/wav", title: "old", info: expired })).toMatchObject({ sent: false, error: expect.stringContaining("expired") });
+
+    // an item that expires while waiting is skipped when the station asks
+    blobs.clear();
+    const { enqueue } = await import("../../lib/queue-store.js");
+    await enqueue({ clipId: "clip1", title: "soon gone", play: true, preempt: false, info: { expiresAt: new Date(Date.now() + 50).toISOString() } });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(((await (await station("/api/station/next")).json()) as { item: unknown }).item).toBeNull();
+    const list = (await (await user("GET")).json()) as { items: Array<{ status: string; error?: string }> };
+    expect(list.items[0]).toMatchObject({ status: "skipped", error: expect.stringContaining("expired") });
+  });
+
+  it("will not queue an expired clip by hand", async () => {
+    const { getClip } = await import("../../lib/store.js");
+    vi.mocked(getClip).mockResolvedValueOnce({ data: new ArrayBuffer(1), metadata: { id: "clip1", scriptText: "old promo", mimeType: "audio/wav", info: { expiresAt: "2001-01-01T00:00:00.000Z" } } } as never);
+    expect((await user("POST", undefined, { clipId: "clip1" })).status).toBe(409);
+  });
 });

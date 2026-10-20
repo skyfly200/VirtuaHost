@@ -12,7 +12,8 @@
 // send header it is only saved.
 //
 // A script is premix/<name>.txt. Leading "# key: value" lines set voice, tone, speechModel, loudness (LUFS, default
-// -16, "off" to skip) and send (air | library); the rest is the text, with tags like [sfx:ding], [sfx:whoosh over], [sfx:crowd vol=0.5].
+// -16, "off" to skip), send (air | library), and metadata for other systems: kind, title, tags (comma list) and expires (ISO 8601, nothing
+// plays the clip after it); the rest is the text, with tags like [sfx:ding], [sfx:whoosh over], [sfx:crowd vol=0.5].
 // Sound effects: the built-ins, plus any premix/sfx/<name>.mp3|wav|ogg (these override a built-in of the same name). With
 // SITE_URL and ACCESS_KEY set, effects and music from the site's cloud library (OwnCloud / Google Drive, docs/LIBRARY.md) work
 // too, and `[music:name vol=0.2]` puts a library music bed under the whole clip (fading in before the first word, out after the last).
@@ -116,7 +117,8 @@ async function publishClip(buffer, name, meta, text, effects) {
   const site = (process.env.SITE_URL || "").replace(/\/+$/, "");
   const key = process.env.ACCESS_KEY;
   const send = meta.send === "air" || meta.send === "library" ? meta.send : null;
-  const details = { mode: "say", input: text, scriptText: text.slice(0, 2000), voice: meta.voice || "", tone: meta.tone, speechModel: meta.speechModel, effects, handoff: send !== null, ...(send ? { play: send === "air" } : {}) };
+  const info = { source: "premix", ...(meta.kind ? { kind: meta.kind } : {}), ...(meta.title ? { title: meta.title } : {}), ...(meta.expires ? { expiresAt: meta.expires } : {}), ...(meta.tags ? { tags: meta.tags.split(",").map((t) => t.trim()) } : {}) };
+  const details = { mode: "say", input: text, scriptText: text.slice(0, 2000), voice: meta.voice || "", tone: meta.tone, speechModel: meta.speechModel, effects, info, handoff: send !== null, ...(send ? { play: send === "air" } : {}) };
   const res = await fetch(`${site}/api/clips`, { method: "POST", headers: { "content-type": "audio/mpeg", "x-api-key": key, "x-clip-meta": encodeURIComponent(JSON.stringify(details)) }, body: buffer });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`publish failed (${res.status}): ${data.error ?? "no detail"}`);

@@ -5,7 +5,7 @@ import net from "node:net";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createDaemon, liquidsoapCommand } from "../daemon.mjs";
+import { createDaemon, liquidsoapCommand, annotateUri } from "../daemon.mjs";
 
 // A site stand-in: a queue of items, the audio, and a record of acknowledgements.
 function fakeSite(items) {
@@ -28,7 +28,7 @@ test("plays a queued clip: saves it, pushes it to the announce queue, reports pl
   const d = createDaemon({ site: site.url, key: "k", dir, command: async (c) => { commands.push(c); return "1"; }, log: () => {} });
   assert.equal(await d.tick(), "played");
   assert.equal(commands.length, 1);
-  assert.equal(commands[0], `announce.push ${path.join(dir, "i1.wav")}`);
+  assert.equal(commands[0], `announce.push annotate:comment="Hello":${path.join(dir, "i1.wav")}`);
   assert.ok(fs.existsSync(path.join(dir, "i1.wav")));
   assert.deepEqual(site.acks, [{ id: "i1", status: "played" }]);
   assert.equal(await d.tick(), "idle");
@@ -82,7 +82,7 @@ test("keeps only the newest files", async () => {
   const dir = tmp();
   const d = createDaemon({ site: site.url, key: "k", dir, keep: 2, command: async () => "1", log: () => {} });
   for (let i = 0; i < 3; i++) { await d.tick(); await new Promise((r) => setTimeout(r, 15)); }
-  assert.deepEqual(fs.readdirSync(dir).sort(), ["b.wav", "c.wav"]);
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith(".wav")).sort(), ["b.wav", "c.wav"]);
   site.close();
 });
 
@@ -94,4 +94,34 @@ test("liquidsoapCommand talks to the telnet server", async () => {
   assert.equal(reply, "7");
   assert.equal(seen[0], "announce.push /x.wav\nexit\n");
   server.close();
+});
+
+test("passes the clip's metadata to Liquidsoap and writes a sidecar file", async () => {
+  const info = { title: "Spring Fling", kind: "promo", persona: "sunny-sam", expiresAt: "2999-04-12T23:00:00.000Z", event: { name: "Spring \"Fling\"" } };
+  const site = await fakeSite([item({ info, expiresAt: info.expiresAt })]);
+  const dir = tmp(); const commands = [];
+  const d = createDaemon({ site: site.url, key: "k", dir, command: async (c) => { commands.push(c); return "1"; }, log: () => {} });
+  assert.equal(await d.tick(), "played");
+  const file = path.join(dir, "i1.wav");
+  assert.equal(commands[0], `announce.push annotate:title="Spring Fling",genre="promo",comment="Hello",expires="2999-04-12T23:00:00.000Z",event="Spring \\"Fling\\"",persona="sunny-sam":${file}`);
+  const sidecar = JSON.parse(fs.readFileSync(path.join(dir, "i1.json"), "utf8"));
+  assert.deepEqual([sidecar.kind, sidecar.expiresAt, sidecar.event.name, sidecar.file], ["promo", "2999-04-12T23:00:00.000Z", 'Spring "Fling"', "i1.wav"]);
+  site.close();
+});
+
+test("never plays a clip whose expiry has passed", async () => {
+  const site = await fakeSite([item({ expiresAt: "2001-01-01T00:00:00.000Z" }), item({ id: "i2", info: { expiresAt: "2001-01-01T00:00:00.000Z" } })]);
+  const dir = tmp(); const commands = [];
+  const d = createDaemon({ site: site.url, key: "k", dir, command: async (c) => { commands.push(c); return "1"; }, log: () => {} });
+  assert.equal(await d.tick(), "skipped");
+  assert.equal(await d.tick(), "skipped");
+  assert.deepEqual(commands, []);
+  assert.deepEqual(site.acks, [{ id: "i1", status: "skipped", error: "expired" }, { id: "i2", status: "skipped", error: "expired" }]);
+  assert.equal(fs.readdirSync(dir).length, 0);
+  site.close();
+});
+
+test("builds annotate URIs only when there is something to say", () => {
+  assert.equal(annotateUri("/x.wav"), "/x.wav");
+  assert.equal(annotateUri("/x.wav", { kind: "drop" }), 'annotate:genre="drop":/x.wav');
 });

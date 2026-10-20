@@ -2,6 +2,8 @@
 // site, claims the oldest item, plays it and reports back, so the station needs no public address and no AI keys.
 import { getStore } from "@netlify/blobs";
 import { randomUUID } from "node:crypto";
+import type { ClipInfo } from "./clip-info.js";
+import { isExpired } from "./clip-info.js";
 import type { FxSetting } from "./handoff.js";
 
 export type QueueStatus = "queued" | "claimed" | "played" | "failed" | "skipped";
@@ -15,6 +17,10 @@ export interface QueueItem {
   /** Let it cut in over a live DJ. */
   preempt: boolean;
   fx?: FxSetting;
+  /** The clip's metadata, passed on to the station (and from there to Liquidsoap and other systems). */
+  info?: ClipInfo;
+  /** Never played after this instant; an expired item is skipped, not delivered. */
+  expiresAt?: string;
   status: QueueStatus;
   createdAt: string;
   claimedAt?: string;
@@ -36,8 +42,11 @@ async function all(): Promise<QueueItem[]> {
   return items.filter((i): i is QueueItem => Boolean(i)).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
-export async function enqueue(input: { clipId: string; title: string; play: boolean; preempt: boolean; fx?: FxSetting }): Promise<QueueItem> {
-  const item: QueueItem = { id: randomUUID(), status: "queued", createdAt: new Date().toISOString(), attempts: 0, ...input, title: input.title.slice(0, 200) };
+export async function enqueue(input: { clipId: string; title: string; play: boolean; preempt: boolean; fx?: FxSetting; info?: ClipInfo }): Promise<QueueItem> {
+  const item: QueueItem = {
+    id: randomUUID(), status: "queued", createdAt: new Date().toISOString(), attempts: 0, ...input, title: input.title.slice(0, 200),
+    ...(input.info?.expiresAt ? { expiresAt: input.info.expiresAt } : {}),
+  };
   await store().setJSON(keyOf(item), item);
   return item;
 }
@@ -57,6 +66,10 @@ export async function claimNext(now = Date.now()): Promise<QueueItem | null> {
   for (const item of await all()) {
     const expired = item.status === "claimed" && item.claimedAt !== undefined && now - Date.parse(item.claimedAt) > LEASE_MS;
     if (item.status !== "queued" && !expired) continue;
+    if (isExpired(item, now)) {
+      await store().setJSON(keyOf(item), { ...item, status: "skipped", doneAt: new Date(now).toISOString(), error: "expired before it could play" });
+      continue;
+    }
     if (item.attempts >= MAX_ATTEMPTS) {
       await store().setJSON(keyOf(item), { ...item, status: "failed", doneAt: new Date(now).toISOString(), error: item.error ?? "the station never confirmed it" });
       continue;
