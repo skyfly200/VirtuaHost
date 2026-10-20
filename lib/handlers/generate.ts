@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { activeProvider, writeScript, speak, NO_PROVIDER_MESSAGE } from "../ai.js";
-import { pickTextModel, pickSpeechModel, speechModels, discoverSpeechModels, type SpeechModel } from "../openrouter.js";
+import { pickTextModel, pickSpeechModel, speechModels, defaultSpeechModel, discoverSpeechModels, type SpeechModel } from "../openrouter.js";
+import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "../cues.js";
 import { cleanTone, findFormat } from "../formats.js";
 import { saveClip } from "../store.js";
 import { handoffConfigured, handoffDefaults, pushToStation } from "../handoff.js";
@@ -86,6 +87,17 @@ export async function handleGenerate(req: Request): Promise<Response> {
     return Response.json({ error: "The text contains only sound effect tags; add some words to speak" }, { status: 400 });
   }
 
+  // Inline cues like [laughs] are only performed by some models; others would read the brackets aloud.
+  const cues = provider === "openrouter" ? cuesFor((speechModel ?? defaultSpeechModel()).id) : GEMINI_DIRECT_CUES;
+  let cueTagsRemoved = false;
+  if (cues.tags === false) {
+    const plain = stripDeliveryTags(scriptText);
+    cueTagsRemoved = plain.removed;
+    if (plain.removed) scriptText = plain.text;
+    if (!scriptText) return Response.json({ error: "The text contains only delivery tags; add some words to speak" }, { status: 400 });
+  }
+  const toneIgnored = Boolean(tone) && cues.tone === "none";
+
   let spoken;
   try {
     spoken = await speak({ text: scriptText, provider, speechModel, voice, tone });
@@ -128,7 +140,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   }
 
   return Response.json(
-    { id, scriptText, audioUrl: `/api/clips/${id}`, provider, speechModel: spoken.model, ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(handoff ? { handoff } : {}) },
+    { id, scriptText, audioUrl: `/api/clips/${id}`, provider, speechModel: spoken.model, ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}), ...(handoff ? { handoff } : {}) },
     { status: 201 },
   );
 }

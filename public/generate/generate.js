@@ -72,6 +72,17 @@ export async function mountGenerate(root, api) {
       const select = h('select', { disabled: !options.models.choosable, 'aria-label': label, onchange: (e) => { state[key] = e.target.value; custom.hidden = state[key] !== OTHER; persist(); paintVoices(); } }, items);
       return h('label', { class: 'field', style: dim ? 'opacity:.6' : '' }, label, select, custom);
     };
+    // What the chosen speech model does with tone and inline tags like [laughs] (decided on the server, lib/cues.ts).
+    const cueBox = h('div', { class: 'hint small' });
+    const UNKNOWN_CUES = { tone: 'instructions', tags: 'unknown', basis: 'unknown', note: 'Not checked: the tone is sent as an instruction and tags are left in the text, so listen to the result.' };
+    function paintCues() {
+      const entry = options.models.speech.find((m) => m.id === state.speechModel);
+      const cues = options.models.choosable ? (entry && entry.cues) || UNKNOWN_CUES : options.models.fixedCues;
+      if (!cues) { clear(cueBox); return; }
+      const tone = { text: 'Tone: yes', instructions: 'Tone: yes', none: 'Tone: ignored' }[cues.tone];
+      const tags = cues.tags === true ? 'Tags like [laughs]: performed' : cues.tags === false ? 'Tags like [laughs]: removed' : 'Tags like [laughs]: untested';
+      clear(cueBox, h('b', {}, `${tone} \u00b7 ${tags}`), cues.basis === 'documented' ? '' : cues.basis === 'assumed' ? ' (not yet confirmed by listening)' : '', h('br'), cues.note);
+    }
     const voiceList = h('datalist', { id: 'voice-list' });
     function paintVoices() {
       const entry = options.models.speech.find((m) => m.id === state.speechModel);
@@ -79,6 +90,7 @@ export async function mountGenerate(root, api) {
       if (entry && entry.voices) for (const v of entry.voices) if (!voices.includes(v)) voices.push(v);
       if (options.provider === 'gemini' || state.speechModel.startsWith('google/')) for (const v of GEMINI_VOICES) if (!voices.includes(v)) voices.push(v);
       clear(voiceList, voices.map((v) => h('option', { value: v })));
+      paintCues();
       if (voiceInput) voiceInput.placeholder = entry && (entry.voice || (entry.voices && entry.voices[0])) ? `default: ${entry.voice || entry.voices[0]}` : 'model default';
     }
     const voiceInput = h('input', { value: state.voice, list: 'voice-list', placeholder: 'model default', autocomplete: 'off', 'aria-label': 'Voice', oninput: (e) => { state.voice = e.target.value; persist(); } });
@@ -98,11 +110,12 @@ export async function mountGenerate(root, api) {
         modelSelect('textModel', 'textCustom', options.models.text, 'Writing model (used when the AI writes the line)', state.mode !== 'ai'),
         modelSelect('speechModel', 'speechCustom', options.models.speech.map((m) => m.id), 'Speech model'),
         h('label', { class: 'field' }, 'Voice', voiceInput, voiceList)),
+      cueBox,
       h('details', { class: 'tips' }, h('summary', {}, 'Writing tips and structure'), h('ul', {},
         h('li', {}, h('b', {}, 'Keep it short. '), 'One to three sentences is 5 to 15 seconds on air. Shape: a hook, the information, then a sign-off or station name.'),
         h('li', {}, h('b', {}, 'Say it the way it should sound. '), 'Write times and numbers as spoken ("nine thirty", not "9:30"), and add commas where you want a breath.'),
         h('li', {}, h('b', {}, 'Give the AI facts. '), 'It only knows what you put in the brief (artist, title, time, event details) and is told not to invent the rest.'),
-        h('li', {}, h('b', {}, 'Delivery tags '), 'in square brackets work on Gemini speech models, for example ', h('code', {}, '[softly]'), ', ', h('code', {}, '[excited]'), ', ', h('code', {}, '[laughs]'), ', ', h('code', {}, '[short pause]'), '. Other voices may read them aloud, so test first.'),
+        h('li', {}, h('b', {}, 'Delivery tags '), 'in square brackets are performed only by models that support them (see the note under the speech model). Others have them removed before speaking. Example: ', h('code', {}, '[softly]'), ', ', h('code', {}, '[excited]'), ', ', h('code', {}, '[laughs]'), ', ', h('code', {}, '[short pause]'), '.'),
         h('li', {}, h('b', {}, 'Tone '), 'guides the AI writer and is sent to the voice as a direction ("Say in a warm tone"). The same text can sound very different per model: generate, listen, adjust.'),
         h('li', {}, h('b', {}, 'Sound effects '), 'like ', h('code', {}, '[sfx:ding]'), ' are removed here (these speech models cannot mix them). Use the Voice Lab or the station to add them.'))),
       h('div', {}, h('button', { class: 'primary', id: 'generate-btn', onclick: submit }, 'Generate')),
@@ -129,7 +142,7 @@ export async function mountGenerate(root, api) {
         if (state.mode === 'ai') { const textModel = chosen('textModel', 'textCustom'); if (textModel) body.textModel = textModel; }
       }
       const data = await api.post('/generate', body);
-      status.textContent = `Done${data.speechModel ? ` (${data.speechModel}${data.textModel ? `, written by ${data.textModel}` : ''})` : ''}: "${data.scriptText}"${data.handoff ? (data.handoff.sent ? ' Sent to the station.' : ` Station hand-off failed: ${data.handoff.error}`) : ''}`;
+      status.textContent = `Done${data.speechModel ? ` (${data.speechModel}${data.textModel ? `, written by ${data.textModel}` : ''})` : ''}: "${data.scriptText}"${data.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${data.toneIgnored ? ' This model ignores tone.' : ''}${data.handoff ? (data.handoff.sent ? ' Sent to the station.' : ` Station hand-off failed: ${data.handoff.error}`) : ''}`;
       state.text = ''; textArea.value = '';
       await loadClips();
     } catch (err) {

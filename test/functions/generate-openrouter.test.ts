@@ -75,6 +75,16 @@ describe("generate with OpenRouter", () => {
     expect(mockedSpeech.mock.calls[0][0]).toMatchObject({ model: "x/tts", voice: "Nova", text: "Exactly this" });
   });
 
+  it("removes delivery tags for a model that cannot perform them, and keeps them for Gemini", async () => {
+    vi.stubEnv("OPENROUTER_SPEECH_MODELS", "hexgrad/kokoro-82m|af_heart,google/gemini-3.1-flash-tts-preview|Kore");
+    const kokoro = (await (await handleGenerate(post({ mode: "say", text: "Hi [laughs] there", speechModel: "hexgrad/kokoro-82m", tone: "warm" }))).json()) as Record<string, unknown>;
+    expect(mockedSpeech.mock.calls[0][0].text).toBe("Hi there");
+    expect(kokoro).toMatchObject({ cueTagsRemoved: true, toneIgnored: true });
+
+    await handleGenerate(post({ mode: "say", text: "Hi [laughs] there", speechModel: "google/gemini-3.1-flash-tts-preview" }));
+    expect(mockedSpeech.mock.calls[1][0].text).toBe("Hi [laughs] there");
+  });
+
   it("wraps PCM from Google models in a WAV header and stores the file type", async () => {
     mockedSpeech.mockResolvedValue({ audio: Buffer.from([1, 2, 3, 4]), format: "pcm" });
     await handleGenerate(post({ mode: "say", text: "hi" }));
