@@ -53,7 +53,14 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   handlers unit-testable with `vitest` directly, without spinning up
   `netlify dev` — see `test/functions/*.test.ts` for the pattern (mock
   `lib/gemini.js` and `lib/store.js`, call the handler function directly).
-- **One Gemini client, two models.** `lib/gemini.ts` lazily constructs a
+- **Provider choice (OpenRouter or Gemini).** `lib/ai.ts` picks the provider: OpenRouter when `OPENROUTER_API_KEY` is set
+  (`lib/openrouter.ts`: chat completions for writing, `/audio/speech` for voice; writing and speech models are chosen per
+  request from `OPENROUTER_TEXT_MODELS` / `OPENROUTER_SPEECH_MODELS`, or any slug with `OPENROUTER_ALLOW_ANY_MODEL=true`),
+  else Gemini directly via `lib/gemini.ts`. `PROVIDER` forces one; with neither key the API answers 503 with instructions.
+  `lib/formats.ts` holds the tones and script formats (structure hints and examples) that shape AI-written lines and that
+  `GET /api/options` serves to the test console. Google speech models on OpenRouter return raw PCM (wrapped to WAV);
+  others return MP3. The speech request shape is NOT verified against the live service (see the header of `lib/openrouter.ts`).
+- **Gemini client (direct provider), two models.** `lib/gemini.ts` lazily constructs a
   single `GoogleGenAI` client from `GEMINI_API_KEY` and uses it for both
   `writeDjLine()` (a `gemini-3.6-flash`-class text model, for `mode: "ai"`
   requests) and `synthesizeSpeech()` (a Gemini TTS model with

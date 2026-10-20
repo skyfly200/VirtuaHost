@@ -17,6 +17,8 @@ export interface HandoffOptions {
   play: boolean;
   preempt: boolean;
   fx?: FxSetting;
+  /** Defaults to audio/wav. */
+  contentType?: string;
 }
 
 export interface HandoffResult {
@@ -82,7 +84,7 @@ export async function pushToStation(wav: Buffer, options: HandoffOptions): Promi
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "audio/wav",
+        "Content-Type": options.contentType ?? "audio/wav",
         // Header values must be plain ASCII, so the text travels percent-encoded.
         "X-Title": encodeURIComponent(options.title.slice(0, 120)),
         "X-Text": encodeURIComponent(options.text.slice(0, 1000)),

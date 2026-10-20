@@ -17,10 +17,10 @@ function getClient(): GoogleGenAI {
   return client;
 }
 
-export async function writeDjLine(prompt: string): Promise<string> {
+export async function writeDjLine(prompt: string, systemInstruction?: string): Promise<string> {
   const ai = getClient();
-  const stationName = process.env.STATION_NAME ?? "the station";
-  const systemInstruction =
+  const stationName = process.env.STATION_NAME || "the station";
+  systemInstruction ??=
     `You are the AI on-air DJ for ${stationName}. Write a short, energetic, ` +
     "broadcast-ready line to be read aloud on-air (2-3 sentences max). " +
     "Output only the words to be spoken -- no stage directions, sound effect " +

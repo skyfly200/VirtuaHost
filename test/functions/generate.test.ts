@@ -21,6 +21,8 @@ import { handleGenerate } from "../../lib/handlers/generate.js";
 
 const TEST_KEY = "test-access-key-0123456789";
 vi.stubEnv("ACCESS_KEY", TEST_KEY);
+vi.stubEnv("GEMINI_API_KEY", "gemini-test-key");   // the Gemini-direct provider
+vi.stubEnv("OPENROUTER_API_KEY", "");
 
 const mockedWriteDjLine = vi.mocked(writeDjLine);
 const mockedSynthesizeSpeech = vi.mocked(synthesizeSpeech);
@@ -84,7 +86,7 @@ describe("handleGenerate", () => {
 
     expect(res.status).toBe(201);
     expect(mockedWriteDjLine).not.toHaveBeenCalled();
-    expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("hello listeners");
+    expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("hello listeners", "Kore");
 
     const body = (await res.json()) as GenerateResponseBody;
     expect(body.scriptText).toBe("hello listeners");
@@ -98,8 +100,8 @@ describe("handleGenerate", () => {
     const res = await handleGenerate(jsonRequest("POST", { mode: "ai", prompt: "hype the next song" }));
 
     expect(res.status).toBe(201);
-    expect(mockedWriteDjLine).toHaveBeenCalledWith("hype the next song");
-    expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("Coming up next, a certified banger.");
+    expect(mockedWriteDjLine).toHaveBeenCalledWith("hype the next song", expect.stringContaining("on-air DJ"));
+    expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("Coming up next, a certified banger.", "Kore");
 
     const body = (await res.json()) as GenerateResponseBody;
     expect(body.scriptText).toBe("Coming up next, a certified banger.");
@@ -128,7 +130,7 @@ describe("handleGenerate", () => {
       const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "Welcome [sfx:ding] to the show [SFX: whoosh over vol=0.5] folks." }));
 
       expect(res.status).toBe(201);
-      expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("Welcome to the show folks.");
+      expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("Welcome to the show folks.", "Kore");
       const body = (await res.json()) as { scriptText: string; sfxTagsRemoved: boolean };
       expect(body.scriptText).toBe("Welcome to the show folks.");
       expect(body.sfxTagsRemoved).toBe(true);
@@ -136,7 +138,7 @@ describe("handleGenerate", () => {
 
     it("leaves other bracketed text alone and does not flag it", async () => {
       const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "Hello [laughs] there" }));
-      expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("Hello [laughs] there");
+      expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("Hello [laughs] there", "Kore");
       expect(await res.json()).not.toHaveProperty("sfxTagsRemoved");
     });
 
@@ -166,7 +168,7 @@ describe("handleGenerate", () => {
       expect(res.status).toBe(201);
       const [wav, options] = mockedPushToStation.mock.calls[0];
       expect(wav.subarray(0, 4).toString()).toBe("RIFF");
-      expect(options).toEqual({ title: "hello", text: "hello", play: false, preempt: false });
+      expect(options).toEqual({ title: "hello", text: "hello", play: false, preempt: false, contentType: "audio/wav" });
       expect(((await res.json()) as { handoff: unknown }).handoff).toEqual({ sent: true, clipId: "st1", played: false });
     });
 
