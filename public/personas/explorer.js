@@ -4,6 +4,7 @@ import { h, clear, toast } from '../shared/kit.js';
 import { FX_PREVIEWS } from '../generate/fx.js';
 import { createPlayer } from '../shared/playbutton.js';
 import { stationName } from '../shared/station.js';
+import { createStatus } from '../shared/status.js';
 
 const MAX_COMPARE = 4;
 
@@ -40,18 +41,19 @@ export function mountExplorer(box, persona, ctx) {
   }
 
   const rowsFor = (kind) => {
-    if (!rows.has(kind.key)) rows.set(kind.key, kind.lines.slice(0, 3).map((text) => ({ text, status: '', error: '' })));
+    if (!rows.has(kind.key)) rows.set(kind.key, kind.lines.slice(0, 3).map((text) => ({ text, st: createStatus() })));
     return rows.get(kind.key);
   };
 
   // Asks the writer for a new line of this kind, in character.
   async function writeInto(kind, row, repaint) {
-    row.status = 'Writing...'; repaint();
+    (row.st ||= createStatus()).busy('Writing a new line in character');
+    repaint();
     try {
       const brief = kindsOf(persona, settings).find((k) => k.key === kind.key).brief;
       const out = await api.post('/generate', { mode: 'ai', prompt: brief, textOnly: true, persona: persona.id, ...(kind.format ? { format: kind.format } : {}), ...(settings.tone ? { tone: settings.tone } : {}) });
-      row.text = out.scriptText; if (row.player) row.player.invalidate(); row.error = ''; row.status = '';
-    } catch (err) { row.error = err.message; row.status = ''; }
+      row.text = out.scriptText; if (row.player) row.player.invalidate(); row.st.clear();
+    } catch (err) { row.st.fail(err.message); }
     repaint();
   }
 
@@ -65,7 +67,7 @@ export function mountExplorer(box, persona, ctx) {
     return h('div', { class: 'line row', style: 'align-items:flex-start' }, player.button, h('div', { class: 'grow' },
       text,
       h('div', { class: 'row' }, rewrite, h('button', { type: 'button', class: 'link', onclick: () => ctx.onUse(fill(row.text)) }, 'Use in Generate'),
-        row.status ? h('span', { class: 'small muted' }, row.status) : null, row.error ? h('span', { class: 'small bad' }, row.error) : null)));
+        (row.st ||= createStatus()).el)));
   }
 
   // ----- play every line in a row, one after another -----
@@ -75,11 +77,11 @@ export function mountExplorer(box, persona, ctx) {
     try {
       for (const [i, { r }] of all.entries()) {
         if (stopAll) break;
-        status(`Line ${i + 1} of ${all.length}...`);
+        status.busy(`Playing line ${i + 1} of ${all.length}`, { step: i + 1, total: all.length });
         await playerFor(r).play();
       }
-      status(stopAll ? 'Stopped.' : 'Done.');
-    } catch (err) { status(err.message, true); } finally { button.disabled = false; }
+      if (stopAll) status.info('Stopped.'); else status.ok(`Played all ${all.length} lines`);
+    } catch (err) { status.fail(err.message); } finally { button.disabled = false; }
   }
 
   // ----- compare voices -----
@@ -108,8 +110,7 @@ export function mountExplorer(box, persona, ctx) {
   }
 
   // ----- the voice settings every sample uses -----
-  const statusEl = h('p', { class: 'small muted', role: 'status' });
-  const status = (m, bad = false) => { statusEl.textContent = m; statusEl.classList.toggle('bad', bad); };
+  const status = createStatus();
   const settingsBox = h('div');
   function paintSettings() {
     const e = entry();
@@ -136,7 +137,7 @@ export function mountExplorer(box, persona, ctx) {
       const repaint = () => { clear(inner, list.map((r) => lineRow(kind, r, repaint))); };
       repaint();
       return h('section', { class: 'card' }, h('div', { class: 'row' }, h('h3', { class: 'grow' }, kind.label),
-        h('button', { type: 'button', disabled: !saved, onclick: () => { const row = { id: `r${nextId++}`, text: '', status: '', error: '' }; list.push(row); writeInto(kind, row, repaint); } }, 'Add one with AI')),
+        h('button', { type: 'button', disabled: !saved, onclick: () => { const row = { id: `r${nextId++}`, text: '', st: createStatus() }; list.push(row); writeInto(kind, row, repaint); } }, 'Add one with AI')),
         list.length ? inner : h('p', { class: 'muted small' }, saved ? 'None written yet. "Add one with AI" writes one in this persona\'s voice.' : 'None yet.'));
     }));
   }
@@ -151,7 +152,7 @@ export function mountExplorer(box, persona, ctx) {
   clear(box, h('section', { class: 'card' },
     h('div', { class: 'row' }, h('h2', { class: 'grow' }, `${persona.emoji || ''} Explore ${persona.name}`.trim()), h('button', { type: 'button', onclick: ctx.onClose }, 'Close')),
     persona.tagline ? h('p', { class: 'muted' }, `"${persona.tagline}"`) : null,
-    settingsBox, h('div', { class: 'row' }, playButton, stopButton, saveDefaults), statusEl),
+    settingsBox, h('div', { class: 'row' }, playButton, stopButton, saveDefaults), status.el),
   kindsBox, compareCard());
   paintSettings();
   paintKinds();

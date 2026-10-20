@@ -63,3 +63,13 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 button.play { width: 34px; height: 34px; min-width: 34px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; line-height: 1; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 button.play.on { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
 button.play:disabled { opacity: .6; }
+
+/* loading status (shared/status.js) */
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 22px; font-size: 14px; }
+.status.bad { color: #d64545; }
+.status .tick { color: #2f9e5b; font-weight: 700; }
+.status .cross { font-weight: 700; }
+.status progress { width: 120px; height: 8px; accent-color: var(--accent); }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: vh-spin .8s linear infinite; flex: none; }
+@keyframes vh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }

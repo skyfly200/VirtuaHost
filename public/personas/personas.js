@@ -5,6 +5,7 @@ import { createSpeaker } from '../shared/speaker.js';
 import { mountExplorer } from './explorer.js';
 import { createPlayer } from '../shared/playbutton.js';
 import { stationId, stationName } from '../shared/station.js';
+import { createStatus } from '../shared/status.js';
 
 const LINES = (value) => value.split('\n').map((l) => l.trim()).filter(Boolean);
 const blank = () => ({ name: '', emoji: '', tagline: '', description: '', instructions: '', tone: '', voice: '', speechModel: '', tags: [], templates: [], stationIds: [], promos: [], signOffs: [], timeLines: {} });
@@ -137,15 +138,15 @@ export async function mountPersonas(root, api) {
       h('option', { value: '' }, 'Use the default'), models.map((id) => h('option', { value: id, selected: id === c.speechModel }, id)));
 
     const describe = h('input', { placeholder: 'e.g. a sleepy night-owl who loves jazz and calls everyone "friend"', 'aria-label': 'Describe the host' });
-    const draftStatus = h('span', { class: 'small muted', role: 'status' });
+    const draftStatus = createStatus();
     const draftButton = h('button', { type: 'button', onclick: async () => {
-      if (!describe.value.trim()) { draftStatus.textContent = 'Describe the host first.'; return; }
-      draftButton.disabled = true; draftStatus.classList.remove('bad'); draftStatus.textContent = 'Writing a persona...';
+      if (!describe.value.trim()) { draftStatus.fail('Describe the host first.'); return; }
+      draftButton.disabled = true; draftStatus.busy('Writing a persona');
       try {
         const { persona } = await api.post('/personas/generate', { description: describe.value.trim() });
         ui.current = { ...blank(), ...persona, id: c.id, timeLines: { ...(persona.timeLines || {}) } };
         paintEditor(); toast('Drafted. Edit anything, then save.', 'info');
-      } catch (err) { draftStatus.textContent = err.message; draftStatus.classList.add('bad'); draftButton.disabled = false; }
+      } catch (err) { draftStatus.fail(err.message); draftButton.disabled = false; }
     } }, 'Draft with AI');
 
     const save = h('button', { class: 'primary', type: 'button', disabled: locked, onclick: async () => {
@@ -164,7 +165,7 @@ export async function mountPersonas(root, api) {
     clear(editorBox, h('section', { class: 'card' },
       h('h2', {}, locked ? `${c.emoji || ''} ${c.name} (example, read only)` : c.id ? `Edit ${c.name}` : 'New persona'),
       locked ? h('p', { class: 'muted small' }, 'Example personas cannot be changed. Use Duplicate on the card to make a copy of your own.')
-        : h('div', { class: 'grid' }, h('label', { class: 'field' }, 'Let the AI draft it from a description', describe), h('div', { class: 'row' }, draftButton, draftStatus)),
+        : h('div', { class: 'grid' }, h('label', { class: 'field' }, 'Let the AI draft it from a description', describe), h('div', { class: 'row' }, draftButton, draftStatus.el)),
       h('div', { class: 'grid' },
         h('div', { class: 'grid cols' }, input('Emoji', 'emoji', { placeholder: '🎙️' }), input('Name', 'name'), input('Tagline', 'tagline', { placeholder: 'their catchphrase' })),
         input('One-line description', 'description'),
