@@ -76,7 +76,7 @@ describe("handleClips", () => {
 
   describe("saving audio the browser mixed", () => {
     const wav = Buffer.from("RIFF\0\0\0\0WAVEdata", "latin1");
-    const save = (body: BodyInit | null, meta: unknown = { scriptText: "Hi there", effects: ["ding"], tone: "warm" }, type = "audio/wav") =>
+    const save = (body: Uint8Array | null, meta: unknown = { scriptText: "Hi there", effects: ["ding"], tone: "warm" }, type = "audio/wav") =>
       handleClips(new Request("http://localhost/api/clips", { method: "POST", body, headers: { "x-api-key": TEST_KEY, "content-type": type, "x-clip-meta": encodeURIComponent(JSON.stringify(meta)) } }), undefined);
 
     it("stores the audio with its details", async () => {
