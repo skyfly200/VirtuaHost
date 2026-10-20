@@ -3,6 +3,7 @@
 //
 //   SITE_URL            the deployed site, https://your-site.netlify.app
 //   STATION_KEY         the key set as STATION_KEY on the site (lets this daemon fetch queued clips and report back)
+//   STATION_ID          the station profile id (from the site's Stations tab): this daemon then collects only that station's clips and ones with no station
 //   STATION_DIR         where received clips are kept (default ./clips)
 //   POLL_SECONDS        how often to ask for work (default 5)
 //   KEEP_FILES          clips kept in STATION_DIR (default 200, oldest removed)
@@ -72,7 +73,7 @@ export function loadFx() {
   }
 }
 
-export function createDaemon({ site, key, dir, fetchImpl = fetch, command, applyFx = null, keep = 200, log = console.log, now = Date.now }) {
+export function createDaemon({ site, key, dir, fetchImpl = fetch, command, applyFx = null, keep = 200, log = console.log, now = Date.now, stationId = "" }) {
   const base = site.replace(/\/+$/, "");
   const headers = { "x-station-key": key };
   fs.mkdirSync(dir, { recursive: true });
@@ -115,7 +116,7 @@ export function createDaemon({ site, key, dir, fetchImpl = fetch, command, apply
 
   // Handles at most one queued item. Returns "idle", "played" or "failed"; throws only when the site cannot be reached.
   async function tick() {
-    const { item } = await (await call("/api/station/next")).json();
+    const { item } = await (await call(`/api/station/next${stationId ? `?station=${encodeURIComponent(stationId)}` : ""}`)).json();
     if (!item) return "idle";
     try {
       if ((await deliver(item)) === "expired") { await ack(item.id, "skipped", "expired"); return "skipped"; }
@@ -145,12 +146,12 @@ async function main() {
   const applyFx = loadFx();
   if (!applyFx) console.log("chips-voice/ not found next to the daemon: effects are skipped");
   const daemon = createDaemon({
-    site, key, dir: path.resolve(process.env.STATION_DIR || "clips"), applyFx, keep: Number(process.env.KEEP_FILES) || 200,
+    site, key, stationId: process.env.STATION_ID || "", dir: path.resolve(process.env.STATION_DIR || "clips"), applyFx, keep: Number(process.env.KEEP_FILES) || 200,
     command: (cmd) => liquidsoapCommand(cmd.replace(/^announce_live\./, `${liveQueue}.`).replace(/^announce\./, `${queue}.`), live),
   });
   // The virtual host: switched on and configured from the site; this loop only runs the station's half of it.
   const icecast = icecastReaders({ url: process.env.ICECAST_STATUS_URL || "http://127.0.0.1:8000/status-json.xsl", mount: process.env.ICECAST_MOUNT || "/stream", liveMount: process.env.ICECAST_LIVE_MOUNT || "/live" });
-  const hostLoop = createHostLoop({ api: daemon.api, nowPlaying: icecast.nowPlaying, isLive: icecast.isLive, deliver: daemon.deliver });
+  const hostLoop = createHostLoop({ api: daemon.api, nowPlaying: icecast.nowPlaying, isLive: icecast.isLive, deliver: daemon.deliver, stationId: process.env.STATION_ID || "" });
   const hostEvery = Math.max(1, Number(process.env.HOST_POLL_SECONDS) || 2) * 1000;
   (async () => { for (;;) { await hostLoop.tick(); await new Promise((r) => setTimeout(r, hostEvery)); } })();
 

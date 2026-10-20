@@ -16,7 +16,7 @@ can use it without asking the site: what it is, who it is about, and **when it e
 |---|---|
 | `title`, `artist`, `album` | Display fields. `artist` defaults to `STATION_NAME`; `title` to the event name or the first words spoken. |
 | `kind` | `promo`, `station-id`, `link`, `drop`, ... (also the genre tag) |
-| `tags`, `persona`, `source` | Free tags, the persona id that voiced it, where it came from (`flier`, `host`, `schedule`, `generate`, `browser`). |
+| `tags`, `persona`, `station`, `source` | Free tags, the persona id that voiced it, the station profile id it is for (docs/STATIONS.md), where it came from (`flier`, `host`, `schedule`, `generate`, `browser`). |
 | `event` | `{ name, startsAt, endsAt, venue, address, price, performers[], url, phone, description }` for event promos. |
 | `expiresAt` | ISO 8601 instant. **Nothing plays a clip after this.** |
 | `extra` | Up to 12 short text pairs for your own systems. |

@@ -34,3 +34,36 @@ describe("browser audio treatments", () => {
     expect(Object.keys(FX_PREVIEWS).every((k) => FX_PREVIEWS[k].label)).toBe(true);
   });
 });
+
+describe("effect amount", () => {
+  it("0% leaves the voice alone, 100% is the full effect, and in between is a blend", () => {
+    const x = tone(100);
+    expect(applyFx(x, "telephone", 0)).toBe(x);
+    const full = applyFx(x, "telephone", 1) as Float32Array;
+    const half = applyFx(x, "telephone", 0.5) as Float32Array;
+    expect(rms(full)).toBeLessThan(rms(half));                    // telephone removes the low tone: half still has some of it
+    expect(rms(half)).toBeLessThan(rms(x));
+    expect(rms(applyFx(x, "telephone", 0.25))).toBeGreaterThan(rms(half));
+  });
+
+  it("scales how far a pitch change goes instead of mixing two voices", () => {
+    const x = tone(440);
+    const fullDeep = applyFx(x, "deep", 1).length;
+    const halfDeep = applyFx(x, "deep", 0.5).length;
+    expect(halfDeep).toBeGreaterThan(x.length);                  // still slower...
+    expect(halfDeep).toBeLessThan(fullDeep);                     // ...but less than full
+    expect(applyFx(x, "chipmunk", 0.5).length).toBeGreaterThan(applyFx(x, "chipmunk", 1).length);
+  });
+
+  it("keeps the audio finite and unclipped at any amount, and treats a bad amount as full", () => {
+    for (const name of fxNames()) {
+      for (const a of [0.1, 0.5, 0.9, 1]) {
+        const out = applyFx(tone(300), name, a) as Float32Array;
+        expect(out.every(Number.isFinite), `${name} ${a}`).toBe(true);
+        expect(Math.max(...out.map(Math.abs)), `${name} ${a}`).toBeLessThanOrEqual(0.98 + 1e-6);
+      }
+    }
+    expect(applyFx(tone(300), "radio", "nope" as never).length).toBe(applyFx(tone(300), "radio", 1).length);
+    expect(applyFx(tone(300), "radio", 7).length).toBe(applyFx(tone(300), "radio", 1).length);   // above 100% is 100%
+  });
+});

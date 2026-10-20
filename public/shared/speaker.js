@@ -3,8 +3,12 @@
 // treatment is applied, and one playable file comes back. Shared by the Generate tab, Voice Lab and the persona explorer.
 import { parseTags, mix, toWav, effectNames, RATE } from '../generate/mixer.js';
 import { applyFx } from '../generate/fx.js';
+import { stationId } from './station.js';
 
 export const bytesOf = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+// The active station's defaults (persona, voice, model) apply to anything the request leaves out.
+const withStation = (base) => (base.station || !stationId() ? base : { ...base, station: stationId() });
 
 export function createSpeaker(api, features) {
   const library = { sfx: [], music: [] };
@@ -54,7 +58,7 @@ export function createSpeaker(api, features) {
   const tagText = (r) => `[${r.type}:${r.name}${r.over ? ' over' : ''}${r.vol !== (r.type === 'music' ? 0.25 : 1) ? ` vol=${r.vol}` : ''}${r.wait ? ` wait=${r.wait}` : ''}]`;
 
   // One script, one voice. `base` is the /api/generate body without the text (persona, voice, speechModel, tone, ...).
-  async function render(text, base, { fx = '', onProgress = () => {} } = {}) {
+  async function render(text, base, { fx = '', fxAmount = 1, onProgress = () => {} } = {}) {
     const pieces = parseTags(text);
     const tagged = pieces.filter((p) => p.type !== 'speech');
     check(pieces);
@@ -62,25 +66,27 @@ export function createSpeaker(api, features) {
 
     const results = [];
     const total = pieces.filter((p) => p.type === 'speech').length;
+    const steps = total + (tagged.length || fx ? 1 : 0);     // each stretch of speech, then the mix
     for (const piece of pieces) {
       if (piece.type !== 'speech') { results.push(piece); continue; }
-      onProgress(`Generating speech${total > 1 ? ` (${results.filter((r) => r.type === 'speech').length + 1} of ${total})` : ''}...`);
-      results.push({ type: 'speech', data: await api.post('/generate', { ...base, mode: 'say', preview: true, text: piece.text }) });
+      const n = results.filter((r) => r.type === 'speech').length + 1;
+      onProgress(`Generating speech${total > 1 ? ` (${n} of ${total})` : ''}`, { step: n, total: steps });
+      results.push({ type: 'speech', data: await api.post('/generate', { ...withStation(base), mode: 'say', preview: true, text: piece.text }) });
     }
     const first = results.find((r) => r.type === 'speech').data;
     let blob;
     if (!tagged.length && !fx) {
       blob = new Blob([bytesOf(first.audio)], { type: first.mimeType });
     } else {
-      onProgress(tagged.length ? 'Mixing...' : 'Applying the effect...');
-      blob = new Blob([toWav(applyFx(mix(await toItems(results)), fx))], { type: 'audio/wav' });
+      onProgress(tagged.length ? 'Mixing in the effects' : 'Applying the effect', { step: steps, total: steps });
+      blob = new Blob([toWav(applyFx(mix(await toItems(results)), fx, fxAmount))], { type: 'audio/wav' });
     }
     const scriptText = tagged.length ? results.map((r) => (r.type === 'speech' ? r.data.scriptText : tagText(r))).join(' ') : first.scriptText;
     return { blob, scriptText, first, effects: tagged.map((p) => p.name) };
   }
 
   // A conversation: lines = [{ speaker, text, base }], each spoken with its own voice settings and joined with a short gap.
-  async function renderDialogue(lines, { gap = 0.3, fx = '', onProgress = () => {} } = {}) {
+  async function renderDialogue(lines, { gap = 0.3, fx = '', fxAmount = 1, onProgress = () => {} } = {}) {
     const results = [];
     const names = [];
     let beds = 0;
@@ -88,18 +94,18 @@ export function createSpeaker(api, features) {
       const pieces = parseTags(line.text);
       check(pieces);
       if (!pieces.some((p) => p.type === 'speech')) continue;
-      onProgress(`Line ${n + 1} of ${lines.length} (${line.speaker})...`);
+      onProgress(`Line ${n + 1} of ${lines.length} (${line.speaker})`, { step: n + 1, total: lines.length + 1 });
       for (const piece of pieces) {
         if (piece.type === 'music') { if (++beds > 1) throw new Error('Use only one [music:...] bed per conversation.'); results.unshift(piece); names.push(piece.name); continue; }
         if (piece.type === 'sfx') { results.push(piece); names.push(piece.name); continue; }
-        results.push({ type: 'speech', data: await api.post('/generate', { ...line.base, mode: 'say', preview: true, text: piece.text }) });
+        results.push({ type: 'speech', data: await api.post('/generate', { ...withStation(line.base), mode: 'say', preview: true, text: piece.text }) });
       }
       if (n < lines.length - 1) results.push({ type: 'silence', seconds: gap });
     }
     const first = results.find((r) => r.type === 'speech');
     if (!first) throw new Error('There is nothing to say yet.');
-    onProgress('Mixing...');
-    const blob = new Blob([toWav(applyFx(mix(await toItems(results)), fx))], { type: 'audio/wav' });
+    onProgress('Mixing the conversation', { step: lines.length + 1, total: lines.length + 1 });
+    const blob = new Blob([toWav(applyFx(mix(await toItems(results)), fx, fxAmount))], { type: 'audio/wav' });
     return { blob, scriptText: lines.map((l) => `${l.speaker}: ${l.text}`).join('\n'), first: first.data, effects: names };
   }
 

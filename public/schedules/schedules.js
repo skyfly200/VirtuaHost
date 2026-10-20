@@ -2,6 +2,7 @@
 // an event promo every three hours until the event). The site checks every minute; with STATION_MODE=queue each run goes to the
 // station daemon. A schedule with an end date never runs after it, and the clips it makes expire then (docs/CLIP-METADATA.md).
 import { h, clear, toast } from '../shared/kit.js';
+import { allStations, currentStation, stationId } from '../shared/station.js';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const at = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -32,6 +33,7 @@ export async function mountSchedules(root, api) {
   function paintList() {
     clear(listBox, schedules.length ? schedules.map((s) => h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, s.enabled ? 'on' : 'off'), h('span', { class: 'chip' }, s.send === 'air' ? 'goes on air' : s.send === 'library' ? 'station library' : 'saved only'),
+        s.stationId ? h('span', { class: 'chip' }, (allStations().find((x) => x.id === s.stationId) || { name: s.stationId }).name) : null,
         s.until ? h('span', { class: 'chip', title: s.until }, `ends ${at(s.until)}`) : null, s.info && s.info.kind ? h('span', { class: 'chip' }, s.info.kind) : null),
       h('strong', {}, s.name),
       h('p', { class: 'small' }, `${whenText(s.when)} · ${contentText(s.content)}`),
@@ -44,7 +46,7 @@ export async function mountSchedules(root, api) {
   }
 
   // ---------- the form ----------
-  const f = { name: '', kind: 'text', text: '', prompt: '', clipId: clips[0] ? clips[0].id : '', type: 'daily', onceAt: '', everyN: 1, unit: 'hours', time: '07:30', days: [], tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', personaId: '', send: queueOn ? 'air' : 'none', preempt: false, fx: '', until: '', count: 0 };
+  const f = { name: '', kind: 'text', text: '', prompt: '', clipId: clips[0] ? clips[0].id : '', type: 'daily', onceAt: '', everyN: 1, unit: 'hours', time: '07:30', days: [], tz: (currentStation() && currentStation().tz) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', personaId: (currentStation() && currentStation().defaultPersonaId) || '', send: queueOn ? 'air' : 'none', preempt: false, fx: (currentStation() && currentStation().defaultFx) || '', until: '', count: 0 };
   const formBox = h('section', { class: 'card' });
   function paintForm() {
     const field = (label, key, props = {}) => h('label', { class: 'field' }, label, h('input', { ...props, value: f[key], oninput: (e) => { f[key] = props.type === 'number' ? Number(e.target.value) : e.target.value; } }));
@@ -63,7 +65,7 @@ export async function mountSchedules(root, api) {
         const whenBody = f.type === 'once' ? { type: 'once', at: f.onceAt ? new Date(f.onceAt).toISOString() : '' }
           : f.type === 'interval' ? { type: 'interval', everyMinutes: minutes, startAt: new Date().toISOString() } : { type: 'daily', time: f.time, days: f.days, tz: f.tz };
         const contentBody = f.kind === 'text' ? { kind: 'text', text: f.text } : f.kind === 'ai' ? { kind: 'ai', prompt: f.prompt } : { kind: 'clip', clipId: f.clipId };
-        await api.post('/schedules', { name: f.name, when: whenBody, content: contentBody, personaId: f.personaId, send: f.send, preempt: f.preempt, fx: f.fx, count: f.count, ...(f.until ? { until: new Date(f.until).toISOString() } : {}) });
+        await api.post('/schedules', { name: f.name, when: whenBody, content: contentBody, personaId: f.personaId, send: f.send, preempt: f.preempt, fx: f.fx, count: f.count, stationId: stationId() || undefined, ...(f.until ? { until: new Date(f.until).toISOString() } : {}) });
         toast('Schedule created.', 'info'); await reload();
       } catch (err) { toast(err.message, 'error'); } finally { submit.disabled = false; }
     } }, 'Create schedule');

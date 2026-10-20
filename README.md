@@ -55,7 +55,7 @@ curl -X POST https://your-site.netlify.app/api/generate \
 **Personas** (host characters with ten examples, a sample explorer, and the virtual host settings),
 **Flier** (turn an event flier into a promo clip that stops airing when the event is over),
 **Schedules** (things that happen on a timetable), and **Library** (sound effects and music from OwnCloud or Google Drive).
-**Stations** (control several radio stations) stays switched off until the site is connected to the hub (`HUB_URL`, `HUB_KEY`).
+**Stations** holds station profiles you can set up before any server exists (name, time zone, defaults); the one you work on is used by every tab (`docs/STATIONS.md`). **Control** (several live stations on one screen) stays switched off until the site is connected to the hub (`HUB_URL`, `HUB_KEY`).
 The station itself needs only the small daemon in `station-daemon/` (see its README). Open the site's root URL (e.g. `https://your-site.netlify.app/` or `http://localhost:8888/`
 under `netlify dev`) and sign in. The page itself is public and contains no secrets.
 

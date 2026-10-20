@@ -4,6 +4,7 @@ import { getClip } from "../store.js";
 import { isSkipped, sanitizeStatus } from "../host.js";
 import { makeHostLink } from "../host-link.js";
 import { getHostConfig, saveHostStatus } from "../host-store.js";
+import { getStation } from "../station-profile-store.js";
 
 // What the station daemon calls (station key, not a login):
 //   GET  /api/station/next        claim the oldest waiting item -> { item } or { item: null }
@@ -19,7 +20,8 @@ export async function handleStation(req: Request): Promise<Response> {
   const path = new URL(req.url).pathname.replace(/\/+$/, "");
 
   if (path === "/api/station/next" && req.method === "GET") {
-    const item = await claimNext();
+    const wanted = new URL(req.url).searchParams.get("station") || undefined;   // a daemon for one station asks only for its own
+    const item = await claimNext(Date.now(), wanted);
     if (!item) return Response.json({ item: null });
     return Response.json({ item: { id: item.id, title: item.title, play: item.play, preempt: item.preempt, ...(item.fx ? { fx: item.fx } : {}), ...(item.info ? { info: item.info } : {}), ...(item.expiresAt ? { expiresAt: item.expiresAt } : {}), audioUrl: `/api/station/clips/${item.clipId}` } });
   }
@@ -41,17 +43,22 @@ export async function handleStation(req: Request): Promise<Response> {
     return Response.json({ item: done });
   }
 
-  if (path === "/api/station/host" && req.method === "GET") return Response.json({ config: await getHostConfig() });
+  // The host endpoints are per station: a daemon started with STATION_ID adds ?station=<id> (none means the placeholder station).
+  const hostStationId = new URL(req.url).searchParams.get("station") || undefined;
+  const hostStation = hostStationId && hostStationId !== "default" ? await getStation(hostStationId) : null;
+  if (path.startsWith("/api/station/host") && hostStationId && hostStationId !== "default" && !hostStation) return Response.json({ error: "Unknown station" }, { status: 404 });
+
+  if (path === "/api/station/host" && req.method === "GET") return Response.json({ config: await getHostConfig(hostStation) });
 
   if (path === "/api/station/host/link" && req.method === "POST") {
     const body = (await req.json().catch(() => null)) as { artist?: unknown; title?: unknown } | null;
     const title = typeof body?.title === "string" ? body.title.trim().slice(0, 200) : "";
     const artist = typeof body?.artist === "string" ? body.artist.trim().slice(0, 200) : "";
     if (!title) return Response.json({ error: "title is required" }, { status: 400 });
-    const config = await getHostConfig();
+    const config = await getHostConfig(hostStation);
     if (!config.enabled) return Response.json({ error: "The virtual host is switched off" }, { status: 409 });
     if (isSkipped(artist, title, config)) return Response.json({ error: "That track is on the skip list" }, { status: 409 });
-    const made = await makeHostLink(artist, title, config);
+    const made = await makeHostLink(artist, title, config, hostStation);
     if (!made.ok) return Response.json({ error: made.error }, { status: made.status });
     return Response.json({ clipId: made.id, text: made.scriptText, source: made.source, audioUrl: `/api/station/clips/${made.id}`, fx: config.fx || undefined, preempt: config.preempt, ...(made.note ? { note: made.note } : {}) });
   }
@@ -59,7 +66,7 @@ export async function handleStation(req: Request): Promise<Response> {
   if (path === "/api/station/host/status" && req.method === "POST") {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body || typeof body !== "object") return Response.json({ error: "Send the status as JSON" }, { status: 400 });
-    await saveHostStatus(sanitizeStatus(body));
+    await saveHostStatus(sanitizeStatus(body), hostStation?.id);
     return Response.json({ ok: true });
   }
 

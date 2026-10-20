@@ -5,6 +5,10 @@ import { h, clear, toast } from '../shared/kit.js';
 import { createSpeaker, parseDialogue, speakersOf } from '../shared/speaker.js';
 import { FX_PREVIEWS } from '../generate/fx.js';
 import { effectNames } from '../generate/mixer.js';
+import { createPlayer } from '../shared/playbutton.js';
+import { createStatus } from '../shared/status.js';
+import { amountSlider } from '../shared/amount.js';
+import { stationName } from '../shared/station.js';
 
 const MAX_SLOTS = 4;
 const PREF_KEY = 'djPrefs';
@@ -22,11 +26,11 @@ export async function mountLab(root, api) {
   const models = choosable ? options.models.speech : [];
   const state = {
     mode: 'single', gap: 0.3, brief: '', briefPersona: '',
-    text: `Welcome back to ${options.station || 'the station'}. [sfx:chime] This is a quick test of how a voice sounds.`,
+    text: `Welcome back to ${stationName(options.station) || 'the station'}. [sfx:chime] This is a quick test of how a voice sounds.`,
     cast: {},   // speaker name -> { persona, voice }
     slots: [],
   };
-  const newSlot = (from = {}) => ({ id: Math.random().toString(36).slice(2), persona: '', speechModel: choosable ? options.models.defaultSpeech : '', voice: '', tone: '', fx: '', status: '', error: '', take: null, url: '', ...from });
+  const newSlot = (from = {}) => ({ id: Math.random().toString(36).slice(2), persona: '', speechModel: choosable ? options.models.defaultSpeech : '', voice: '', tone: '', fx: '', fxAmount: 1, take: null, url: '', ...from, id: Math.random().toString(36).slice(2), busy: false, st: createStatus() });
   state.slots = [newSlot(), newSlot(choosable && models[1] ? { speechModel: models[1].id } : {})];
 
   const modelEntry = (id) => models.find((m) => m.id === id);
@@ -38,14 +42,15 @@ export async function mountLab(root, api) {
   function scriptCard() {
     const area = h('textarea', { rows: 6, 'aria-label': 'Script', oninput: (e) => { state.text = e.target.value; paintCast(); } });
     area.value = state.text;
+    let soundVolume = 1;   // how loud the next inserted effect or music bed is
     const insert = (tag) => {
       const at = area.selectionStart ?? area.value.length;
       area.setRangeText(`${at && !/\s$/.test(area.value.slice(0, at)) ? ' ' : ''}${tag} `, at, area.selectionEnd ?? at, 'end');
       state.text = area.value; area.focus(); paintCast();
     };
     const tray = h('div', { class: 'row', style: 'gap:6px' }, [
-      ...speaker.soundNames().map((n) => h('button', { type: 'button', class: 'chip-btn', onclick: () => insert(`[sfx:${n}]`) }, n)),
-      ...speaker.library.music.map((m) => h('button', { type: 'button', class: 'chip-btn', title: 'A music bed under the whole clip', onclick: () => insert(`[music:${m.name} vol=0.2]`) }, `♪ ${m.name}`)),
+      ...speaker.soundNames().map((n) => h('button', { type: 'button', class: 'chip-btn', onclick: () => insert(`[sfx:${n}${soundVolume !== 1 ? ` vol=${soundVolume}` : ''}]`) }, n)),
+      ...speaker.library.music.map((m) => h('button', { type: 'button', class: 'chip-btn', title: 'A music bed under the whole clip', onclick: () => insert(`[music:${m.name} vol=${Math.min(1, soundVolume === 1 ? 0.2 : soundVolume / 2)}]`) }, `♪ ${m.name}`)),
     ]);
     const brief = h('input', { placeholder: state.mode === 'dialogue' ? 'Ask the AI for a conversation: "two hosts argue about pineapple on pizza"' : 'Or ask the AI: "last call, the bar closes in ten minutes"', 'aria-label': 'AI brief', oninput: (e) => { state.brief = e.target.value; } });
     brief.value = state.brief;
@@ -66,7 +71,8 @@ export async function mountLab(root, api) {
       h('div', { class: 'grid cols' }, h('label', { class: 'field' }, 'Mode', mode),
         state.mode === 'dialogue' ? h('label', { class: 'field' }, 'Pause between lines (seconds)', h('input', { type: 'number', min: 0, max: 3, step: 0.1, value: state.gap, oninput: (e) => { state.gap = Number(e.target.value) || 0; } })) : null),
       area, castBox,
-      h('details', { class: 'tips' }, h('summary', {}, 'Insert a sound effect or music bed'), tray),
+      h('details', { class: 'tips' }, h('summary', {}, 'Insert a sound effect or music bed'),
+        amountSlider({ label: 'Volume of the next one you insert (100% = normal)', value: 100, min: 0, max: 200, step: 10, onchange: (a) => { soundVolume = Math.round(a * 100) / 100; } }), tray),
       h('div', { class: 'grid cols' }, brief, state.mode === 'single' ? persona : null, draft));
   }
 
@@ -89,21 +95,22 @@ export async function mountLab(root, api) {
 
   // ---------- variants ----------
   async function generate(slot, card) {
-    slot.status = 'Generating...'; slot.error = ''; paintSlot(slot, card);
-    const t0 = performance.now();
+    slot.busy = true; slot.st.busy('Generating'); paintSlot(slot, card);
     try {
       const base = { ...(slot.persona ? { persona: slot.persona } : {}), ...(slot.speechModel && choosable ? { speechModel: slot.speechModel } : {}), ...(slot.voice ? { voice: slot.voice } : {}), ...(slot.tone ? { tone: slot.tone } : {}) };
-      const opts = { fx: slot.fx, onProgress: (m) => { slot.status = m; paintSlot(slot, card); } };
+      const opts = { fx: slot.fx, fxAmount: slot.fxAmount, onProgress: (m, p) => slot.st.busy(m, p) };
       slot.take = state.mode === 'dialogue'
         ? await speaker.renderDialogue(parseDialogue(state.text).map((l) => {
           const c = state.cast[l.speaker] || {};
           return { ...l, base: { ...base, ...(c.persona ? { persona: c.persona } : {}), ...(c.voice ? { voice: c.voice } : {}) } };
         }), { gap: state.gap, ...opts })
         : await speaker.render(state.text, base, opts);
-      if (slot.url) URL.revokeObjectURL(slot.url);
+      if (slot.player) slot.player.invalidate();
       slot.url = URL.createObjectURL(slot.take.blob);
-      slot.status = `Done in ${((performance.now() - t0) / 1000).toFixed(1)}s${slot.take.first.cueTagsRemoved ? ' · tags removed (this model does not perform them)' : ''}${slot.take.first.toneIgnored ? ' · tone ignored by this model' : ''}`;
-    } catch (err) { slot.status = ''; slot.error = err.message; }
+      slot.player = createPlayer({ label: 'Play this take', load: async () => slot.url });
+      slot.st.ok(`Done${slot.take.first.cueTagsRemoved ? ' · tags removed (this model does not perform them)' : ''}${slot.take.first.toneIgnored ? ' · tone ignored by this model' : ''}`);
+    } catch (err) { slot.st.fail(err.message); }
+    slot.busy = false;
     paintSlot(slot, card);
   }
 
@@ -116,20 +123,19 @@ export async function mountLab(root, api) {
     const index = state.slots.indexOf(slot) + 1;
     return [
       h('div', { class: 'row' }, h('strong', { class: 'grow' }, `Variant ${index}`),
-        h('button', { class: 'link', onclick: () => { state.slots.splice(index, 0, newSlot({ ...slot, take: null, url: '', status: '', error: '' })); paintAll(); } }, 'Duplicate'),
+        h('button', { class: 'link', onclick: () => { state.slots.splice(index, 0, newSlot({ ...slot, take: null, url: '' })); paintAll(); } }, 'Duplicate'),
         state.slots.length > 1 ? h('button', { class: 'link danger', onclick: () => { state.slots = state.slots.filter((x) => x !== slot); paintAll(); } }, 'Remove') : null),
       h('div', { class: 'grid' },
         h('label', { class: 'field' }, 'Persona (voice, tone, model defaults)', h('select', { onchange: set('persona') }, h('option', { value: '' }, 'None'), personas.map((p) => h('option', { value: p.id, selected: p.id === slot.persona }, `${p.emoji || ''} ${p.name}`.trim())))),
         choosable ? h('label', { class: 'field' }, 'Speech model', h('select', { onchange: (e) => { slot.speechModel = e.target.value; paintSlot(slot, card); } }, models.map((m) => h('option', { value: m.id, selected: m.id === slot.speechModel }, m.id)))) : h('p', { class: 'muted small' }, 'Using Gemini directly, so the model is fixed.'),
         h('label', { class: 'field' }, 'Voice', h('input', { value: slot.voice, list: `v-${slot.id}`, placeholder: (entry && entry.voice) || 'default voice', oninput: set('voice'), 'aria-label': 'Voice' }), voiceList),
         h('label', { class: 'field' }, 'Tone / delivery', h('input', { value: slot.tone, placeholder: cues && cues.tone === 'none' ? 'this model ignores tone' : 'weathered, slow, a little tired', oninput: set('tone') })),
-        h('label', { class: 'field' }, 'Effect (preview in the browser)', h('select', { onchange: set('fx') }, h('option', { value: '' }, 'No effect'), Object.entries(FX_PREVIEWS).map(([k, f]) => h('option', { value: k, selected: k === slot.fx }, f.label)))),
+        h('label', { class: 'field' }, 'Effect (preview in the browser)', h('select', { onchange: (e) => { slot.fx = e.target.value; paintSlot(slot, card); } }, h('option', { value: '' }, 'No effect'), Object.entries(FX_PREVIEWS).map(([k, f]) => h('option', { value: k, selected: k === slot.fx }, f.label)))),
+        slot.fx ? amountSlider({ label: 'Effect amount', value: Math.round(slot.fxAmount * 100), onchange: (a) => { slot.fxAmount = a; } }) : null,
         cues ? h('p', { class: 'small muted' }, `Tone: ${cues.tone === 'none' ? 'ignored' : 'yes'} · tags like [laughs]: ${cues.tags === true ? 'performed' : cues.tags === false ? 'removed' : 'untested'}`) : null,
-        h('button', { class: 'primary', onclick: () => generate(slot, card), disabled: slot.status !== '' && !slot.status.startsWith('Done') }, slot.take ? 'Generate again' : 'Generate'),
-        slot.status ? h('p', { class: 'small muted' }, slot.status) : null,
-        slot.error ? h('p', { class: 'small bad' }, slot.error) : null,
-        slot.url ? h('audio', { controls: true, src: slot.url }) : null,
-        slot.take ? h('div', { class: 'row' },
+        h('button', { class: 'primary', onclick: () => generate(slot, card), disabled: slot.busy }, slot.take ? 'Generate again' : 'Generate'),
+        slot.st.el,
+        slot.take ? h('div', { class: 'row' }, slot.player.button,
           h('button', { onclick: () => useInGenerate(slot) }, 'Use in Generate'),
           h('button', { onclick: (e) => saveTake(slot, e.currentTarget) }, 'Save to library')) : null)];
   }

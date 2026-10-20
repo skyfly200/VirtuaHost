@@ -87,3 +87,15 @@ test("reads Icecast's status file", async () => {
   assert.equal(await single.isLive(), false);
   assert.deepEqual(await single.nowPlaying(), { artist: "", title: "Solo" });
 });
+
+test("a station's loop reads and reports its own host settings", async () => {
+  const paths = [];
+  const loop = createHostLoop({
+    api: async (path) => { paths.push(path); if (path.startsWith("/api/station/host?")) return { config: { enabled: true, every: 1, minGapSeconds: 0, skipArtists: [], preempt: false } }; if (path.includes("/link")) return { clipId: "c", text: "hi", source: "template", audioUrl: "/a", preempt: false }; return { ok: true }; },
+    nowPlaying: async () => ({ artist: "A", title: "One" }), isLive: async () => false, deliver: async () => {}, log: () => {}, stationId: "krap-1a2b",
+  });
+  await loop.tick();
+  assert.ok(paths.length >= 3);
+  assert.ok(paths.every((p) => p.endsWith("?station=krap-1a2b")), paths.join(" "));
+  assert.deepEqual([...new Set(paths.map((p) => p.split("?")[0]))].sort(), ["/api/station/host", "/api/station/host/link", "/api/station/host/status"]);
+});

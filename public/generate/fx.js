@@ -54,29 +54,42 @@ const chorus = (x) => {
   return out;
 };
 
+// How strong: `a` is the amount from 0 to 1. Most treatments are blended with the untouched voice (dry/wet). Pitch changes (`pitch: true`)
+// scale how far the pitch moves instead, since a half-deep voice mixed with a normal one just sounds like two people.
+const toward = (target, a) => 1 + (target - 1) * a;
 export const FX_PREVIEWS = {
   telephone: { label: 'Telephone', run: (x) => soft(band(x, 300, 3400), 2.5) },
   radio: { label: 'Radio', run: (x) => soft(band(x, 250, 5000), 1.6) },
   walkie: { label: 'Walkie-talkie', run: (x) => noise(soft(band(x, 400, 2800), 4), 0.01) },
   megaphone: { label: 'Megaphone', run: (x) => soft(band(x, 500, 4000), 6) },
   robot: { label: 'Robot', run: (x) => echo(ringMod(x, 55, 0.7), 18, 0.35, 1, 0.2) },
-  alien: { label: 'Alien', run: (x) => ringMod(resample(x, 1.1), 130, 0.55) },
+  alien: { label: 'Alien', pitch: true, run: (x, a) => ringMod(resample(x, toward(1.1, a)), 130, 0.55 * a) },
   cave: { label: 'Cave', run: (x) => echo(echo(x, 130, 0.5, 1, 1.2), 270, 0.35, 1, 0.5) },
   underwater: { label: 'Underwater', run: (x) => lowpass(x.map((v, i) => v * (0.8 + 0.2 * Math.sin(TAU * 3 * i / RATE))), 700) },
-  deep: { label: 'Deep voice', run: (x) => resample(x, 0.82) },
-  demon: { label: 'Demon', run: (x) => echo(soft(resample(x, 0.7), 2), 70, 0.4, 1, 0.5) },
-  chipmunk: { label: 'Chipmunk', run: (x) => resample(x, 1.35) },
+  deep: { label: 'Deep voice', pitch: true, run: (x, a) => resample(x, toward(0.82, a)) },
+  demon: { label: 'Demon', pitch: true, run: (x, a) => echo(soft(resample(x, toward(0.7, a)), 1 + a), 70, 0.4 * a, 1, 0.5) },
+  chipmunk: { label: 'Chipmunk', pitch: true, run: (x, a) => resample(x, toward(1.35, a)) },
   chorus: { label: 'Chorus', run: (x) => chorus(x) },
   hull: { label: 'Ship hull (CHIP)', run: (x) => noise(echo(lowpass(highpass(x, 90), 7500), 45, 0.18, 1, 0.3), 0.003) },
   underground: { label: 'Underground (KRAP)', run: (x) => noise(echo(soft(band(x, 85, 9000), 1.8), 60, 0.12, 1, 0.3), 0.005) },
 };
 export const fxNames = () => Object.keys(FX_PREVIEWS);
 
-// Applies a preset by name; an unknown or empty name returns the audio unchanged. Output is scaled to avoid clipping.
-export function applyFx(samples, name) {
+// dry + wet, the tail of an echo or the longer of the two kept.
+function blend(dry, wet, a) {
+  const out = new Float32Array(Math.max(dry.length, wet.length));
+  for (let i = 0; i < out.length; i++) out[i] = (dry[i] || 0) * (1 - a) + (wet[i] || 0) * a;
+  return out;
+}
+
+// Applies a preset by name at an amount from 0 (none) to 1 (full, the default); an unknown or empty name returns the audio unchanged.
+// Output is scaled to avoid clipping.
+export function applyFx(samples, name, amount = 1) {
   const fx = FX_PREVIEWS[name];
-  if (!fx) return samples;
-  const out = fx.run(samples);
+  const a = Math.min(1, Math.max(0, Number.isFinite(Number(amount)) ? Number(amount) : 1));
+  if (!fx || a === 0) return samples;
+  const wet = fx.run(samples, a);
+  const out = fx.pitch || a === 1 ? wet : blend(samples, wet, a);
   let peak = 0;
   for (let i = 0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]));
   if (peak > 0.98) for (let i = 0; i < out.length; i++) out[i] *= 0.98 / peak;

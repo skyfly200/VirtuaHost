@@ -33,10 +33,12 @@ export interface WriteOptions {
   format?: DjFormat;
   /** A persona's character brief, from lib/personas.ts. */
   persona?: string;
+  /** The station the line is for (its name and tagline go into the prompt); defaults to STATION_NAME. */
+  station?: { name: string; tagline?: string };
 }
 
 export async function writeScript(options: WriteOptions): Promise<{ text: string; model: string }> {
-  const system = buildSystemPrompt({ station: process.env.STATION_NAME || "the station", tone: options.tone, format: options.format, persona: options.persona });
+  const system = buildSystemPrompt({ station: options.station?.name || process.env.STATION_NAME || "the station", tagline: options.station?.tagline, tone: options.tone, format: options.format, persona: options.persona });
   if (options.provider === "openrouter") {
     const model = options.textModel ?? openrouter.defaultTextModel();
     return { text: await openrouter.chat({ model, system, prompt: options.prompt }), model };

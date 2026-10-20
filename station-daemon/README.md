@@ -22,7 +22,7 @@ site (Netlify)  --  /api/queue, /api/station/*  <--poll--  station-daemon  --tel
 3. To keep it running, copy `station-daemon/station-daemon.service` to `/etc/systemd/system/`, edit the paths and key,
    then `systemctl enable --now station-daemon`.
 
-Other settings: `STATION_DIR` (default `./clips`), `POLL_SECONDS` (5), `KEEP_FILES` (200), `LIQUIDSOAP_HOST`/`PORT`
+Other settings: `STATION_ID` (the station profile id from the site's Stations tab: this daemon then collects only that station's clips and ones with no station; leave it out for a single-station site), `STATION_DIR` (default `./clips`), `POLL_SECONDS` (5), `KEEP_FILES` (200), `LIQUIDSOAP_HOST`/`PORT`
 (`127.0.0.1:1234`), `LIQUIDSOAP_QUEUE`/`LIQUIDSOAP_LIVE_QUEUE` (`announce` / `announce_live`).
 
 ## The virtual host
@@ -32,6 +32,8 @@ Switch it on and configure it in the site's **Personas** tab (persona, lines fro
 often, skip list for spots and relays, whether it may cut in over a live DJ). The site writes and voices each link; this daemon
 watches Icecast's `status-json.xsl`, asks the site for a link about the track that just started, and plays it as the *next* track begins,
 with Liquidsoap ducking the music. It never talks over a spot on the skip list, and stays quiet while a live DJ is on (unless allowed).
+
+The host's settings are per station: set `STATION_ID` and the daemon reads and reports that station's own host settings (docs/STATIONS.md).
 
 Extra settings: `ICECAST_STATUS_URL` (default `http://127.0.0.1:8000/status-json.xsl`), `ICECAST_MOUNT` (`/stream`),
 `ICECAST_LIVE_MOUNT` (`/live`), `HOST_POLL_SECONDS` (2). The daemon reports what it is doing back to the site, so the Personas tab shows

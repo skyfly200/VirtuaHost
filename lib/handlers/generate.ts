@@ -4,6 +4,7 @@ import { pickTextModel, pickSpeechModel, speechModels, defaultSpeechModel, disco
 import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "../cues.js";
 import { cleanTone, findFormat } from "../formats.js";
 import { getPersona } from "../persona-store.js";
+import { getStation } from "../station-profile-store.js";
 import { saveClip } from "../store.js";
 import { embedTags, sanitizeInfo } from "../clip-info.js";
 import { sendToStation, stationConfigured } from "../station-send.js";
@@ -49,11 +50,19 @@ export async function handleGenerate(req: Request): Promise<Response> {
   const provider = activeProvider();
   if (!provider) return Response.json({ error: NO_PROVIDER_MESSAGE }, { status: 503 });
 
+  // The station this is for: its name and tagline shape AI-written lines, and its defaults fill in what the request leaves out.
+  let station;
+  if (body.station !== undefined) {
+    if (typeof body.station !== "string") return Response.json({ error: "station must be an id" }, { status: 400 });
+    station = await getStation(body.station);
+    if (!station) return Response.json({ error: `Unknown station "${body.station.slice(0, 50)}"` }, { status: 400 });
+  }
   let persona;
-  if (body.persona !== undefined) {
-    if (typeof body.persona !== "string") return Response.json({ error: "persona must be an id" }, { status: 400 });
-    persona = await getPersona(body.persona);
-    if (!persona) return Response.json({ error: `Unknown persona "${body.persona.slice(0, 50)}"` }, { status: 400 });
+  const personaId = body.persona !== undefined ? body.persona : station?.defaultPersonaId || undefined;
+  if (personaId !== undefined) {
+    if (typeof personaId !== "string") return Response.json({ error: "persona must be an id" }, { status: 400 });
+    persona = await getPersona(personaId);
+    if (!persona) return Response.json({ error: `Unknown persona "${personaId.slice(0, 50)}"` }, { status: 400 });
   }
 
   const tone = cleanTone(body.tone ?? persona?.tone);
@@ -64,7 +73,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   if (body.format && !format) {
     return Response.json({ error: `Unknown format "${String(body.format).slice(0, 40)}"` }, { status: 400 });
   }
-  const voice = typeof body.voice === "string" ? body.voice.trim().slice(0, 60) : persona?.voice;
+  const voice = typeof body.voice === "string" ? body.voice.trim().slice(0, 60) : persona?.voice || station?.defaultVoice;
 
   // Models can be chosen per request only when OpenRouter is the provider.
   let textModel: string | undefined;
@@ -72,7 +81,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   if (provider === "openrouter") {
     const t = pickTextModel(typeof body.textModel === "string" ? body.textModel : undefined);
     if ("error" in t) return Response.json({ error: t.error }, { status: 400 });
-    const requestedSpeech = typeof body.speechModel === "string" ? body.speechModel : persona?.speechModel;
+    const requestedSpeech = typeof body.speechModel === "string" ? body.speechModel : persona?.speechModel || station?.defaultSpeechModel;
     // Models OpenRouter lists but the configured list lacks are looked up only when asked for.
     const listed = !requestedSpeech || speechModels().some((m) => m.id === requestedSpeech);
     const sp = pickSpeechModel(requestedSpeech, listed ? [] : await discoverSpeechModels());
@@ -85,7 +94,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
 
   let scriptText: string;
   try {
-    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format, persona: persona?.instructions })).text : input;
+    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format, persona: persona?.instructions, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text : input;
   } catch (err) {
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
   }
@@ -129,7 +138,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
 
   const id = randomUUID();
   const createdAt = new Date().toISOString();
-  const info = sanitizeInfo({ title: scriptText.slice(0, 60), source: "generate", ...(persona ? { persona: persona.id } : {}), ...(format ? { kind: format.id } : {}), ...(body.info && typeof body.info === "object" ? body.info : {}) });
+  const info = sanitizeInfo({ title: scriptText.slice(0, 60), source: "generate", ...(persona ? { persona: persona.id } : {}), ...(station && station.id !== "default" ? { station: station.id } : {}), ...(format ? { kind: format.id } : {}), ...(body.info && typeof body.info === "object" ? body.info : {}) });
   const audio = embedTags(spoken.audio, spoken.mimeType, info, { script: scriptText, createdAt, clipId: id, station: process.env.STATION_NAME });
   const metadata: ClipMetadata = {
     id,
@@ -154,7 +163,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   // fail the request: the clip is already generated and stored.
   let handoff;
   if (body.handoff !== false && stationConfigured()) {
-    handoff = await sendToStation({ clipId: id, audio, mimeType: spoken.mimeType, title: scriptText, info, play: body.play, preempt: body.preempt, fx: body.fx });
+    handoff = await sendToStation({ clipId: id, audio, mimeType: spoken.mimeType, title: scriptText, info, station, play: body.play, preempt: body.preempt, fx: body.fx });
   }
 
   return Response.json(

@@ -31,7 +31,10 @@ export function icecastReaders({ url, mount = "/stream", liveMount = "/live", fe
   };
 }
 
-export function createHostLoop({ api, nowPlaying, isLive, deliver, now = Date.now, log = console.log, configEveryMs = 20_000, statusEveryMs = 30_000 }) {
+export function createHostLoop({ api: call, nowPlaying, isLive, deliver, now = Date.now, log = console.log, configEveryMs = 20_000, statusEveryMs = 30_000, stationId = "" }) {
+  // The host's settings, links and status are per station: a daemon for one station adds ?station=<id> to every host call.
+  const qs = stationId ? `?station=${encodeURIComponent(stationId)}` : "";
+  const api = (path, body) => call(`${path}${qs}`, body);
   const state = { current: null, ready: null, tracksSince: 0, lastLinkAt: 0, last: null, error: "", counters: { prepared: 0, played: 0, skipped: 0, failed: 0 } };
   let config = null;
   let configAt = 0;

@@ -2,6 +2,8 @@
 import { h, clear, toast, fmtDate, audioUrl } from '../shared/kit.js';
 import { effectNames } from './mixer.js';
 import { createSpeaker } from '../shared/speaker.js';
+import { stationId } from '../shared/station.js';
+import { createStatus } from '../shared/status.js';
 
 const GEMINI_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Zephyr', 'Orus'];
 const OTHER = '__other';
@@ -17,7 +19,7 @@ export async function mountGenerate(root, api) {
   clear(root, h('p', { class: 'muted' }, 'Loading...'));
   let options;
   try {
-    options = await api.get('/options');
+    options = await api.get('/options', { query: { station: stationId() } });
   } catch (err) {
     clear(root, h('p', { class: 'bad' }, `Could not load options: ${err.message}`));
     return;
@@ -47,7 +49,7 @@ export async function mountGenerate(root, api) {
 
   // ----- the form (repainted when the mode or format changes) -----
   const form = h('div', { class: 'grid' });
-  const status = h('p', { class: 'small muted', role: 'status' });
+  const status = createStatus();
   const clipsBox = h('div');
   let textArea;
 
@@ -134,7 +136,7 @@ export async function mountGenerate(root, api) {
         h('li', {}, h('b', {}, 'Ask the AI to write it '), 'writes the line first and shows it to you; nothing is spoken until you press "Make the audio", so you can edit the words (and add effect tags) first.'),
         h('li', {}, h('b', {}, 'Sound effects and music '), 'in the text are mixed into the preview: ', h('code', {}, '[sfx:ding]'), ', ', h('code', {}, '[sfx:whoosh over]'), ' (over the next words), ', h('code', {}, '[sfx:crowd vol=0.5]'), ', ', h('code', {}, '[sfx:beep wait=0.5]'), `, and ${library.music.length ? `[music:${library.music[0].name} vol=0.2] for a music bed under the clip` : 'a music bed with [music:name] once a library is connected'}. Built in: ${effectNames().join(', ')}${library.sfx.length ? `. From your library: ${library.sfx.map((i) => i.name).join(', ')}` : ''}.`))),
       h('div', {}, h('button', { class: 'primary', id: 'generate-btn', onclick: submit }, state.mode === 'ai' ? 'Write the line' : 'Generate preview')),
-      status);
+      status.el);
   }
 
   const chosen = (key, customKey) => (state[key] === OTHER ? state[customKey].trim() : state[key]);
@@ -145,14 +147,15 @@ export async function mountGenerate(root, api) {
   const draftBox = h('div');
   let draft = null;
   const writerBase = () => ({
+    ...(stationId() ? { station: stationId() } : {}),
     ...(state.persona ? { persona: state.persona } : {}), ...(state.format ? { format: state.format } : {}), ...(state.tone.trim() ? { tone: state.tone.trim() } : {}),
     ...(options.models.choosable ? (() => { const m = chosen('textModel', 'textCustom'); return m ? { textModel: m } : {}; })() : {}),
   });
 
   async function submit(e) {
     const value = state.text.trim();
-    status.classList.remove('bad');
-    if (!value) { status.textContent = state.mode === 'say' ? 'Enter text to speak.' : 'Enter a brief for the AI.'; status.classList.add('bad'); return; }
+    
+    if (!value) { status.fail(state.mode === 'say' ? 'Enter text to speak.' : 'Enter a brief for the AI.'); return; }
     const button = e.currentTarget;
     button.disabled = true;
     try {
@@ -160,17 +163,17 @@ export async function mountGenerate(root, api) {
       if (state.mode === 'ai') await writeLine(value);
       else await makeAudio(value, { mode: 'say', input: value });
     } catch (err) {
-      status.textContent = err.message; status.classList.add('bad');
+      status.fail(err.message);
     } finally {
       button.disabled = false;
     }
   }
 
   async function writeLine(brief) {
-    status.textContent = 'Writing the line (the speech service is not called yet)...';
+    status.busy('Writing the line (nothing is spoken yet)');
     const data = await api.post('/generate', { mode: 'ai', prompt: brief, textOnly: true, ...writerBase() });
     showScript({ brief, text: data.scriptText, textModel: data.textModel });
-    status.textContent = `Line written${data.textModel ? ` by ${data.textModel}` : ''}. Edit it if you like, then make the audio.`;
+    status.ok(`Line written${data.textModel ? ` by ${data.textModel}` : ''}. Edit it if you like, then make the audio.`);
   }
 
   // The written line, editable, with the next step. Sound effect tags can be added here and are mixed in like any other text.
@@ -179,13 +182,13 @@ export async function mountGenerate(root, api) {
     const box = h('textarea', { rows: 4, 'aria-label': 'Written line', oninput: (e) => { script.text = e.target.value; } });
     box.value = script.text;
     const make = h('button', { class: 'primary', type: 'button', onclick: async () => {
-      if (!script.text.trim()) { status.textContent = 'The line is empty.'; status.classList.add('bad'); return; }
-      make.disabled = true; status.classList.remove('bad');
-      try { await makeAudio(script.text.trim(), { mode: 'ai', input: script.brief, textModel: script.textModel }); } catch (err) { status.textContent = err.message; status.classList.add('bad'); } finally { make.disabled = false; }
+      if (!script.text.trim()) { status.fail('The line is empty.'); return; }
+      make.disabled = true; 
+      try { await makeAudio(script.text.trim(), { mode: 'ai', input: script.brief, textModel: script.textModel }); } catch (err) { status.fail(err.message); } finally { make.disabled = false; }
     } }, 'Make the audio');
     const again = h('button', { type: 'button', onclick: async () => {
-      again.disabled = true; status.classList.remove('bad');
-      try { await writeLine(script.brief); } catch (err) { status.textContent = err.message; status.classList.add('bad'); again.disabled = false; }
+      again.disabled = true; 
+      try { await writeLine(script.brief); } catch (err) { status.fail(err.message); again.disabled = false; }
     } }, 'Write it again');
     clear(draftBox, h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'written line, not spoken yet'), script.textModel ? h('span', { class: 'chip' }, script.textModel) : null),
@@ -194,26 +197,26 @@ export async function mountGenerate(root, api) {
 
   // The speech step: each stretch of text goes to the speech service as plain "say" text; effects are mixed here.
   async function makeAudio(value, meta) {
-    status.classList.remove('bad');
-    status.textContent = 'Generating a preview (this calls the speech service live and can take a few seconds)...';
-    const base = { ...(state.persona ? { persona: state.persona } : {}) };
+    
+    status.busy('Generating a preview');
+    const base = { ...(state.persona ? { persona: state.persona } : {}), ...(stationId() ? { station: stationId() } : {}) };
     if (state.tone.trim()) base.tone = state.tone.trim();
     if (state.voice.trim()) base.voice = state.voice.trim();
     if (options.models.choosable) {
       const speechModel = chosen('speechModel', 'speechCustom');
       if (speechModel) base.speechModel = speechModel;
     }
-    const out = await speaker.render(value, base, { onProgress: (m) => { status.textContent = m; } });
+    const out = await speaker.render(value, base, { onProgress: (m, p) => status.busy(m, p) });
     const first = out.first;
     showDraft({ blob: out.blob, scriptText: out.scriptText, input: meta.input, mode: meta.mode, textModel: meta.textModel, first, effects: out.effects });
-    status.textContent = `Preview ready${first.speechModel ? ` (${first.speechModel}${meta.textModel ? `, written by ${meta.textModel}` : ''})` : ''}. Listen, then save it or discard it.${first.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${first.toneIgnored ? ' This model ignores tone.' : ''}`;
+    status.ok(`Preview ready${first.speechModel ? ` (${first.speechModel}${meta.textModel ? `, written by ${meta.textModel}` : ''})` : ''}. Listen, then save it or discard it.${first.cueTagsRemoved ? ' Delivery tags were removed (this model does not perform them).' : ''}${first.toneIgnored ? ' This model ignores tone.' : ''}`);
   }
 
   function showDraft(next) {
     if (draft) URL.revokeObjectURL(draft.url);
     draft = { ...next, url: URL.createObjectURL(next.blob) };
     const player = h('audio', { controls: true, src: draft.url });
-    const saveStatus = h('span', { class: 'small muted', role: 'status' });
+    const saveStatus = createStatus();
     // Details that travel with the clip to other systems (docs/CLIP-METADATA.md); all optional.
     const detail = { title: '', kind: state.format || '', expires: '', tags: '' };
     const field = (label, key, props = {}) => h('label', { class: 'field' }, label, h('input', { ...props, value: detail[key], oninput: (e) => { detail[key] = e.target.value; } }));
@@ -222,22 +225,22 @@ export async function mountGenerate(root, api) {
         field('Tags (comma separated)', 'tags'), field('Do not play after', 'expires', { type: 'datetime-local' })),
       h('p', { class: 'muted small' }, 'These are written into the audio file and saved with the clip. A clip is never queued, scheduled or played after its expiry.'));
     const saveButton = h('button', { class: 'primary', type: 'button', onclick: async () => {
-      saveButton.disabled = true; saveStatus.classList.remove('bad'); saveStatus.textContent = 'Saving...';
+      saveButton.disabled = true; saveStatus.busy('Saving the clip');
       try {
         const f = draft.first;
         const meta = { mode: draft.mode, input: draft.input, scriptText: draft.scriptText, voice: f.voice, provider: f.provider, speechModel: f.speechModel, textModel: draft.textModel, tone: state.tone.trim() || undefined, format: state.format || undefined, effects: draft.effects,
-          info: { ...(detail.title.trim() ? { title: detail.title.trim() } : {}), ...(detail.kind.trim() ? { kind: detail.kind.trim() } : {}), ...(detail.tags.trim() ? { tags: detail.tags.split(',').map((t) => t.trim()) } : {}), ...(detail.expires ? { expiresAt: new Date(detail.expires).toISOString() } : {}), ...(state.persona ? { persona: state.persona } : {}) } };
+          info: { ...(stationId() ? { station: stationId() } : {}), ...(detail.title.trim() ? { title: detail.title.trim() } : {}), ...(detail.kind.trim() ? { kind: detail.kind.trim() } : {}), ...(detail.tags.trim() ? { tags: detail.tags.split(',').map((t) => t.trim()) } : {}), ...(detail.expires ? { expiresAt: new Date(detail.expires).toISOString() } : {}), ...(state.persona ? { persona: state.persona } : {}) } };
         const saved = await api.request('POST', '/clips', { raw: draft.blob, contentType: draft.blob.type, headers: { 'x-clip-meta': encodeURIComponent(JSON.stringify(meta)) } });
         toast(saved.handoff ? (saved.handoff.sent ? 'Saved and sent to the station.' : `Saved. Station hand-off failed: ${saved.handoff.error}`) : 'Saved to the library.', saved.handoff && !saved.handoff.sent ? 'error' : 'info');
-        discard(); state.text = ''; if (textArea) textArea.value = ''; status.textContent = '';
+        discard(); state.text = ''; if (textArea) textArea.value = ''; status.clear();
         await loadClips();
-      } catch (err) { saveStatus.textContent = err.message; saveStatus.classList.add('bad'); saveButton.disabled = false; }
+      } catch (err) { saveStatus.fail(err.message); saveButton.disabled = false; }
     } }, 'Save to library');
     clear(draftBox, h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'preview, not saved yet'), draft.effects.length ? h('span', { class: 'chip' }, `effects: ${[...new Set(draft.effects)].join(', ')}`) : null, h('span', {}, `${(draft.blob.size / 1024).toFixed(0)} KB`)),
       h('p', { class: 'clip-script' }, draft.scriptText),
       player, details,
-      h('div', { class: 'row' }, saveButton, h('button', { type: 'button', onclick: discard }, 'Discard'), saveStatus)));
+      h('div', { class: 'row' }, saveButton, h('button', { type: 'button', onclick: discard }, 'Discard'), saveStatus.el)));
     player.play().catch(() => {});
   }
   function discard() { if (draft) URL.revokeObjectURL(draft.url); draft = null; clear(draftBox); }
