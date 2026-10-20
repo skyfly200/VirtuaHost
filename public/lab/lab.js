@@ -5,6 +5,7 @@ import { h, clear, toast } from '../shared/kit.js';
 import { createSpeaker, parseDialogue, speakersOf } from '../shared/speaker.js';
 import { FX_PREVIEWS } from '../generate/fx.js';
 import { effectNames } from '../generate/mixer.js';
+import { createPlayer } from '../shared/playbutton.js';
 
 const MAX_SLOTS = 4;
 const PREF_KEY = 'djPrefs';
@@ -100,8 +101,9 @@ export async function mountLab(root, api) {
           return { ...l, base: { ...base, ...(c.persona ? { persona: c.persona } : {}), ...(c.voice ? { voice: c.voice } : {}) } };
         }), { gap: state.gap, ...opts })
         : await speaker.render(state.text, base, opts);
-      if (slot.url) URL.revokeObjectURL(slot.url);
+      if (slot.player) slot.player.invalidate();
       slot.url = URL.createObjectURL(slot.take.blob);
+      slot.player = createPlayer({ label: 'Play this take', load: async () => slot.url });
       slot.status = `Done in ${((performance.now() - t0) / 1000).toFixed(1)}s${slot.take.first.cueTagsRemoved ? ' · tags removed (this model does not perform them)' : ''}${slot.take.first.toneIgnored ? ' · tone ignored by this model' : ''}`;
     } catch (err) { slot.status = ''; slot.error = err.message; }
     paintSlot(slot, card);
@@ -128,8 +130,7 @@ export async function mountLab(root, api) {
         h('button', { class: 'primary', onclick: () => generate(slot, card), disabled: slot.status !== '' && !slot.status.startsWith('Done') }, slot.take ? 'Generate again' : 'Generate'),
         slot.status ? h('p', { class: 'small muted' }, slot.status) : null,
         slot.error ? h('p', { class: 'small bad' }, slot.error) : null,
-        slot.url ? h('audio', { controls: true, src: slot.url }) : null,
-        slot.take ? h('div', { class: 'row' },
+        slot.take ? h('div', { class: 'row' }, slot.player.button,
           h('button', { onclick: () => useInGenerate(slot) }, 'Use in Generate'),
           h('button', { onclick: (e) => saveTake(slot, e.currentTarget) }, 'Save to library')) : null)];
   }

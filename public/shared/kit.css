@@ -58,3 +58,8 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .slot-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
 @media (max-width: 600px) { main { padding: 10px; } .card { padding: 12px; } }
 [hidden] { display: none !important; }
+
+/* round play/pause button for samples (shared/playbutton.js) */
+button.play { width: 34px; height: 34px; min-width: 34px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; line-height: 1; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.play.on { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+button.play:disabled { opacity: .6; }
