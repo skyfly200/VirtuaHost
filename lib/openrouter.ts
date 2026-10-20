@@ -16,7 +16,8 @@
 // through to the caller so a wrong voice or model name is visible.
 
 const DEFAULT_TEXT_MODELS = ["openai/gpt-4o-mini", "anthropic/claude-3.5-haiku", "meta-llama/llama-3.1-8b-instruct"];
-const DEFAULT_SPEECH_MODELS = ["google/gemini-3.1-flash-tts-preview|Kore", "deepgram/flux-tts:free", "hexgrad/kokoro-82m"];
+// Providers like Kokoro reject a request with no voice, so every built-in model carries one (the UI can still override it).
+const DEFAULT_SPEECH_MODELS = ["google/gemini-3.1-flash-tts-preview|Kore", "deepgram/flux-tts:free|aura-2-thalia-en", "hexgrad/kokoro-82m|af_heart"];
 export const MODEL_SLUG = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 
 export interface SpeechModel {
