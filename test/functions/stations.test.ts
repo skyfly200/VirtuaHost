@@ -140,3 +140,45 @@ describe("per-station settings", () => {
     expect(byTitle).toEqual({ loud: [true, true, "hull"], quiet: [false, false, undefined], asked: [false, false, "hull"] });
   });
 });
+
+describe("a voice and model that belong to a persona or station", () => {
+  const gen = (body: object) => handleGenerate(new Request("http://localhost/api/generate", { method: "POST", headers: { "x-api-key": KEY, "content-type": "application/json" }, body: JSON.stringify(body) }));
+  const makePersona = async (extra: object) => {
+    const { handlePersonas } = await import("../../lib/handlers/personas.js");
+    const res = await handlePersonas(new Request("http://localhost/api/personas", { method: "POST", headers: { "x-api-key": KEY, "content-type": "application/json" }, body: JSON.stringify({ name: "Zed", instructions: "You are Zed.", ...extra }) }), undefined);
+    return ((await res.json()) as { persona: { id: string } }).persona.id;
+  };
+
+  it("uses the persona's writing model, speech model and voice, and a request still wins", async () => {
+    vi.stubEnv("OPENROUTER_TEXT_MODELS", "openai/gpt-4o-mini,anthropic/claude-3.5-haiku,meta/llama");
+    vi.stubEnv("OPENROUTER_SPEECH_MODELS", "a/tts|Kore,b/tts|Nova");
+    const id = await makePersona({ textModel: "anthropic/claude-3.5-haiku", speechModel: "b/tts", voice: "Puck" });
+    expect((await gen({ mode: "ai", prompt: "hi", persona: id })).status).toBe(201);
+    expect(vi.mocked(chat).mock.calls[0][0].model).toBe("anthropic/claude-3.5-haiku");
+    expect(vi.mocked(speech).mock.calls[0][0]).toMatchObject({ model: "b/tts", voice: "Puck" });
+
+    expect((await gen({ mode: "ai", prompt: "hi", persona: id, textModel: "meta/llama", speechModel: "a/tts", voice: "Leda" })).status).toBe(201);
+    expect(vi.mocked(chat).mock.calls[1][0].model).toBe("meta/llama");
+    expect(vi.mocked(speech).mock.calls[1][0]).toMatchObject({ model: "a/tts", voice: "Leda" });
+  });
+
+  it("falls back to the station's, then the default, when a persona's model is no longer offered", async () => {
+    vi.stubEnv("OPENROUTER_TEXT_MODELS", "openai/gpt-4o-mini,meta/llama");
+    const { station } = (await (await call("POST", undefined, { name: "S", defaultTextModel: "meta/llama" })).json()) as { station: { id: string } };
+    const stale = await makePersona({ textModel: "gone/model" });
+    await gen({ mode: "ai", prompt: "x", persona: stale, station: station.id });
+    expect(vi.mocked(chat).mock.calls[0][0].model).toBe("meta/llama");                       // the persona's is stale: the station's
+    const plain = await makePersona({});
+    await gen({ mode: "ai", prompt: "x", persona: plain });
+    expect(vi.mocked(chat).mock.calls[1][0].model).toBe("openai/gpt-4o-mini");              // nothing set: the site default
+    expect((await gen({ mode: "ai", prompt: "x", textModel: "gone/model" })).status).toBe(400);   // a bad request is an error, not a silent change
+  });
+
+  it("keeps the model on the persona and the host settings", async () => {
+    const { sanitizePersona } = await import("../../lib/personas.js");
+    expect(sanitizePersona({ name: "A", instructions: "x", textModel: " openai/gpt-4o-mini ", speechModel: "a/tts", voice: "Kore" })).toMatchObject({ persona: { textModel: "openai/gpt-4o-mini", speechModel: "a/tts", voice: "Kore" } });
+    const { applyHostPatch, HOST_DEFAULTS, hostDefaultsFor } = await import("../../lib/host.js");
+    expect(applyHostPatch(HOST_DEFAULTS, { textModel: "meta/llama", speechModel: "b/tts", voice: "Nova" })).toMatchObject({ textModel: "meta/llama", speechModel: "b/tts", voice: "Nova" });
+    expect(hostDefaultsFor({ defaultTextModel: "meta/llama", defaultSpeechModel: "b/tts", defaultVoice: "Nova" })).toMatchObject({ textModel: "meta/llama", speechModel: "b/tts", voice: "Nova" });
+  });
+});

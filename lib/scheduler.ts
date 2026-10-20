@@ -4,7 +4,7 @@ import { findFormat } from "./formats.js";
 import { makeClip } from "./make-clip.js";
 import { getPersona } from "./persona-store.js";
 import { getStation } from "./station-profile-store.js";
-import { pickTextModel } from "./openrouter.js";
+import { resolveTextModel } from "./openrouter.js";
 import { isExpired } from "./clip-info.js";
 import { nextRun, type Schedule } from "./schedule.js";
 import { listSchedules, saveSchedule } from "./schedule-store.js";
@@ -36,7 +36,7 @@ export async function runSchedule(s: Schedule): Promise<string> {
     if (s.content.kind === "ai") {
       const provider = activeProvider();
       if (!provider) throw new Error("no AI provider is configured");
-      if (provider === "openrouter") textModel = (pickTextModel(undefined) as { model: string }).model;
+      if (provider === "openrouter") textModel = (resolveTextModel(undefined, [persona?.textModel, station?.defaultTextModel]) as { model: string }).model;
       const format = s.content.format ? findFormat(s.content.format) : undefined;
       text = (await writeScript({ prompt: s.content.prompt, provider, textModel, tone: s.tone || persona?.tone, format, persona: persona?.instructions, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text;
       mode = "ai";

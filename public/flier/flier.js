@@ -4,6 +4,7 @@
 import { h, clear, toast } from '../shared/kit.js';
 import { createSpeaker } from '../shared/speaker.js';
 import { createStatus } from '../shared/status.js';
+import { modelVoiceFields } from '../shared/voicepicker.js';
 import { currentStation, stationId, stationName } from '../shared/station.js';
 
 const MAX_SIDE = 1600;
@@ -39,7 +40,15 @@ export async function mountFlier(root, api) {
     tz: (currentStation() && currentStation().tz) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', image: '', pasted: '', thumb: '',
     event: null, personaId: '', count: 3, length: 'short', variants: [], chosen: 0, stopRule: 'end',
     audio: null, saved: null,
+    pick: { speechModel: '', voice: '', textModel: '' }, tone: '',   // the promo's own voice and models; blank = the persona's, then the station's
   };
+  // What a blank falls back to, so the pickers can show it: the persona's settings, else the station's.
+  const defaultsFor = () => {
+    const p = personas.find((x) => x.id === s.personaId); const st = currentStation() || {};
+    return { label: p && (p.speechModel || p.voice || p.textModel) ? p.name : st.name || 'the default', speechModel: (p && p.speechModel) || st.defaultSpeechModel, voice: (p && p.voice) || st.defaultVoice, textModel: (p && p.textModel) || st.defaultTextModel };
+  };
+  // The settings the speech service gets: persona and station supply defaults on the server; anything chosen here wins.
+  const speakBase = () => ({ ...(s.personaId ? { persona: s.personaId } : {}), ...(s.pick.speechModel && options.models.choosable ? { speechModel: s.pick.speechModel } : {}), ...(s.pick.voice ? { voice: s.pick.voice } : {}), ...(s.tone.trim() ? { tone: s.tone.trim() } : {}) });
 
   const status = createStatus();
   const body = h('div', { class: 'stack' });
@@ -96,21 +105,28 @@ export async function mountFlier(root, api) {
 
   // ---------- 3. the promos ----------
   function promoCard() {
-    const persona = h('select', { 'aria-label': 'Persona', onchange: (ev) => { s.personaId = ev.target.value; } }, h('option', { value: '' }, 'No persona (plain host)'),
+    const persona = h('select', { 'aria-label': 'Persona', onchange: (ev) => { s.personaId = ev.target.value; Object.assign(defaults, defaultsFor()); voiceBox.refresh(); } }, h('option', { value: '' }, 'No persona (plain host)'),
       personas.map((p) => h('option', { value: p.id, selected: p.id === s.personaId }, `${p.emoji || ''} ${p.name}`.trim())));
     const length = h('select', { 'aria-label': 'Length', onchange: (ev) => { s.length = ev.target.value; } },
       [['short', 'Short (about 10 seconds)'], ['medium', 'Medium (about 20 seconds)']].map(([v, t]) => h('option', { value: v, selected: v === s.length }, t)));
     const count = h('select', { 'aria-label': 'How many', onchange: (ev) => { s.count = Number(ev.target.value); } }, [1, 2, 3, 4].map((n) => h('option', { value: n, selected: n === s.count }, `${n} version${n > 1 ? 's' : ''}`)));
+    const defaults = defaultsFor();
+    const voiceBox = modelVoiceFields({
+      options, value: s.pick, defaults, onchange: () => { s.audio = null; },
+      sample: async () => URL.createObjectURL((await speaker.render('This is how the promo will sound.', speakBase())).blob),
+    });
     const write = h('button', { class: 'primary', type: 'button', onclick: async () => {
       write.disabled = true; status.busy('Writing the promos');
       try {
-        const out = await api.post('/flier/promo', { event: s.event, tz: s.tz, personaId: s.personaId, count: s.count, length: s.length, station: stationId() || undefined });
+        const out = await api.post('/flier/promo', { event: s.event, tz: s.tz, personaId: s.personaId, count: s.count, length: s.length, station: stationId() || undefined, textModel: s.pick.textModel || undefined });
         s.event = { ...s.event, ...out.event }; s.variants = out.variants; s.chosen = 0; s.audio = null; s.saved = null;
         status.ok(`Written. Edit the one you like, then make the audio. The promo will say: "${out.event.whenSpoken || 'no date'}".`); paint();
       } catch (err) { say(err.message, true); } finally { write.disabled = false; }
     } }, s.variants.length ? 'Write them again' : 'Write the promos');
     return h('section', { class: 'card' }, h('h2', {}, '3. The promo'),
       h('div', { class: 'grid cols' }, h('label', { class: 'field' }, 'Who is speaking', persona), h('label', { class: 'field' }, 'Length', length), h('label', { class: 'field' }, 'How many', count)),
+      h('div', {}, h('div', { class: 'label' }, 'Voice and models for this promo (blank = the persona\'s, then the station\'s)'), voiceBox.el,
+        h('label', { class: 'field' }, 'Tone (blank = the persona\'s)', h('input', { value: s.tone, placeholder: 'e.g. warm, a little excited', oninput: (ev) => { s.tone = ev.target.value; s.audio = null; } }))),
       h('div', { class: 'row' }, write),
       s.variants.map((v, i) => h('div', { class: 'clip' },
         h('label', { class: 'row' }, h('input', { type: 'radio', name: 'variant', checked: i === s.chosen, onchange: () => { s.chosen = i; s.audio = null; paint(); } }), h('b', {}, `Version ${i + 1}`)),
@@ -132,7 +148,7 @@ export async function mountFlier(root, api) {
     const make = h('button', { class: 'primary', type: 'button', onclick: async () => {
       make.disabled = true; status.busy('Generating the audio');
       try {
-        s.audio = await speaker.render(s.variants[s.chosen], s.personaId ? { persona: s.personaId } : {}, { onProgress: (m, p) => status.busy(m, p) });
+        s.audio = await speaker.render(s.variants[s.chosen], speakBase(), { onProgress: (m, p) => status.busy(m, p) });
         s.audioUrl = URL.createObjectURL(s.audio.blob); s.saved = null;
         status.ok(`Audio ready${s.audio.first.speechModel ? ` (${s.audio.first.speechModel})` : ''}. Listen, then save it.`); paint();
       } catch (err) { say(err.message, true); } finally { make.disabled = false; }

@@ -6,6 +6,7 @@ import { mountExplorer } from './explorer.js';
 import { createPlayer } from '../shared/playbutton.js';
 import { stationId, stationName } from '../shared/station.js';
 import { createStatus } from '../shared/status.js';
+import { modelVoiceFields } from '../shared/voicepicker.js';
 
 const LINES = (value) => value.split('\n').map((l) => l.trim()).filter(Boolean);
 const blank = () => ({ name: '', emoji: '', tagline: '', description: '', instructions: '', tone: '', voice: '', speechModel: '', tags: [], templates: [], stationIds: [], promos: [], signOffs: [], timeLines: {} });
@@ -57,7 +58,7 @@ export async function mountPersonas(root, api) {
       h('div', { class: 'row' }, sampleFor(p).button, h('span', { style: 'font-size:28px;line-height:1' }, p.emoji || '🎙️'), h('div', { class: 'grow' }, h('strong', {}, p.name), p.tagline ? h('div', { class: 'small muted' }, `"${p.tagline}"`) : null),
         p.builtin ? h('span', { class: 'chip' }, 'example') : null),
       h('p', { class: 'clip-script small' }, p.description || p.instructions.slice(0, 140)),
-      h('div', { class: 'row small muted', style: 'gap:4px' }, (p.tags || []).map((t) => h('span', { class: 'chip' }, t)), p.voice ? h('span', { class: 'chip' }, `voice: ${p.voice}`) : null, p.speechModel ? h('span', { class: 'chip' }, p.speechModel) : null),
+      h('div', { class: 'row small muted', style: 'gap:4px' }, (p.tags || []).map((t) => h('span', { class: 'chip' }, t)), p.voice ? h('span', { class: 'chip' }, `voice: ${p.voice}`) : null, p.speechModel ? h('span', { class: 'chip' }, `🔊 ${p.speechModel}`) : null, p.textModel ? h('span', { class: 'chip' }, `✍ ${p.textModel}`) : null),
       h('div', { class: 'row' },
         h('button', { type: 'button', class: 'primary', onclick: () => explore(p) }, 'Explore'),
         h('button', { type: 'button', onclick: () => edit(p) }, p.builtin ? 'View' : 'Edit'),
@@ -133,9 +134,12 @@ export async function mountPersonas(root, api) {
       el.oninput = () => { if (el.value.trim()) c.timeLines[part] = ` ${el.value.trim()}`; else delete c.timeLines[part]; };
       return h('label', { class: 'field' }, part[0].toUpperCase() + part.slice(1), el);
     };
-    const models = options.models.choosable ? options.models.speech.map((m) => m.id) : [];
-    const speechSelect = h('select', { disabled: locked || !models.length, onchange: (e) => { c.speechModel = e.target.value; } },
-      h('option', { value: '' }, 'Use the default'), models.map((id) => h('option', { value: id, selected: id === c.speechModel }, id)));
+    // The voice and models that belong to this persona: what speaks, what writes, and a button to hear it.
+    const sampleLine = () => ((c.stationIds || [])[0] || (c.templates || [])[0] || `Hello, this is ${c.name || 'your host'}.`).replace(/\{artist\}/g, 'Ada Lovelace').replace(/\{title\}/g, 'Analytical Love').replace(/\{station\}/g, stationName(options.station) || 'the station');
+    const voiceBox = modelVoiceFields({
+      options, value: c, disabled: locked, onchange: () => {},
+      sample: async (v) => URL.createObjectURL((await speaker.render(sampleLine(), { ...(v.speechModel && options.models.choosable ? { speechModel: v.speechModel } : {}), ...(v.voice ? { voice: v.voice } : {}), ...(c.tone ? { tone: c.tone } : {}) })).blob),
+    });
 
     const describe = h('input', { placeholder: 'e.g. a sleepy night-owl who loves jazz and calls everyone "friend"', 'aria-label': 'Describe the host' });
     const draftStatus = createStatus();
@@ -170,7 +174,8 @@ export async function mountPersonas(root, api) {
         h('div', { class: 'grid cols' }, input('Emoji', 'emoji', { placeholder: '🎙️' }), input('Name', 'name'), input('Tagline', 'tagline', { placeholder: 'their catchphrase' })),
         input('One-line description', 'description'),
         input('Character brief (who they are, how they talk; the AI writer reads this)', 'instructions', { rows: 5 }),
-        h('div', { class: 'grid cols' }, input('Tone', 'tone', { placeholder: 'e.g. weathered, dry, slow' }), input('Voice (optional)', 'voice', { placeholder: 'model default' }), h('label', { class: 'field' }, 'Speech model (optional)', speechSelect)),
+        input('Tone', 'tone', { placeholder: 'e.g. weathered, dry, slow' }),
+        h('div', {}, h('div', { class: 'label' }, 'Voice and models for this persona (blank = the station\'s, then the site\'s default)'), voiceBox.el),
         input('Tags (comma separated)', 'tags', { tags: true, placeholder: 'jazz, late-night, chill' }),
         input('Song links, one per line ({artist}, {title} and {station} are filled in)', 'templates', { rows: 5, list: true }),
         input('Station IDs, one per line', 'stationIds', { rows: 3, list: true }),

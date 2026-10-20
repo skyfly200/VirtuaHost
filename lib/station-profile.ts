@@ -31,6 +31,7 @@ export interface Station {
   defaultPersonaId?: string;
   defaultFx?: string;
   defaultSpeechModel?: string;
+  defaultTextModel?: string;
   defaultVoice?: string;
   /** Artists that are spots or relays on this station. */
   skipArtists: string[];
@@ -86,7 +87,7 @@ export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } 
       genres: [...new Set(list(r.genres, 8, 24).map((g) => g.toLowerCase()))],
       ...opt("city", text(r.city, 80)), ...opt("website", url(r.website)), ...opt("streamUrl", url(r.streamUrl)), ...opt("contact", text(r.contact, 120)),
       links,
-      ...opt("defaultPersonaId", text(r.defaultPersonaId, 60)), ...opt("defaultFx", text(r.defaultFx, 40)), ...opt("defaultSpeechModel", text(r.defaultSpeechModel, 100)), ...opt("defaultVoice", text(r.defaultVoice, 60)),
+      ...opt("defaultPersonaId", text(r.defaultPersonaId, 60)), ...opt("defaultFx", text(r.defaultFx, 40)), ...opt("defaultSpeechModel", text(r.defaultSpeechModel, 100)), ...opt("defaultTextModel", text(r.defaultTextModel, 100)), ...opt("defaultVoice", text(r.defaultVoice, 60)),
       skipArtists: list(r.skipArtists, 100, 100),
       ...(typeof r.autoplay === "boolean" ? { autoplay: r.autoplay } : {}), ...(typeof r.preempt === "boolean" ? { preempt: r.preempt } : {}),
       ...opt("notes", text(r.notes, 1000)),

@@ -12,6 +12,8 @@ export interface Persona {
   tone: string;
   voice?: string;
   speechModel?: string;
+  /** The writing model that plays this persona (AI-written lines, host links, promos). Falls back to the station's, then the site's default. */
+  textModel?: string;
   /** Example lines with {artist} / {title}, usable as "say verbatim" text or as examples of the voice. */
   templates: string[];
   stationIds: string[];
@@ -53,6 +55,7 @@ export function sanitizePersona(raw: unknown): { persona: Omit<Persona, "id"> } 
   if (!instructions) return { error: "A persona needs instructions (who they are and how they talk)" };
   const voice = clean(r.voice, LIMITS.voice);
   const speechModel = clean(r.speechModel, LIMITS.speechModel);
+  const textModel = clean(r.textModel, LIMITS.speechModel);
   const emoji = clean(r.emoji, LIMITS.emoji);
   const tagline = clean(r.tagline, LIMITS.tagline);
   const tags = Array.isArray(r.tags) ? [...new Set(r.tags.map((t) => clean(t, LIMITS.tag).toLowerCase()).filter(Boolean))].slice(0, LIMITS.tags) : [];
@@ -76,6 +79,7 @@ export function sanitizePersona(raw: unknown): { persona: Omit<Persona, "id"> } 
       tone: clean(r.tone, LIMITS.tone),
       ...(voice ? { voice } : {}),
       ...(speechModel ? { speechModel } : {}),
+      ...(textModel ? { textModel } : {}),
       templates: lines(r.templates, LIMITS.templates),
       stationIds: lines(r.stationIds, LIMITS.stationIds),
     },

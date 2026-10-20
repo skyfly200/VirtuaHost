@@ -114,6 +114,17 @@ export function pickTextModel(requested: string | undefined): { model: string } 
   if (textModels().includes(requested) || (allowAnyModel() && MODEL_SLUG.test(requested))) return { model: requested };
   return { error: `Unknown writing model "${requested.slice(0, 60)}". Allowed: ${textModels().join(", ")}` };
 }
+// The writing model for something that has preferences (a request, then a persona, then a station): the request is checked strictly (a
+// bad name is an error), while a preference that is no longer on the list just falls through to the next one and finally the default.
+export function resolveTextModel(requested: string | undefined, preferred: Array<string | undefined> = []): { model: string } | { error: string } {
+  if (requested) return pickTextModel(requested);
+  for (const p of preferred) {
+    if (!p) continue;
+    const picked = pickTextModel(p);
+    if ("model" in picked) return picked;
+  }
+  return { model: defaultTextModel() };
+}
 export function pickSpeechModel(requested: string | undefined, extra: SpeechModel[] = []): { model: SpeechModel } | { error: string } {
   if (!requested) return { model: defaultSpeechModel() };
   const found = speechModels().find((m) => m.id === requested) ?? extra.find((m) => m.id === requested);
