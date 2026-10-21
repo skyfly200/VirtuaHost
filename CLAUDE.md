@@ -84,11 +84,11 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   `400` for malformed/missing request fields — this distinguishes "your
   request was bad" from "the upstream model call failed" for callers.
 - **Sign-in.** `lib/auth.ts#checkAuth` guards every `/api/*` function (called first in each handler, so adapters cannot skip it).
-  Two ways in, either is enough: a login session token (`Authorization: Bearer`, from `POST /api/login`; users in `LOGIN_USERS`
-  as `name:scrypt.<salt>.<hash>`, tokens signed with `SESSION_SECRET`, stateless HMAC in `lib/session.ts`, wrong passwords
+  Two ways in, either is enough: a login session token (`Authorization: Bearer`, from `POST /api/login`; bootstrap admins in `LOGIN_USERS`
+  as `name:scrypt.<salt>.<hash>`, other users in Blobs, tokens signed with `SESSION_SECRET`, stateless HMAC in `lib/session.ts`, wrong passwords
   throttled through Netlify Blobs in `lib/throttle.ts`) or the optional machine key `ACCESS_KEY` (`x-api-key` or Bearer). With
   neither configured the API answers 503 rather than being open; `AUTH_DISABLED=true` is the explicit local-dev opt-out.
-  `npm run hash-password -- <user>` makes an entry. There are no roles: every login can do everything.
+  `npm run hash-password -- <user>` makes an entry for the first admin; everyone else is added in the Users tab (see Users, roles above).
 - **The UI and its proxy.** `public/index.html` is one page (`app.js`): login, then tabs. `generate/`, `lab/` and `panel/` are
   ES modules that draw into a tab, using clients from `shared/kit.js`. Every tab except Stations runs on this site's own `/api/*`
   (Voice Lab included: `public/shared/speaker.js` speaks and mixes, `public/generate/fx.js` previews effects in the browser). Control (the old hub screen) talks to
