@@ -10,7 +10,7 @@ import { TONES, FORMATS, MAX_TONE_LENGTH, fillStation } from "../formats.js";
 
 // What the test console offers: the provider in use, the models that can be chosen, tones, and script formats with examples.
 export async function handleOptions(req: Request): Promise<Response> {
-  const denied = checkAuth(req);
+  const denied = await checkAuth(req);
   if (denied) return denied;
   if (req.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405 });

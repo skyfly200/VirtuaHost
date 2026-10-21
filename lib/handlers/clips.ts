@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { embedTags, retag, sanitizeInfo, type ClipInfo } from "../clip-info.js";
 import { deleteClip, getClip, listClips, saveClip } from "../store.js";
-import { checkAuth } from "../auth.js";
+import { authorize, canModify, canView, ownerFor, type Principal } from "../auth.js";
+import { checkCount } from "../quota.js";
 import { sendToStation, stationConfigured } from "../station-send.js";
 import { getStation } from "../station-profile-store.js";
 import type { ClipMetadata } from "../types.js";
@@ -10,7 +11,7 @@ const MAX_UPLOAD_BYTES = 5_500_000; // Netlify functions accept request bodies o
 
 // Saves audio the browser has already made (a previewed clip with sound effects mixed in). The body is the audio itself;
 // what it says is in the x-clip-meta header as URI-encoded JSON, because the body cannot carry both.
-async function handleSave(req: Request): Promise<Response> {
+async function handleSave(req: Request, who: Principal): Promise<Response> {
   const mimeType = (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
   if (mimeType !== "audio/wav" && mimeType !== "audio/mpeg") {
     return Response.json({ error: "Send the audio as audio/wav or audio/mpeg" }, { status: 400 });
@@ -38,6 +39,7 @@ async function handleSave(req: Request): Promise<Response> {
   const tagged = embedTags(audio, mimeType, info, { script: scriptText, createdAt, clipId: id, station: process.env.STATION_NAME });
   const metadata: ClipMetadata = {
     id,
+    ...(ownerFor(who) ? { ownerId: ownerFor(who) } : {}),
     createdAt,
     mode: meta.mode === "ai" ? "ai" : "say",
     input: text("input", 2000) ?? scriptText,
@@ -53,6 +55,8 @@ async function handleSave(req: Request): Promise<Response> {
     ...(text("format", 40) ? { format: text("format", 40) } : {}),
     ...(effects.length ? { effects } : {}),
   };
+  const full = await checkCount(who, "maxClips", async () => (await listClips()).filter((c) => c.ownerId === who.username).length);
+  if (full) return full;
   await saveClip(id, tagged, metadata);
 
   // Same as /api/generate: the clip is saved either way, a station problem is only reported.
@@ -69,9 +73,10 @@ async function handleSave(req: Request): Promise<Response> {
 
 // PATCH /api/clips/:id { title?, kind?, tags?, expiresAt? (null clears it) }: changes the details kept with a clip and written into its audio
 // (the tags are rewritten, the sound is untouched). This is how a promo is extended, or ended early.
-async function handleEdit(req: Request, id: string): Promise<Response> {
+async function handleEdit(req: Request, id: string, who: Principal): Promise<Response> {
   const clip = await getClip(id);
-  if (!clip) return Response.json({ error: "Clip not found" }, { status: 404 });
+  if (!clip || !canView(who, clip.metadata.ownerId)) return Response.json({ error: "Clip not found" }, { status: 404 });
+  if (!canModify(who, clip.metadata.ownerId)) return Response.json({ error: "That clip is shared; only an admin can change it" }, { status: 403 });
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== "object") return Response.json({ error: "Send the changes as JSON" }, { status: 400 });
   if (body.expiresAt !== undefined && body.expiresAt !== null && !Number.isFinite(Date.parse(String(body.expiresAt)))) return Response.json({ error: "expiresAt must be a date and time, or null to remove it" }, { status: 400 });
@@ -89,13 +94,15 @@ async function handleEdit(req: Request, id: string): Promise<Response> {
 }
 
 export async function handleClips(req: Request, id: string | undefined): Promise<Response> {
-  const denied = checkAuth(req);
+  const { who, denied } = await authorize(req);
   if (denied) return denied;
 
-  if (req.method === "POST" && !id) return handleSave(req);
-  if (id && req.method === "PATCH") return handleEdit(req, id);
+  if (req.method === "POST" && !id) return handleSave(req, who);
+  if (id && req.method === "PATCH") return handleEdit(req, id, who);
   if (id && req.method === "DELETE") {
-    if (!(await getClip(id))) return Response.json({ error: "Clip not found" }, { status: 404 });
+    const found = await getClip(id);
+    if (!found || !canView(who, found.metadata.ownerId)) return Response.json({ error: "Clip not found" }, { status: 404 });
+    if (!canModify(who, found.metadata.ownerId)) return Response.json({ error: "That clip is shared; only an admin can delete it" }, { status: 403 });
     await deleteClip(id);
     return new Response(null, { status: 204 });
   }
@@ -104,12 +111,12 @@ export async function handleClips(req: Request, id: string | undefined): Promise
   }
 
   if (!id) {
-    const clips = await listClips();
+    const clips = (await listClips()).filter((c) => canView(who, c.ownerId));
     return Response.json({ clips });
   }
 
   const clip = await getClip(id);
-  if (!clip) {
+  if (!clip || !canView(who, clip.metadata.ownerId)) {
     return Response.json({ error: "Clip not found" }, { status: 404 });
   }
 

@@ -27,6 +27,8 @@ export interface MakeClipOptions {
   format?: string;
   /** Metadata for other systems (kind, event, expiresAt, ...). Embedded in the audio and kept with the clip. */
   info?: ClipInfo;
+  /** The person this clip belongs to (a username); leave out for the station's own. */
+  ownerId?: string;
 }
 
 export type MadeClip = { ok: true; id: string; scriptText: string; mimeType: string; speechModel: string; voice: string } | { ok: false; status: number; error: string };
@@ -63,7 +65,7 @@ export async function makeClip(options: MakeClipOptions): Promise<MadeClip> {
   const info = sanitizeInfo({ title: scriptText.slice(0, 60), source: "make-clip", ...(options.info ?? {}) });
   const audio = embedTags(spoken.audio, spoken.mimeType, info, { script: scriptText, createdAt, clipId: id, station: process.env.STATION_NAME });
   const metadata: ClipMetadata = {
-    id, createdAt, mode: options.mode ?? "say", input: options.input.slice(0, 2000), scriptText, voice: spoken.voice,
+    id, ...(options.ownerId ? { ownerId: options.ownerId } : {}), createdAt, mode: options.mode ?? "say", input: options.input.slice(0, 2000), scriptText, voice: spoken.voice,
     mimeType: spoken.mimeType, byteSize: audio.length, provider, speechModel: spoken.model, info,
     ...(options.textModel ? { textModel: options.textModel } : {}), ...(tone ? { tone } : {}), ...(options.format ? { format: options.format } : {}),
   };

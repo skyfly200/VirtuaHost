@@ -1,4 +1,4 @@
-import { checkAuth } from "../auth.js";
+import { authorize } from "../auth.js";
 import { getHostStatus } from "../host-store.js";
 import { listQueue } from "../queue-store.js";
 import { listSchedules } from "../schedule-store.js";
@@ -12,7 +12,7 @@ import { listClips } from "../store.js";
 //   GET|PUT|DELETE /api/stations/:id
 //   GET /api/stations/:id/summary  what the site holds for it: clips, schedules, queued items, host status
 export async function handleStations(req: Request, id: string | undefined, action: string | undefined): Promise<Response> {
-  const denied = checkAuth(req);
+  const { denied } = await authorize(req, { admin: req.method !== "GET" });
   if (denied) return denied;
   const json = async () => { try { return await req.json(); } catch { return undefined; } };
 

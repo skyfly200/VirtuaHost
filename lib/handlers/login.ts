@@ -1,5 +1,6 @@
 import { accessKeyConfigured } from "../auth.js";
 import { checkPassword, issueToken, loginConfigured } from "../session.js";
+import { getUser, saveUser } from "../user-store.js";
 import { clearFailures, isBlocked, recordFailure } from "../throttle.js";
 import { createLogger } from "../log.js";
 
@@ -19,7 +20,7 @@ export async function handleLogin(req: Request): Promise<Response> {
     return new Response("Method Not Allowed", { status: 405 });
   }
   if (!loginConfigured()) {
-    return Response.json({ error: "Password login is not set up: set LOGIN_USERS and SESSION_SECRET (32+ characters) on the site" }, { status: 503 });
+    return Response.json({ error: "Password login is not set up: set SESSION_SECRET (32+ characters) and at least one admin in LOGIN_USERS on the site" }, { status: 503 });
   }
 
   const ip = clientIp(req);
@@ -40,12 +41,17 @@ export async function handleLogin(req: Request): Promise<Response> {
     return Response.json({ error: "Enter a username and password" }, { status: 400 });
   }
 
-  if (!checkPassword(username, password)) {
+  const account = await checkPassword(username, password);
+  if (!account) {
     await recordFailure(ip);
     log.warn("sign-in failed", { username, ip });
     return Response.json({ error: "Wrong username or password" }, { status: 401 });
   }
   await clearFailures(ip);
-  log.info("signed in", { username, ip });
-  return Response.json({ ...issueToken(username), username });
+  log.info("signed in", { username: account.username, role: account.role, ip });
+  if (account.source === "database") {
+    const user = await getUser(account.username);
+    if (user) await saveUser({ ...user, lastLoginAt: new Date().toISOString() }).catch(() => {});
+  }
+  return Response.json({ ...issueToken(account.username), username: account.username, role: account.role });
 }

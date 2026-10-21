@@ -1,4 +1,4 @@
-import { checkAuth } from "../auth.js";
+import { authorize } from "../auth.js";
 import { createLogger } from "../log.js";
 
 const log = createLogger("proxy");
@@ -33,7 +33,7 @@ export const features = () => ({
 });
 
 export async function handleProxy(req: Request): Promise<Response> {
-  const denied = checkAuth(req);
+  const { denied } = await authorize(req, { admin: true });
   if (denied) return denied;
 
   const incoming = new URL(req.url);

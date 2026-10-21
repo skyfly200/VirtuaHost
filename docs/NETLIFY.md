@@ -32,7 +32,7 @@ Add these to the site's environment variables:
 | `SESSION_SECRET` | the secret from step 3. Changing it signs everyone out |
 | `SESSION_HOURS` | optional, how long a login lasts (default 12) |
 
-To add or remove a person later, edit `LOGIN_USERS` and redeploy; a removed person is signed out. Failed sign-ins are slowed down: after 8 wrong attempts from one address, that address is blocked for ten minutes.
+`LOGIN_USERS` is only for your first admin(s). After you sign in, add everyone else in the **Users** tab (no redeploy needed; see [USERS.md](USERS.md)). Removing someone from `LOGIN_USERS` signs them out on their next request. Failed sign-ins are slowed down: after 8 wrong attempts from one address, that address is blocked for ten minutes.
 
 `ACCESS_KEY` still works, now as an optional key for scripts and `curl` (`x-api-key: <key>`), and the login page offers "Use an access key instead" while it is set. Once everyone has a login you can delete `ACCESS_KEY` so passwords are the only way in.
 

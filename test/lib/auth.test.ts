@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../../lib/gemini.js", () => ({ writeDjLine: vi.fn(), synthesizeSpeech: vi.fn(), DEFAULT_VOICE: "Kore" }));
 vi.mock("../../lib/store.js", () => ({ saveClip: vi.fn(), getClip: vi.fn(), listClips: vi.fn(async () => []) }));
+vi.mock("../../lib/user-store.js", async (orig) => ({ ...(await orig<typeof import("../../lib/user-store.js")>()), getUser: vi.fn(async () => null) }));
 vi.mock("../../lib/handoff.js", () => ({ handoffConfigured: vi.fn(() => false), handoffDefaults: vi.fn(), pushToStation: vi.fn() }));
 
 import { checkAuth } from "../../lib/auth.js";
@@ -19,37 +20,37 @@ describe("access key", () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it("lets a request with the key as x-api-key or as a Bearer token through", () => {
-    expect(checkAuth(req({ "x-api-key": KEY }))).toBeNull();
-    expect(checkAuth(req({ authorization: `Bearer ${KEY}` }))).toBeNull();
-    expect(checkAuth(req({ authorization: `bearer ${KEY}` }))).toBeNull();
+  it("lets a request with the key as x-api-key or as a Bearer token through", async () => {
+    expect(await checkAuth(req({ "x-api-key": KEY }))).toBeNull();
+    expect(await checkAuth(req({ authorization: `Bearer ${KEY}` }))).toBeNull();
+    expect(await checkAuth(req({ authorization: `bearer ${KEY}` }))).toBeNull();
   });
 
   it("refuses a missing, wrong, truncated or empty key with 401", async () => {
     const bad: Record<string, string>[] = [{}, { "x-api-key": "wrong" }, { "x-api-key": KEY.slice(0, -1) }, { "x-api-key": "" }, { authorization: "Bearer " }];
     for (const headers of bad) {
-      const res = checkAuth(req(headers));
+      const res = await checkAuth(req(headers));
       expect(res?.status, JSON.stringify(headers)).toBe(401);
     }
-    const body = (await checkAuth(req())!.json()) as { error: string };
+    const body = (await (await checkAuth(req()))!.json()) as { error: string };
     expect(body.error).not.toContain(KEY);
   });
 
   it("refuses everything with 503 when no usable key is configured (never open by accident)", async () => {
     for (const value of ["", "short-key"]) {
       vi.stubEnv("ACCESS_KEY", value);
-      const res = checkAuth(req({ "x-api-key": value || "anything" }));
+      const res = await checkAuth(req({ "x-api-key": value || "anything" }));
       expect(res?.status).toBe(503);
       expect(((await res!.json()) as { error: string }).error).toMatch(/ACCESS_KEY/);
     }
   });
 
-  it("can be switched off explicitly for local development", () => {
+  it("can be switched off explicitly for local development", async () => {
     vi.stubEnv("ACCESS_KEY", "");
     vi.stubEnv("AUTH_DISABLED", "true");
-    expect(checkAuth(req())).toBeNull();
+    expect(await checkAuth(req())).toBeNull();
     vi.stubEnv("AUTH_DISABLED", "yes");                                      // only the exact value counts
-    expect(checkAuth(req())?.status).toBe(503);
+    expect((await checkAuth(req()))?.status).toBe(503);
   });
 
   it("protects /api/generate: nothing is spent on Gemini without the key", async () => {

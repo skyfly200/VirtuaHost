@@ -1,4 +1,4 @@
-import { checkAuth } from "../auth.js";
+import { authorize } from "../auth.js";
 import { applyHostPatch, FX_PRESETS } from "../host.js";
 import { composeLink } from "../host-link.js";
 import { getHostConfig, getHostStatus, saveHostConfig } from "../host-store.js";
@@ -10,7 +10,7 @@ import { getStation } from "../station-profile-store.js";
 //   PUT  /api/host           change settings (any subset)
 //   POST /api/host/preview   { artist, title } -> the link that would be said (text only, nothing is voiced)
 export async function handleHost(req: Request): Promise<Response> {
-  const denied = checkAuth(req);
+  const { denied } = await authorize(req, { admin: req.method !== "GET" });
   if (denied) return denied;
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, "");

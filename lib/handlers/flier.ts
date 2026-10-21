@@ -1,4 +1,5 @@
-import { checkAuth } from "../auth.js";
+import { authorize, canView } from "../auth.js";
+import { chargeAi } from "../quota.js";
 import { activeProvider, complete, NO_PROVIDER_MESSAGE, readImage } from "../ai.js";
 import { IMAGE_URL, MAX_IMAGE_CHARS, normalizeEvent, parseJsonObject, parseVariants, PROMO_SYSTEM_PROMPT, promoFacts, READ_SYSTEM_PROMPT } from "../flier.js";
 import { resolveTextModel } from "../openrouter.js";
@@ -11,7 +12,7 @@ const today = (tz: string) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, y
 // POST /api/flier/read   { image?: data URL, text?: pasted text, tz? }  -> { event }  (details read off the flier, times resolved in tz)
 // POST /api/flier/promo  { event, tz?, personaId?, count?, length? }    -> { event, variants }  (spoken spots, nothing voiced yet)
 export async function handleFlier(req: Request): Promise<Response> {
-  const denied = checkAuth(req);
+  const { who, denied } = await authorize(req);
   if (denied) return denied;
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
   const path = new URL(req.url).pathname.replace(/\/+$/, "");
@@ -24,10 +25,13 @@ export async function handleFlier(req: Request): Promise<Response> {
   const tz = typeof body.tz === "string" && validTimeZone(body.tz) ? body.tz : station?.tz ?? "UTC";
   const personaId = typeof body.personaId === "string" ? body.personaId : "";
   const persona = personaId ? await getPersona(personaId) : null;
-  if (personaId && !persona) return Response.json({ error: "Unknown persona" }, { status: 400 });
+  if (personaId && (!persona || !canView(who, persona.ownerId))) return Response.json({ error: "Unknown persona" }, { status: 400 });
   // The writing model: the request's, else the persona's, else the station's, else the site's default.
   const textModel = provider === "openrouter" ? (resolveTextModel(typeof body.textModel === "string" ? body.textModel : undefined, [persona?.textModel, station?.defaultTextModel]) as { model?: string; error?: string }) : undefined;
   if (textModel?.error) return Response.json({ error: textModel.error }, { status: 400 });
+
+  const over = path === "/api/flier/read" || path === "/api/flier/promo" ? await chargeAi(who) : null;
+  if (over) return over;
 
   if (path === "/api/flier/read") {
     const image = typeof body.image === "string" ? body.image : "";

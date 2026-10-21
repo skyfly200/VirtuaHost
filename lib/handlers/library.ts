@@ -5,7 +5,7 @@ import { KINDS, type LibraryKind } from "../library/types.js";
 // GET /api/library?kind=sfx|music  -> { items: [{ source, kind, name, file, size }], errors, sources }
 // GET /api/library/:source/:kind/:name -> the audio file
 export async function handleLibrary(req: Request, params: { source?: string; kind?: string; name?: string }): Promise<Response> {
-  const denied = checkAuth(req);
+  const denied = await checkAuth(req);
   if (denied) return denied;
   if (req.method !== "GET") return new Response("Method Not Allowed", { status: 405 });
 
