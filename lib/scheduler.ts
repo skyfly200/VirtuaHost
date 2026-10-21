@@ -10,6 +10,9 @@ import { nextRun, type Schedule } from "./schedule.js";
 import { listSchedules, saveSchedule } from "./schedule-store.js";
 import { getClip } from "./store.js";
 import { sendToStation, queueMode } from "./station-send.js";
+import { createLogger } from "./log.js";
+
+const log = createLogger("scheduler");
 
 export const GRACE_MS = 10 * 60_000;       // a run later than this (the site was down) is skipped, not made late
 const BUDGET_MS = 22_000;                  // a scheduled function has about 30 seconds: stop starting new work after this
@@ -78,6 +81,7 @@ export async function runDueSchedules(now = Date.now()): Promise<{ ran: number; 
     }
     if (now - Date.parse(s.nextAt) > GRACE_MS) {
       await saveSchedule(advance(s, now, "missed (the site was not running at that time)"));
+      log.warn("schedule slot missed", { scheduleId: s.id, name: s.name, dueAt: s.nextAt });
       skipped += 1;
       continue;
     }
@@ -86,6 +90,7 @@ export async function runDueSchedules(now = Date.now()): Promise<{ ran: number; 
       result = await runSchedule(s);
     } catch (err) {
       result = `error: ${(err as Error).message}`;
+      log.error("schedule run failed", { scheduleId: s.id, name: s.name, err });
     }
     await saveSchedule(advance({ ...s, runs: s.runs + 1 }, now, result));
     ran += 1;

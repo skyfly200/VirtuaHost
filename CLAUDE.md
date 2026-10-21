@@ -77,6 +77,7 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   keys under that prefix and fetches each one's metadata individually — fine
   at single-station scale, would need a real index if clip volume grew a
   lot.
+- **Logging** (`lib/log.ts`): `createLogger(scope)` writes one JSON line per event (time, level, scope, msg, fields) to stdout/stderr, where Netlify's function logs pick it up. Pass caught errors as `err` (name, message, short stack are logged); fields named like key/token/secret/password are redacted. `LOG_LEVEL=debug|info|warn|error|silent` (default info). Upstream failures (script/speech, hand-off, queue, proxy, schedule runs) and sign-in outcomes are logged; never log secrets or request bodies.
 - **Error handling convention**: handlers return `502` (not `500`) when a
   Gemini call itself fails (script generation or speech synthesis), and
   `400` for malformed/missing request fields — this distinguishes "your

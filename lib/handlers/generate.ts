@@ -9,7 +9,10 @@ import { saveClip } from "../store.js";
 import { embedTags, sanitizeInfo } from "../clip-info.js";
 import { sendToStation, stationConfigured } from "../station-send.js";
 import { checkAuth } from "../auth.js";
+import { createLogger } from "../log.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
+
+const log = createLogger("generate");
 
 // Chips Voice scripts can contain [sfx:name] sound effect tags. This Gemini path cannot mix them, and Gemini
 // would read them aloud, so they are removed (use the station's /speak to get the effects mixed in).
@@ -96,6 +99,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   try {
     scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format, persona: persona?.instructions, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text : input;
   } catch (err) {
+    log.error("script generation failed", { provider, textModel, err });
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
   }
 
@@ -126,6 +130,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   try {
     spoken = await speak({ text: scriptText, provider, speechModel, voice, tone });
   } catch (err) {
+    log.error("speech synthesis failed", { provider, speechModel, voice, err });
     return Response.json({ error: `Speech synthesis failed: ${(err as Error).message}` }, { status: 502 });
   }
 

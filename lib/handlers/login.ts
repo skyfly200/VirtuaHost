@@ -1,6 +1,9 @@
 import { accessKeyConfigured } from "../auth.js";
 import { checkPassword, issueToken, loginConfigured } from "../session.js";
 import { clearFailures, isBlocked, recordFailure } from "../throttle.js";
+import { createLogger } from "../log.js";
+
+const log = createLogger("login");
 
 const clientIp = (req: Request) =>
   req.headers.get("x-nf-client-connection-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
@@ -21,6 +24,7 @@ export async function handleLogin(req: Request): Promise<Response> {
 
   const ip = clientIp(req);
   if (await isBlocked(ip)) {
+    log.warn("sign-in blocked by throttle", { ip });
     return Response.json({ error: "Too many wrong attempts. Wait ten minutes and try again." }, { status: 429 });
   }
 
@@ -38,8 +42,10 @@ export async function handleLogin(req: Request): Promise<Response> {
 
   if (!checkPassword(username, password)) {
     await recordFailure(ip);
+    log.warn("sign-in failed", { username, ip });
     return Response.json({ error: "Wrong username or password" }, { status: 401 });
   }
   await clearFailures(ip);
+  log.info("signed in", { username, ip });
   return Response.json({ ...issueToken(username), username });
 }

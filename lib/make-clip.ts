@@ -8,7 +8,10 @@ import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "./cues.js";
 import { cleanTone } from "./formats.js";
 import { defaultSpeechModel, discoverSpeechModels, pickSpeechModel, speechModels, type SpeechModel } from "./openrouter.js";
 import { saveClip } from "./store.js";
+import { createLogger } from "./log.js";
 import type { ClipMetadata } from "./types.js";
+
+const log = createLogger("make-clip");
 
 const SFX_TAG = /\[\s*(sfx|music)\s*:[^\]]*\]/gi;
 
@@ -51,6 +54,7 @@ export async function makeClip(options: MakeClipOptions): Promise<MadeClip> {
   try {
     spoken = await speak({ text: scriptText, provider, speechModel, voice: options.voice || undefined, tone });
   } catch (err) {
+    log.error("speech synthesis failed", { err });
     return { ok: false, status: 502, error: `Speech synthesis failed: ${(err as Error).message}` };
   }
 
