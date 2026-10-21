@@ -11,6 +11,7 @@ import { mountSchedules } from './schedules/schedules.js';
 import { mountStationProfiles } from './stations/stations.js';
 import { loadStations, allStations, currentStation, setStation } from './shared/station.js';
 import { mountPanel, unmountPanel } from './panel/panel.js';
+import { mountUsers, accountCard } from './users/users.js';
 
 const app = $('#app');
 const SESSION_KEY = 'session';
@@ -69,14 +70,15 @@ async function showLogin() {
       h('h1', {}, 'VirtuaHost DJ'),
       h('p', { class: 'muted' }, 'Sign in to make clips and run the station.'),
       setup
-        ? h('p', { class: 'bad', role: 'alert' }, 'This site has no sign-in set up yet. Set LOGIN_USERS and SESSION_SECRET (or ACCESS_KEY) in the site settings, then redeploy. See docs/NETLIFY.md.')
+        ? h('p', { class: 'bad', role: 'alert' }, 'This site has no sign-in set up yet. Set SESSION_SECRET and an admin in LOGIN_USERS (or set ACCESS_KEY) in the site settings, then redeploy. See docs/NETLIFY.md.')
         : form));
   });
 }
 
 // ---------- the signed-in page ----------
-function showApp(credential, options) {
+function showApp(credential, options, me) {
   const features = options.features || {};
+  const admin = me.role === 'admin';
   const tabs = [
     { id: 'generate', label: 'Generate', on: true },
     { id: 'personas', label: 'Personas', on: true },
@@ -86,7 +88,8 @@ function showApp(credential, options) {
     { id: 'library', label: 'Library', on: true },
     { id: 'lab', label: 'Voice Lab', on: true },
     { id: 'stations', label: 'Stations', on: true },
-    { id: 'control', label: 'Control', on: features.hub, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
+    { id: 'users', label: 'Users', on: admin, hidden: !admin },
+    { id: 'control', label: 'Control', on: features.hub && admin, hidden: !admin, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
       what: 'Control every station on one screen: now playing, skip, volume, playlists, broadcasts at the same moment, and host settings.' },
   ];
   const panel = h('div');
@@ -94,7 +97,7 @@ function showApp(credential, options) {
   // Other tabs can send you somewhere (for example a persona's "Use in Generate").
   window.addEventListener('vh-tab', (e) => { if (tabs.some((t) => t.id === e.detail && t.on)) select(e.detail); });
 
-  const tabButtons = tabs.map((t) => h('button', { type: 'button', role: 'tab', onclick: () => select(t.id) }, t.label, t.on ? null : h('span', { class: 'off' }, 'off')));
+  const tabButtons = tabs.map((t) => h('button', { type: 'button', role: 'tab', hidden: Boolean(t.hidden), onclick: () => select(t.id) }, t.label, t.on ? null : h('span', { class: 'off' }, 'off')));
   let activeTab = '';
   const select = async (id) => {
     leave(); leave = () => {};
@@ -110,6 +113,7 @@ function showApp(credential, options) {
     if (id === 'flier') await mountFlier(panel, clientFor('/api', credential));
     if (id === 'library') await mountLibrary(panel, clientFor('/api', credential));
     if (id === 'lab') await mountLab(panel, clientFor('/api', credential));
+    if (id === 'users') await mountUsers(panel, clientFor('/api', credential));
     if (id === 'stations') await mountStationProfiles(panel, clientFor('/api', credential));
     if (id === 'control') { leave = unmountPanel; await mountPanel(panel, clientFor('/api/hub', credential)); }
   };
@@ -132,7 +136,7 @@ function showApp(credential, options) {
       h('span', { class: 'grow' }),
       stationSlot,
       h('button', { onclick: () => { setSession(''); location.reload(); } }, 'Sign out')),
-    h('main', {}, panel));
+    h('main', {}, accountCard(clientFor('/api', credential), me), panel));
 
   let first = 'generate';
   try { first = sessionStorage.getItem('tab') || first; } catch { /* storage blocked */ }
@@ -162,7 +166,9 @@ async function start() {
     credential = await showLogin();
     options = await clientFor('/api', credential).get('/options');
   }
-  showApp(credential, options);
+  let me = { username: '', role: 'user', quota: {}, usage: null };
+  try { me = await clientFor('/api', credential).get('/users/me'); } catch { /* keep the least-privileged view */ }
+  showApp(credential, options, me);
 }
 
 start();

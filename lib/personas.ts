@@ -4,6 +4,8 @@
 
 export interface Persona {
   id: string;
+  /** Username of the owner. Unset = shared (built-ins and admin-made); only admins change those. */
+  ownerId?: string;
   name: string;
   /** One line for lists. */
   description: string;

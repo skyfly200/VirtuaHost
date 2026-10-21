@@ -1,4 +1,4 @@
-import { checkAuth } from "../auth.js";
+import { authorize, canView } from "../auth.js";
 import { isExpired } from "../clip-info.js";
 import { enqueue, finish, getItem, listQueue } from "../queue-store.js";
 import { getClip } from "../store.js";
@@ -8,7 +8,7 @@ import { getClip } from "../store.js";
 //   POST /api/queue                { clipId, play?, preempt?, fx? }
 //   DELETE /api/queue/:id          cancel an item that has not been collected yet
 export async function handleQueue(req: Request, id: string | undefined): Promise<Response> {
-  const denied = checkAuth(req);
+  const { who, denied } = await authorize(req);
   if (denied) return denied;
 
   if (!id && req.method === "GET") return Response.json({ items: await listQueue() });
@@ -17,7 +17,7 @@ export async function handleQueue(req: Request, id: string | undefined): Promise
     const body = (await req.json().catch(() => null)) as { clipId?: unknown; play?: unknown; preempt?: unknown; fx?: unknown } | null;
     if (!body || typeof body.clipId !== "string") return Response.json({ error: "clipId is required" }, { status: 400 });
     const clip = await getClip(body.clipId);
-    if (!clip) return Response.json({ error: "Clip not found" }, { status: 404 });
+    if (!clip || !canView(who, clip.metadata.ownerId)) return Response.json({ error: "Clip not found" }, { status: 404 });
     if (isExpired(clip.metadata.info)) return Response.json({ error: "That clip has expired (its event is over), so it will not be sent" }, { status: 409 });
     const item = await enqueue({
       clipId: body.clipId,

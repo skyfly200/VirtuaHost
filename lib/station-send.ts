@@ -5,7 +5,10 @@
 import { isExpired, type ClipInfo } from "./clip-info.js";
 import { handoffConfigured, handoffDefaults, pushToStation, type FxSetting, type HandoffResult } from "./handoff.js";
 import { enqueue } from "./queue-store.js";
+import { createLogger } from "./log.js";
 import type { Station } from "./station-profile.js";
+
+const log = createLogger("station-send");
 
 export const queueMode = (): boolean => process.env.STATION_MODE?.trim().toLowerCase() === "queue";
 export const stationConfigured = (): boolean => queueMode() || handoffConfigured();
@@ -35,6 +38,7 @@ export async function sendToStation(options: SendOptions): Promise<HandoffResult
       const item = await enqueue({ clipId: options.clipId, title: options.title, play, preempt, ...(fx ? { fx } : {}), ...(options.info ? { info: options.info } : {}) });
       return { sent: true, queued: true, queueId: item.id };
     } catch (err) {
+      log.error("could not queue clip", { clipId: options.clipId, err });
       return { sent: false, error: `Could not queue the clip: ${(err as Error).message}` };
     }
   }

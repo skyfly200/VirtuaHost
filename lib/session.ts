@@ -1,16 +1,26 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { hashPassword, verifyPassword } from "./passwords.js";
+import { getUser, USERNAME, type Role } from "./user-store.js";
 
 // Password logins for the web UI.
 //
-//   LOGIN_USERS     "alice:scrypt.<salt>.<hash>,bob:scrypt.<salt>.<hash>"  (make a hash with `npm run hash-password`)
 //   SESSION_SECRET  a random string of 32+ characters that signs session tokens (openssl rand -hex 32)
 //   SESSION_HOURS   how long a login lasts (default 12)
+//   LOGIN_USERS     optional bootstrap admins, "alice:scrypt.<salt>.<hash>,bob:..." (make a hash with `npm run hash-password`).
+//                   They are always admins and cannot be edited in the UI. Everyone else is created by an admin in the
+//                   Users tab and lives in the database (lib/user-store.ts).
 //
-// A token is "v1.<payload>.<signature>" signed with HMAC-SHA256; nothing is stored on the server, so it works on serverless
-// functions. Changing SESSION_SECRET signs everyone out.
+// A token is "v1.<payload>.<signature>" signed with HMAC-SHA256. It only says who signed in; the account is looked up on every
+// request, so disabling or deleting a user, or changing their role, takes effect immediately. Changing SESSION_SECRET signs
+// everyone out.
 export const MIN_SECRET_LENGTH = 32;
-const USERNAME = /^[A-Za-z0-9_.@-]{1,40}$/;
+
+export interface Account {
+  username: string;
+  role: Role;
+  source: "env" | "database";
+  passwordHash: string;
+}
 
 export function parseUsers(raw: string | undefined = process.env.LOGIN_USERS): Map<string, string> {
   const users = new Map<string, string>();
@@ -25,15 +35,26 @@ export function parseUsers(raw: string | undefined = process.env.LOGIN_USERS): M
 }
 
 const secret = () => process.env.SESSION_SECRET ?? "";
-export const loginConfigured = (): boolean => parseUsers().size > 0 && secret().length >= MIN_SECRET_LENGTH;
+/** Password sign-in is available once the signing secret is set. Whether anyone can actually sign in depends on the users. */
+export const loginConfigured = (): boolean => secret().length >= MIN_SECRET_LENGTH;
+
+export async function findAccount(username: string): Promise<Account | null> {
+  const name = username.trim();
+  const envHash = parseUsers().get(name);
+  if (envHash) return { username: name, role: "admin", source: "env", passwordHash: envHash };
+  const user = await getUser(name);
+  if (!user || user.disabled) return null;
+  return { username: user.username, role: user.role, source: "database", passwordHash: user.passwordHash };
+}
 
 // A stand-in hash, so an unknown username costs the same time as a wrong password.
 const DUMMY = hashPassword("not-a-real-password");
 
-export function checkPassword(username: string, password: string): boolean {
-  const stored = parseUsers().get(username);
-  const ok = verifyPassword(password, stored ?? DUMMY);
-  return Boolean(stored) && ok;
+/** The account when the password is right, otherwise null. */
+export async function checkPassword(username: string, password: string): Promise<Account | null> {
+  const account = await findAccount(username);
+  const ok = verifyPassword(password, account?.passwordHash ?? DUMMY);
+  return account && ok ? account : null;
 }
 
 const b64 = (data: Buffer | string) => Buffer.from(data).toString("base64url");
@@ -46,8 +67,8 @@ export function issueToken(username: string, now: number = Date.now()): { token:
   return { token: `v1.${payload}.${b64(sign(`v1.${payload}`))}`, expiresAt };
 }
 
-// Returns the username for a valid, unexpired token, otherwise null.
-export function verifyToken(token: string, now: number = Date.now()): string | null {
+// The username in a validly signed, unexpired token, otherwise null. Does not check that the account still exists.
+export function readToken(token: string, now: number = Date.now()): string | null {
   if (!loginConfigured()) return null;
   const parts = token.split(".");
   if (parts.length !== 3 || parts[0] !== "v1") return null;
@@ -56,9 +77,14 @@ export function verifyToken(token: string, now: number = Date.now()): string | n
   if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) return null;
   try {
     const { sub, exp } = JSON.parse(Buffer.from(parts[1], "base64url").toString()) as { sub?: string; exp?: number };
-    // The user must still exist: removing someone from LOGIN_USERS ends their session.
-    return typeof sub === "string" && typeof exp === "number" && exp > now && parseUsers().has(sub) ? sub : null;
+    return typeof sub === "string" && typeof exp === "number" && exp > now ? sub : null;
   } catch {
     return null;
   }
+}
+
+// The account for a valid token whose user still exists and is not disabled.
+export async function verifyToken(token: string, now: number = Date.now()): Promise<Account | null> {
+  const sub = readToken(token, now);
+  return sub ? findAccount(sub) : null;
 }

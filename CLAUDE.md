@@ -77,16 +77,18 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   keys under that prefix and fetches each one's metadata individually — fine
   at single-station scale, would need a real index if clip volume grew a
   lot.
+- **Logging** (`lib/log.ts`): `createLogger(scope)` writes one JSON line per event (time, level, scope, msg, fields) to stdout/stderr, where Netlify's function logs pick it up. Pass caught errors as `err` (name, message, short stack are logged); fields named like key/token/secret/password are redacted. `LOG_LEVEL=debug|info|warn|error|silent` (default info). Upstream failures (script/speech, hand-off, queue, proxy, schedule runs) and sign-in outcomes are logged; never log secrets or request bodies.
+- **Users, roles, ownership and quotas** (`lib/user-store.ts`, `lib/quota.ts`, `lib/handlers/users.ts`, `/api/users`, Users tab, `docs/USERS.md`): people live in Netlify Blobs (store `auth`, `users/<name>.json`) behind `user-store.ts`, the only file to change to move to a real database. `LOGIN_USERS` entries are bootstrap admins (read-only in the UI). Roles are `admin` and `user`. `authorize(req, {admin?})` in `lib/auth.ts` returns the `Principal` (the account is looked up on every request, so disabling a user takes effect at once); `checkAuth` is the async yes/no form. Clips, personas and schedules carry `ownerId` (set by `ownerFor`, unset for admins and the ACCESS_KEY = shared); `canView`/`canModify` enforce it. Stations, host settings and the Control proxy are admin-write. Quotas (`lib/quota.ts`): per-user daily/monthly AI requests and caps on clips and schedules, defaults from `QUOTA_*`, admins unlimited; scheduled runs spend the owner's quota.
 - **Error handling convention**: handlers return `502` (not `500`) when a
   Gemini call itself fails (script generation or speech synthesis), and
   `400` for malformed/missing request fields — this distinguishes "your
   request was bad" from "the upstream model call failed" for callers.
 - **Sign-in.** `lib/auth.ts#checkAuth` guards every `/api/*` function (called first in each handler, so adapters cannot skip it).
-  Two ways in, either is enough: a login session token (`Authorization: Bearer`, from `POST /api/login`; users in `LOGIN_USERS`
-  as `name:scrypt.<salt>.<hash>`, tokens signed with `SESSION_SECRET`, stateless HMAC in `lib/session.ts`, wrong passwords
+  Two ways in, either is enough: a login session token (`Authorization: Bearer`, from `POST /api/login`; bootstrap admins in `LOGIN_USERS`
+  as `name:scrypt.<salt>.<hash>`, other users in Blobs, tokens signed with `SESSION_SECRET`, stateless HMAC in `lib/session.ts`, wrong passwords
   throttled through Netlify Blobs in `lib/throttle.ts`) or the optional machine key `ACCESS_KEY` (`x-api-key` or Bearer). With
   neither configured the API answers 503 rather than being open; `AUTH_DISABLED=true` is the explicit local-dev opt-out.
-  `npm run hash-password -- <user>` makes an entry. There are no roles: every login can do everything.
+  `npm run hash-password -- <user>` makes an entry for the first admin; everyone else is added in the Users tab (see Users, roles above).
 - **The UI and its proxy.** `public/index.html` is one page (`app.js`): login, then tabs. `generate/`, `lab/` and `panel/` are
   ES modules that draw into a tab, using clients from `shared/kit.js`. Every tab except Stations runs on this site's own `/api/*`
   (Voice Lab included: `public/shared/speaker.js` speaks and mixes, `public/generate/fx.js` previews effects in the browser). Control (the old hub screen) talks to

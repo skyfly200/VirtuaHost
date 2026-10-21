@@ -38,6 +38,8 @@ export interface GenerateRequest {
 
 export interface ClipMetadata {
   id: string;
+  /** Who made it (a username). Unset for the station's own clips (made by an admin or the access key), which everyone can see. */
+  ownerId?: string;
   createdAt: string;
   mode: GenerateMode;
   input: string;

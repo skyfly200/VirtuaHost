@@ -5,11 +5,15 @@ import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "../cues.js";
 import { cleanTone, findFormat } from "../formats.js";
 import { getPersona } from "../persona-store.js";
 import { getStation } from "../station-profile-store.js";
-import { saveClip } from "../store.js";
+import { listClips, saveClip } from "../store.js";
 import { embedTags, sanitizeInfo } from "../clip-info.js";
 import { sendToStation, stationConfigured } from "../station-send.js";
-import { checkAuth } from "../auth.js";
+import { authorize, canView, ownerFor } from "../auth.js";
+import { chargeAi, checkCount } from "../quota.js";
+import { createLogger } from "../log.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
+
+const log = createLogger("generate");
 
 // Chips Voice scripts can contain [sfx:name] sound effect tags. This Gemini path cannot mix them, and Gemini
 // would read them aloud, so they are removed (use the station's /speak to get the effects mixed in).
@@ -20,7 +24,7 @@ export function stripSfxTags(text: string): { text: string; removed: boolean } {
 }
 
 export async function handleGenerate(req: Request): Promise<Response> {
-  const denied = checkAuth(req);
+  const { who, denied } = await authorize(req);
   if (denied) return denied;
 
   if (req.method !== "POST") {
@@ -49,6 +53,8 @@ export async function handleGenerate(req: Request): Promise<Response> {
 
   const provider = activeProvider();
   if (!provider) return Response.json({ error: NO_PROVIDER_MESSAGE }, { status: 503 });
+  const over = await chargeAi(who);
+  if (over) return over;
 
   // The station this is for: its name and tagline shape AI-written lines, and its defaults fill in what the request leaves out.
   let station;
@@ -62,7 +68,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   if (personaId !== undefined) {
     if (typeof personaId !== "string") return Response.json({ error: "persona must be an id" }, { status: 400 });
     persona = await getPersona(personaId);
-    if (!persona) return Response.json({ error: `Unknown persona "${personaId.slice(0, 50)}"` }, { status: 400 });
+    if (!persona || !canView(who, persona.ownerId)) return Response.json({ error: `Unknown persona "${personaId.slice(0, 50)}"` }, { status: 400 });
   }
 
   const tone = cleanTone(body.tone ?? persona?.tone);
@@ -96,6 +102,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   try {
     scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format, persona: persona?.instructions, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text : input;
   } catch (err) {
+    log.error("script generation failed", { provider, textModel, err });
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
   }
 
@@ -126,6 +133,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   try {
     spoken = await speak({ text: scriptText, provider, speechModel, voice, tone });
   } catch (err) {
+    log.error("speech synthesis failed", { provider, speechModel, voice, err });
     return Response.json({ error: `Speech synthesis failed: ${(err as Error).message}` }, { status: 502 });
   }
 
@@ -142,6 +150,7 @@ export async function handleGenerate(req: Request): Promise<Response> {
   const audio = embedTags(spoken.audio, spoken.mimeType, info, { script: scriptText, createdAt, clipId: id, station: process.env.STATION_NAME });
   const metadata: ClipMetadata = {
     id,
+    ...(ownerFor(who) ? { ownerId: ownerFor(who) } : {}),
     createdAt,
     mode,
     input,
@@ -157,6 +166,8 @@ export async function handleGenerate(req: Request): Promise<Response> {
     ...(format ? { format: format.id } : {}),
   };
 
+  const full = await checkCount(who, "maxClips", async () => (await listClips()).filter((c) => c.ownerId === who.username).length);
+  if (full) return full;
   await saveClip(id, audio, metadata);
 
   // Hand the clip to the station server when one is configured. A failure here is reported but does not

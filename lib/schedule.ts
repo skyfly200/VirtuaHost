@@ -15,6 +15,8 @@ export type Content =
 
 export interface Schedule {
   id: string;
+  /** Username of the owner (see Persona.ownerId). Their AI quota pays for each run. */
+  ownerId?: string;
   name: string;
   enabled: boolean;
   when: When;
