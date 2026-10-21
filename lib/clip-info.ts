@@ -167,6 +167,29 @@ export function writeWavTags(audio: Buffer, info: ClipInfo, ctx: TagContext): Bu
   return out;
 }
 
+// The WAV without the tag chunks this file writes (LIST/INFO and vhmd), so new ones replace them instead of piling up.
+export function stripWavTags(audio: Buffer): Buffer {
+  if (audio.length < 12 || audio.subarray(0, 4).toString("latin1") !== "RIFF" || audio.subarray(8, 12).toString("latin1") !== "WAVE") return audio;
+  const kept: Buffer[] = [audio.subarray(0, 12)];
+  let at = 12;
+  while (at + 8 <= audio.length) {
+    const id = audio.subarray(at, at + 4).toString("latin1");
+    const size = audio.readUInt32LE(at + 4);
+    const end = Math.min(audio.length, at + 8 + size + (size % 2));
+    const isInfo = id === "LIST" && audio.subarray(at + 8, at + 12).toString("latin1") === "INFO";
+    if (!isInfo && id !== "vhmd") kept.push(audio.subarray(at, end));
+    at = end;
+  }
+  const out = Buffer.concat(kept);
+  out.writeUInt32LE(out.length - 8, 4);
+  return out;
+}
+
+// Replaces the tags in a file that already has some (a clip whose details were edited).
+export function retag(audio: Buffer, mimeType: string, info: ClipInfo, ctx: TagContext = {}): Buffer {
+  return embedTags(mimeType === "audio/wav" ? stripWavTags(audio) : audio, mimeType, info, ctx);
+}
+
 export function embedTags(audio: Buffer, mimeType: string, info: ClipInfo, ctx: TagContext = {}): Buffer {
   if (mimeType === "audio/mpeg") return writeId3(audio, info, ctx);
   if (mimeType === "audio/wav") return writeWavTags(audio, info, ctx);

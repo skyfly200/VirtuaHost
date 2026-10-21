@@ -4,8 +4,10 @@
 import { h, clear, toast } from '../shared/kit.js';
 import { loadStations, setStation, currentStation, allStations } from '../shared/station.js';
 import { mountHostCard } from '../shared/hostcard.js';
+import { modelVoiceFields } from '../shared/voicepicker.js';
+import { createSpeaker } from '../shared/speaker.js';
 
-const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultVoice: '', skipArtists: [], autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
+const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
 const LINES = (v) => v.split('\n').map((l) => l.trim()).filter(Boolean);
 const clock = (tz) => { try { return new Intl.DateTimeFormat([], { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date()); } catch { return ''; } };
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -90,7 +92,14 @@ export async function mountStationProfiles(root, api) {
       h('button', { type: 'button', class: 'link danger', onclick: () => { c.links.splice(i, 1); paintLinks(); } }, 'Remove'))),
     c.links.length < 12 ? h('button', { type: 'button', onclick: () => { c.links.push({ label: '', url: '' }); paintLinks(); } }, 'Add a link') : null);
     paintLinks();
-    const models = options.models.choosable ? options.models.speech.map((m) => m.id) : [];
+    // The voice and models new clips for this station use by default (a persona or a request can still choose differently).
+    const speaker = createSpeaker(api, options.features);
+    const defaults = { speechModel: c.defaultSpeechModel || '', voice: c.defaultVoice || '', textModel: c.defaultTextModel || '' };
+    const voiceBox = modelVoiceFields({
+      options, value: defaults,
+      onchange: (v) => { c.defaultSpeechModel = v.speechModel; c.defaultVoice = v.voice; c.defaultTextModel = v.textModel; },
+      sample: async (v) => URL.createObjectURL((await speaker.render(`This is ${c.name || 'the station'}${c.tagline ? `. ${c.tagline}` : ''}.`, { ...(v.speechModel && options.models.choosable ? { speechModel: v.speechModel } : {}), ...(v.voice ? { voice: v.voice } : {}) })).blob),
+    });
     const select = (label, key, pairs, blankLabel) => h('label', { class: 'field' }, label, h('select', { onchange: (e) => { c[key] = e.target.value; } }, h('option', { value: '' }, blankLabel), pairs.map(([v, t]) => h('option', { value: v, selected: v === c[key] }, t))));
 
     const save = h('button', { class: 'primary', type: 'button', onclick: async () => {
@@ -123,9 +132,8 @@ export async function mountStationProfiles(root, api) {
       h('h3', {}, 'How new clips sound by default'),
       h('div', { class: 'grid cols' },
         select('Persona', 'defaultPersonaId', personas.map((p) => [p.id, `${p.emoji || ''} ${p.name}`.trim()]), 'None'),
-        models.length ? select('Speech model', 'defaultSpeechModel', models.map((m) => [m, m]), 'The site default') : null,
-        text('Voice', 'defaultVoice', { placeholder: 'model default' }),
         fxPresets.length ? select('Audio treatment at the station', 'defaultFx', fxPresets.map((f) => [f, f]), 'None') : null),
+      voiceBox.el,
       listField('Skip list: spots and relays, one artist per line (the host says nothing over or about them)', 'skipArtists', 3, 'Jingle Radio'),
       h('h3', {}, 'Sending clips to this station'),
       h('p', { class: 'muted small' }, 'Defaults for clips made for this station. A request, a schedule or a button press can still choose differently.'),

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { embedTags, sanitizeInfo } from "../clip-info.js";
-import { getClip, listClips, saveClip } from "../store.js";
+import { embedTags, retag, sanitizeInfo, type ClipInfo } from "../clip-info.js";
+import { deleteClip, getClip, listClips, saveClip } from "../store.js";
 import { checkAuth } from "../auth.js";
 import { sendToStation, stationConfigured } from "../station-send.js";
 import { getStation } from "../station-profile-store.js";
@@ -67,11 +67,38 @@ async function handleSave(req: Request): Promise<Response> {
   return Response.json({ id, audioUrl: `/api/clips/${id}`, ...(handoff ? { handoff } : {}) }, { status: 201 });
 }
 
+// PATCH /api/clips/:id { title?, kind?, tags?, expiresAt? (null clears it) }: changes the details kept with a clip and written into its audio
+// (the tags are rewritten, the sound is untouched). This is how a promo is extended, or ended early.
+async function handleEdit(req: Request, id: string): Promise<Response> {
+  const clip = await getClip(id);
+  if (!clip) return Response.json({ error: "Clip not found" }, { status: 404 });
+  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body || typeof body !== "object") return Response.json({ error: "Send the changes as JSON" }, { status: 400 });
+  if (body.expiresAt !== undefined && body.expiresAt !== null && !Number.isFinite(Date.parse(String(body.expiresAt)))) return Response.json({ error: "expiresAt must be a date and time, or null to remove it" }, { status: 400 });
+
+  const current = clip.metadata.info ?? {};
+  const changes = sanitizeInfo({ title: body.title, kind: body.kind, tags: body.tags, expiresAt: body.expiresAt === null ? undefined : body.expiresAt });
+  const next: ClipInfo = { ...current };
+  for (const key of ["title", "kind", "tags"] as const) if (body[key] !== undefined && changes[key] !== undefined) (next as Record<string, unknown>)[key] = changes[key];
+  if (body.expiresAt === null) delete next.expiresAt;
+  else if (changes.expiresAt) next.expiresAt = changes.expiresAt;
+
+  const audio = retag(Buffer.from(clip.data), clip.metadata.mimeType, next, { script: clip.metadata.scriptText, createdAt: clip.metadata.createdAt, clipId: id, station: process.env.STATION_NAME });
+  await saveClip(id, audio, { ...clip.metadata, info: next, byteSize: audio.length });
+  return Response.json({ id, info: next });
+}
+
 export async function handleClips(req: Request, id: string | undefined): Promise<Response> {
   const denied = checkAuth(req);
   if (denied) return denied;
 
   if (req.method === "POST" && !id) return handleSave(req);
+  if (id && req.method === "PATCH") return handleEdit(req, id);
+  if (id && req.method === "DELETE") {
+    if (!(await getClip(id))) return Response.json({ error: "Clip not found" }, { status: 404 });
+    await deleteClip(id);
+    return new Response(null, { status: 204 });
+  }
   if (req.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405 });
   }

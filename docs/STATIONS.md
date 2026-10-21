@@ -13,6 +13,17 @@ a station, and choose **Work on this station** (or pick it in the header). Every
 | Call sign, frequency, genres, city, links, contact, notes | Shown on the card and available to other tools; nothing depends on them. |
 | Connection | A note of what the station will connect to later (Chips Voice, RadioDJ, Icecast, a hub id). Nothing connects. |
 
+## Voice and models: who speaks and who writes
+
+A **persona**, the **virtual host**, a **station** and a **flier promo** can each carry a *speech model and voice* (what speaks) and a
+*writing model* (what writes the words). A blank means "use the next one down", and the pickers show what that is:
+
+> request (or a choice on the promo/host) → the persona's → the station's defaults → the site's default
+
+So CHIP can always speak with one voice and be written by one model, while a promo for that persona can still choose another voice for
+one night. Each picker has a play button to hear the result, and picking a different speech model clears the voice (voices differ per
+model). A writing model that is no longer on your list falls through to the next one; one you ask for by name that is not offered is an error.
+
 ## Settings that belong to each station
 
 Open a saved station in the Stations tab (Edit) and you get its own:

@@ -4,10 +4,11 @@ vi.mock("../../lib/store.js", () => ({
   getClip: vi.fn(),
   listClips: vi.fn(),
   saveClip: vi.fn(),
+  deleteClip: vi.fn(),
 }));
 vi.mock("../../lib/handoff.js", () => ({ handoffConfigured: vi.fn(() => false), handoffDefaults: vi.fn(), pushToStation: vi.fn() }));
 
-import { getClip, listClips, saveClip } from "../../lib/store.js";
+import { getClip, listClips, saveClip, deleteClip } from "../../lib/store.js";
 import { handleClips } from "../../lib/handlers/clips.js";
 import type { ClipMetadata } from "../../lib/types.js";
 
@@ -113,5 +114,45 @@ describe("handleClips", () => {
     const res = await handleClips(new Request("http://localhost/api/clips/abc/meta", { headers: { "x-api-key": TEST_KEY } }), "abc");
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ id: "abc", scriptText: "hello", kind: "promo", expiresAt: "2030-04-12T23:00:00.000Z", event: { name: "Spring Fling" } });
+  });
+});
+
+describe("editing and deleting a clip", () => {
+  const edit = (method: string, id: string, body?: unknown) =>
+    handleClips(new Request(`http://localhost/api/clips/${id}`, { method, headers: { "x-api-key": TEST_KEY, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }), id);
+
+  beforeEach(async () => {
+    const { embedTags } = await import("../../lib/clip-info.js");
+    const wav = Buffer.from("RIFF\0\0\0\0WAVEdata\x04\0\0\0abcd", "latin1");
+    wav.writeUInt32LE(wav.length - 8, 4);
+    const tagged = embedTags(wav, "audio/wav", { title: "Spring Fling", kind: "promo", expiresAt: "2030-04-12T22:00:00.000Z" }, { clipId: "abc" });
+    mockedGetClip.mockResolvedValue({ data: tagged.buffer.slice(tagged.byteOffset, tagged.byteOffset + tagged.byteLength) as ArrayBuffer, metadata: { ...sampleMetadata, mimeType: "audio/wav", info: { title: "Spring Fling", kind: "promo", expiresAt: "2030-04-12T22:00:00.000Z" } } });
+  });
+
+  it("extends or removes an expiry, rewriting the tags without piling up chunks", async () => {
+    const res = await edit("PATCH", "abc", { expiresAt: "2030-04-13T02:00:00Z", title: "Spring Fling (extended)" });
+    expect(res.status).toBe(200);
+    const [, saved, meta] = vi.mocked(saveClip).mock.calls[0];
+    expect(meta.info).toMatchObject({ title: "Spring Fling (extended)", kind: "promo", expiresAt: "2030-04-13T02:00:00.000Z" });
+    const { readWavInfo } = await import("../../lib/clip-info.js");
+    const read = readWavInfo(saved);
+    expect(read.info.INAM).toBe("Spring Fling (extended)");
+    expect(read.json?.expiresAt).toBe("2030-04-13T02:00:00.000Z");
+    expect(saved.readUInt32LE(4)).toBe(saved.length - 8);
+    expect(saved.toString("latin1").split("vhmd").length - 1).toBe(1);               // one metadata chunk, not two
+    expect(meta.byteSize).toBe(saved.length);
+
+    await edit("PATCH", "abc", { expiresAt: null });
+    expect(vi.mocked(saveClip).mock.calls[1][2].info).not.toHaveProperty("expiresAt");
+  });
+
+  it("rejects bad changes and unknown clips, and deletes", async () => {
+    expect((await edit("PATCH", "abc", { expiresAt: "soon" })).status).toBe(400);
+    expect((await edit("PATCH", "abc", "nope")).status).toBe(400);
+    mockedGetClip.mockResolvedValueOnce(null);
+    expect((await edit("PATCH", "missing", { title: "x" })).status).toBe(404);
+    expect((await edit("DELETE", "abc")).status).toBe(204);
+    expect(vi.mocked(deleteClip)).toHaveBeenCalledWith("abc");
+    expect(saveClip).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ info: expect.objectContaining({ expiresAt: "soon" }) }));
   });
 });

@@ -17,6 +17,8 @@ export interface HostConfig {
   /** Override the persona's own delivery. */
   voice: string;
   speechModel: string;
+  /** The writing model for AI-written links (blank: the persona's, then the station's, then the site's default). */
+  textModel: string;
   tone: string;
   /** Audio treatment the station applies (a preset name from FX_PRESETS, or empty for none). */
   fx: string;
@@ -29,7 +31,7 @@ export interface HostConfig {
 export const DEFAULT_SKIP = ["", "syndicate empire radio", "way high radio", "k.r.a.p. relay"];
 
 export const HOST_DEFAULTS: HostConfig = {
-  enabled: false, every: 1, minGapSeconds: 45, lines: "template", personaId: "chip", voice: "", speechModel: "", tone: "", fx: "", preempt: false, skipArtists: DEFAULT_SKIP,
+  enabled: false, every: 1, minGapSeconds: 45, lines: "template", personaId: "chip", voice: "", speechModel: "", textModel: "", tone: "", fx: "", preempt: false, skipArtists: DEFAULT_SKIP,
 };
 
 export const TEMPLATES = [
@@ -57,7 +59,7 @@ export function applyHostPatch(current: HostConfig, patch: unknown): HostConfig 
   if (p.every !== undefined) next.every = clamp(Math.floor(Number(p.every)) || 1, 1, 50);
   if (p.minGapSeconds !== undefined) next.minGapSeconds = clamp(Number(p.minGapSeconds) || 0, 0, 3600);
   if (p.lines === "template" || p.lines === "llm") next.lines = p.lines;
-  for (const [key, max] of [["personaId", 60], ["voice", 60], ["speechModel", 100], ["tone", 100]] as const) {
+  for (const [key, max] of [["personaId", 60], ["voice", 60], ["speechModel", 100], ["textModel", 100], ["tone", 100]] as const) {
     const v = text(p[key], max);
     if (v !== undefined) next[key] = v;
   }
@@ -72,12 +74,13 @@ export function applyHostPatch(current: HostConfig, patch: unknown): HostConfig 
 }
 
 // A station's own profile fills in the host's starting settings (its persona, voice, treatment and skip list); anything saved on top wins.
-export function hostDefaultsFor(station: { defaultPersonaId?: string; defaultVoice?: string; defaultSpeechModel?: string; defaultFx?: string; skipArtists?: string[]; preempt?: boolean } | null | undefined): Partial<HostConfig> {
+export function hostDefaultsFor(station: { defaultPersonaId?: string; defaultVoice?: string; defaultSpeechModel?: string; defaultTextModel?: string; defaultFx?: string; skipArtists?: string[]; preempt?: boolean } | null | undefined): Partial<HostConfig> {
   if (!station) return {};
   return {
     ...(station.defaultPersonaId ? { personaId: station.defaultPersonaId } : {}),
     ...(station.defaultVoice ? { voice: station.defaultVoice } : {}),
     ...(station.defaultSpeechModel ? { speechModel: station.defaultSpeechModel } : {}),
+    ...(station.defaultTextModel ? { textModel: station.defaultTextModel } : {}),
     ...(station.defaultFx ? { fx: station.defaultFx } : {}),
     ...(station.skipArtists && station.skipArtists.length ? { skipArtists: station.skipArtists } : {}),
     ...(typeof station.preempt === "boolean" ? { preempt: station.preempt } : {}),
