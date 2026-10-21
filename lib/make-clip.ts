@@ -9,6 +9,7 @@ import { cleanTone } from "./formats.js";
 import { defaultSpeechModel, discoverSpeechModels, pickSpeechModel, speechModels, type SpeechModel } from "./openrouter.js";
 import { saveClip } from "./store.js";
 import { createLogger } from "./log.js";
+import { elevenConfigured, isElevenModel } from "./elevenlabs.js";
 import type { ClipMetadata } from "./types.js";
 
 const log = createLogger("make-clip");
@@ -44,10 +45,12 @@ export async function makeClip(options: MakeClipOptions): Promise<MadeClip> {
     const picked = pickSpeechModel(wanted, listed ? [] : await discoverSpeechModels());
     if ("error" in picked) return { ok: false, status: 400, error: picked.error };
     speechModel = picked.model;
+  } else if (isElevenModel(options.speechModel) && elevenConfigured()) {
+    speechModel = { id: options.speechModel! };
   }
 
   let scriptText = options.text.replace(SFX_TAG, " ").replace(/\s{2,}/g, " ").trim();
-  const cues = provider === "openrouter" ? cuesFor((speechModel ?? defaultSpeechModel()).id) : GEMINI_DIRECT_CUES;
+  const cues = provider === "openrouter" || isElevenModel(speechModel?.id) ? cuesFor((speechModel ?? defaultSpeechModel()).id) : GEMINI_DIRECT_CUES;
   if (cues.tags === false) scriptText = stripDeliveryTags(scriptText).text;
   if (!scriptText) return { ok: false, status: 400, error: "There is nothing to say once tags are removed" };
 

@@ -55,7 +55,7 @@ export async function mountPersonas(root, api) {
 
   function card(p) {
     return h('div', { class: 'clip' },
-      h('div', { class: 'row' }, sampleFor(p).button, h('span', { style: 'font-size:28px;line-height:1' }, p.emoji || '🎙️'), h('div', { class: 'grow' }, h('strong', {}, p.name), p.tagline ? h('div', { class: 'small muted' }, `"${p.tagline}"`) : null),
+      h('div', { class: 'row' }, sampleFor(p).button, sampleFor(p).download(p.name), h('span', { style: 'font-size:28px;line-height:1' }, p.emoji || '🎙️'), h('div', { class: 'grow' }, h('strong', {}, p.name), p.tagline ? h('div', { class: 'small muted' }, `"${p.tagline}"`) : null),
         p.builtin ? h('span', { class: 'chip' }, 'example') : null),
       h('p', { class: 'clip-script small' }, p.description || p.instructions.slice(0, 140)),
       h('div', { class: 'row small muted', style: 'gap:4px' }, (p.tags || []).map((t) => h('span', { class: 'chip' }, t)), p.voice ? h('span', { class: 'chip' }, `voice: ${p.voice}`) : null, p.speechModel ? h('span', { class: 'chip' }, `🔊 ${p.speechModel}`) : null, p.textModel ? h('span', { class: 'chip' }, `✍ ${p.textModel}`) : null),

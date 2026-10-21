@@ -5,7 +5,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 //   the person's key  >  the station's key  >  the site's key
 // A handler resolves that once (async, from storage) and runs the rest of the request inside runWithScope, so the provider code
 // (lib/openrouter.ts, lib/gemini.ts, lib/ai.ts) can stay synchronous and simply ask apiKey(). Outside a scope only the site keys exist.
-export type KeyProvider = "openrouter" | "gemini";
+export type KeyProvider = "openrouter" | "gemini" | "elevenlabs";
 export type KeySource = "user" | "station" | "site";
 
 export interface KeyScope {
@@ -20,7 +20,7 @@ const als = new AsyncLocalStorage<KeyScope>();
 export const runWithScope = <T>(scope: KeyScope, fn: () => T): T => als.run(scope, fn);
 export const currentScope = (): KeyScope | undefined => als.getStore();
 
-const ENV: Record<KeyProvider, string> = { openrouter: "OPENROUTER_API_KEY", gemini: "GEMINI_API_KEY" };
+const ENV: Record<KeyProvider, string> = { openrouter: "OPENROUTER_API_KEY", gemini: "GEMINI_API_KEY", elevenlabs: "ELEVENLABS_API_KEY" };
 
 export const apiKey = (provider: KeyProvider): string | undefined => als.getStore()?.keys[provider] || process.env[ENV[provider]] || undefined;
 export const keySource = (provider: KeyProvider): KeySource => (als.getStore()?.keys[provider] ? als.getStore()!.source[provider] ?? "site" : "site");

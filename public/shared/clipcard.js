@@ -2,6 +2,7 @@
 // do with it: send it to the station, change its details or expiry, delete it. Shared by the Library's Clips list and the Promos page.
 import { h, clear, toast, fmtDate, audioUrl } from './kit.js';
 import { createPlayer } from './playbutton.js';
+import { downloadMenu } from './download.js';
 import { allStations } from './station.js';
 
 export const isExpired = (clip, now = Date.now()) => Boolean(clip.info && clip.info.expiresAt && Date.parse(clip.info.expiresAt) <= now);
@@ -38,6 +39,7 @@ export function clipCard(clip, ctx) {
         ...(!expired && ctx.queueOn ? [
           h('button', { type: 'button', onclick: send(true) }, 'Send to air'),
           h('button', { type: 'button', onclick: send(false) }, 'Send to station library')] : []),
+        downloadMenu({ load: () => api.get(`/clips/${encodeURIComponent(clip.id)}`, { blob: true }), name: info.title || clip.scriptText }),
         h('button', { type: 'button', onclick: () => editing() }, 'Edit details'),
         ...(ctx.actions ? ctx.actions(clip) : []),
         h('button', { type: 'button', class: 'link danger', onclick: remove }, 'Delete')));

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { activeProvider, writeScript, speak, NO_PROVIDER_MESSAGE } from "../ai.js";
-import { resolveTextModel, pickSpeechModel, speechModels, defaultSpeechModel, discoverSpeechModels, type SpeechModel } from "../openrouter.js";
+import { ensureListed, resolveTextModel, pickSpeechModel, speechModels, defaultSpeechModel, discoverSpeechModels, type SpeechModel } from "../openrouter.js";
 import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "../cues.js";
 import { cleanTone, findFormat } from "../formats.js";
 import { getPersona } from "../persona-store.js";
@@ -12,6 +12,7 @@ import { authorize, canView, ownerFor, type Principal } from "../auth.js";
 import { stationOf, withKeys } from "../with-keys.js";
 import { chargeAi, checkCount } from "../quota.js";
 import { createLogger } from "../log.js";
+import { elevenConfigured, isElevenModel } from "../elevenlabs.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
 
 const log = createLogger("generate");
@@ -91,6 +92,7 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   let textModel: string | undefined;
   let speechModel: SpeechModel | undefined;
   if (provider === "openrouter") {
+    await ensureListed(typeof body.textModel === "string" ? body.textModel : undefined);
     const t = resolveTextModel(typeof body.textModel === "string" ? body.textModel : undefined, [persona?.textModel, station?.defaultTextModel]);
     if ("error" in t) return Response.json({ error: t.error }, { status: 400 });
     const requestedSpeech = typeof body.speechModel === "string" ? body.speechModel : persona?.speechModel || station?.defaultSpeechModel;
@@ -100,13 +102,16 @@ async function generate(req: Request, who: Principal): Promise<Response> {
     if ("error" in sp) return Response.json({ error: sp.error }, { status: 400 });
     textModel = t.model;
     speechModel = sp.model;
+  } else if (!body.textModel && isElevenModel(typeof body.speechModel === "string" ? body.speechModel : persona?.speechModel || station?.defaultSpeechModel) && elevenConfigured()) {
+    // Gemini writes, ElevenLabs speaks (voice clones): the only model choice that works without OpenRouter.
+    speechModel = { id: (typeof body.speechModel === "string" ? body.speechModel : persona?.speechModel || station?.defaultSpeechModel)! };
   } else if (body.textModel || body.speechModel) {
     return Response.json({ error: "Choosing models needs OPENROUTER_API_KEY; this site is using Gemini directly" }, { status: 400 });
   }
 
   let scriptText: string;
   try {
-    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format, persona: persona?.instructions, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text : input;
+    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format, persona: persona?.instructions, explicit: body.explicit === true, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text : input;
   } catch (err) {
     log.error("script generation failed", { provider, textModel, err });
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
@@ -125,7 +130,7 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   }
 
   // Inline cues like [laughs] are only performed by some models; others would read the brackets aloud.
-  const cues = provider === "openrouter" ? cuesFor((speechModel ?? defaultSpeechModel()).id) : GEMINI_DIRECT_CUES;
+  const cues = provider === "openrouter" || isElevenModel(speechModel?.id) ? cuesFor((speechModel ?? defaultSpeechModel()).id) : GEMINI_DIRECT_CUES;
   let cueTagsRemoved = false;
   if (cues.tags === false) {
     const plain = stripDeliveryTags(scriptText);

@@ -37,7 +37,7 @@ export async function handleKeys(req: Request): Promise<Response> {
 
   if (req.method === "PUT") {
     const provider = json?.provider as KeyProvider;
-    if (!PROVIDERS.includes(provider)) return Response.json({ error: 'provider must be "openrouter" or "gemini"' }, { status: 400 });
+    if (!PROVIDERS.includes(provider)) return Response.json({ error: 'provider must be "openrouter", "gemini" or "elevenlabs"' }, { status: 400 });
     if (!validKey(json?.key)) return Response.json({ error: "That does not look like an API key (16-300 characters, no spaces)" }, { status: 400 });
     await setProviderKey(owner, provider, json!.key as string);
     log.info("provider key set", { owner: `${owner.kind}:${owner.id}`, provider, by: who.username });
@@ -45,7 +45,7 @@ export async function handleKeys(req: Request): Promise<Response> {
   }
   if (req.method === "DELETE") {
     const provider = url.searchParams.get("provider") as KeyProvider;
-    if (!PROVIDERS.includes(provider)) return Response.json({ error: 'provider must be "openrouter" or "gemini"' }, { status: 400 });
+    if (!PROVIDERS.includes(provider)) return Response.json({ error: 'provider must be "openrouter", "gemini" or "elevenlabs"' }, { status: 400 });
     await clearProviderKey(owner, provider);
     log.info("provider key removed", { owner: `${owner.kind}:${owner.id}`, provider, by: who.username });
     return new Response(null, { status: 204 });

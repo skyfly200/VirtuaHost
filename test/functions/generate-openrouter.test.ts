@@ -51,7 +51,7 @@ describe("generate with OpenRouter", () => {
     const body = (await res.json()) as Body;
 
     expect(res.status).toBe(201);
-    expect(body).toMatchObject({ provider: "openrouter", scriptText: "Written by the model.", textModel: "openai/gpt-4o-mini", speechModel: "google/gemini-3.1-flash-tts-preview" });
+    expect(body).toMatchObject({ provider: "openrouter", scriptText: "Written by the model.", textModel: "openai/gpt-4o-mini", speechModel: "hexgrad/kokoro-82m" });
     expect(writeDjLine).not.toHaveBeenCalled();
     expect(synthesizeSpeech).not.toHaveBeenCalled();
     expect(mockedChat.mock.calls[0][0]).toMatchObject({ model: "openai/gpt-4o-mini", prompt: "hype friday" });

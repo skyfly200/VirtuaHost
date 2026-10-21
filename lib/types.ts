@@ -10,6 +10,8 @@ export interface GenerateRequest {
   textModel?: string;
   /** OpenRouter speech model. Defaults to OPENROUTER_SPEECH_MODEL. */
   speechModel?: string;
+  /** mode "ai": allow profanity and strong language in the written line. Pair with a model not marked "filtered" (GET /api/options). */
+  explicit?: boolean;
   /** A voice the chosen model understands. */
   voice?: string;
   /** How it should sound, for example "warm, slow, a little tired" (up to 100 characters). */

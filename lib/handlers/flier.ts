@@ -3,7 +3,7 @@ import { stationOf, withKeys } from "../with-keys.js";
 import { chargeAi } from "../quota.js";
 import { activeProvider, complete, NO_PROVIDER_MESSAGE, readImage } from "../ai.js";
 import { IMAGE_URL, MAX_IMAGE_CHARS, normalizeEvent, parseJsonObject, parseVariants, PROMO_SYSTEM_PROMPT, promoFacts, READ_SYSTEM_PROMPT } from "../flier.js";
-import { resolveTextModel } from "../openrouter.js";
+import { ensureListed, resolveTextModel } from "../openrouter.js";
 import { getPersona } from "../persona-store.js";
 import { getStation } from "../station-profile-store.js";
 import { validTimeZone } from "../schedule.js";
@@ -31,6 +31,7 @@ async function flier(req: Request, who: Principal): Promise<Response> {
   const personaId = typeof body.personaId === "string" ? body.personaId : "";
   const persona = personaId ? await getPersona(personaId) : null;
   if (personaId && (!persona || !canView(who, persona.ownerId))) return Response.json({ error: "Unknown persona" }, { status: 400 });
+  if (provider === "openrouter") await ensureListed(typeof body.textModel === "string" ? body.textModel : undefined);
   // The writing model: the request's, else the persona's, else the station's, else the site's default.
   const textModel = provider === "openrouter" ? (resolveTextModel(typeof body.textModel === "string" ? body.textModel : undefined, [persona?.textModel, station?.defaultTextModel]) as { model?: string; error?: string }) : undefined;
   if (textModel?.error) return Response.json({ error: textModel.error }, { status: 400 });

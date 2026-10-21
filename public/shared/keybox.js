@@ -2,7 +2,7 @@
 // only that one is set and its last four characters. Your own key is used for your requests and does not use up your AI limits.
 import { h, clear, toast } from './kit.js';
 
-const NAMES = { openrouter: 'OpenRouter', gemini: 'Gemini' };
+const NAMES = { openrouter: 'OpenRouter', gemini: 'Gemini', elevenlabs: 'ElevenLabs (voice clones)' };
 
 export function keyBox(api, { station } = {}) {
   const box = h('div', { class: 'stack' });
@@ -25,7 +25,7 @@ export function keyBox(api, { station } = {}) {
       h('h3', {}, station ? 'AI key for this station' : 'My AI key'),
       h('p', { class: 'small muted' }, station
         ? 'Used for requests made for this station when the person has no key of their own. Without one, the site\'s key is used.'
-        : 'Use your own OpenRouter or Gemini key so your requests are billed to you and do not count toward your limits. Without one, the site\'s key is used.'),
+        : 'Use your own OpenRouter or Gemini key so your requests are billed to you and do not count toward your limits, or add an ElevenLabs key to speak in your cloned voices. Without a key, the site\'s is used.'),
       info.storage ? null : h('p', { class: 'bad small' }, 'Keys cannot be stored yet: the site needs SECRETS_KEY (or SESSION_SECRET) set.'),
       rows,
       h('div', { class: 'grid cols' }, h('label', { class: 'field' }, 'Provider', provider), h('label', { class: 'field' }, 'Key', input),

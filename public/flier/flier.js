@@ -6,6 +6,8 @@ import { createSpeaker } from '../shared/speaker.js';
 import { createStatus } from '../shared/status.js';
 import { modelVoiceFields } from '../shared/voicepicker.js';
 import { currentStation, stationId, stationName } from '../shared/station.js';
+import { downloadMenu } from '../shared/download.js';
+import { costGuard } from '../shared/estimate.js';
 
 const MAX_SIDE = 1600;
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -51,6 +53,7 @@ export async function mountFlier(root, api) {
   const speakBase = () => ({ ...(s.personaId ? { persona: s.personaId } : {}), ...(s.pick.speechModel && options.models.choosable ? { speechModel: s.pick.speechModel } : {}), ...(s.pick.voice ? { voice: s.pick.voice } : {}), ...(s.tone.trim() ? { tone: s.tone.trim() } : {}) });
 
   const status = createStatus();
+  const guard = costGuard(api);
   const body = h('div', { class: 'stack' });
   const say = (msg, bad = false) => (bad ? status.fail(msg) : msg ? status.info(msg) : status.clear());
 
@@ -68,6 +71,7 @@ export async function mountFlier(root, api) {
     const zones = h('datalist', { id: 'tz-list' }, (Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : []).map((z) => h('option', { value: z })));
     const read = h('button', { class: 'primary', type: 'button', onclick: async () => {
       if (!s.image && !s.pasted.trim()) { say('Choose a picture or paste the text first.', true); return; }
+      if (!(await guard.confirmSpend([{ kind: 'flier-read', image: s.image ? 'attached' : '', text: s.pasted, station: stationId() || undefined }], 'Read the flier'))) return;
       read.disabled = true; status.busy('Reading the flier');
       try {
         const { event } = await api.post('/flier/read', { ...(s.image ? { image: s.image } : {}), ...(s.pasted.trim() ? { text: s.pasted } : {}), tz: s.tz, station: stationId() || undefined });
@@ -116,6 +120,7 @@ export async function mountFlier(root, api) {
       sample: async () => URL.createObjectURL((await speaker.render('This is how the promo will sound.', speakBase())).blob),
     });
     const write = h('button', { class: 'primary', type: 'button', onclick: async () => {
+      if (!(await guard.confirmSpend([{ kind: 'flier-promo', event: s.event, count: s.count, persona: s.personaId, textModel: s.pick.textModel || undefined, station: stationId() || undefined }], 'Write the promos'))) return;
       write.disabled = true; status.busy('Writing the promos');
       try {
         const out = await api.post('/flier/promo', { event: s.event, tz: s.tz, personaId: s.personaId, count: s.count, length: s.length, station: stationId() || undefined, textModel: s.pick.textModel || undefined });
@@ -146,6 +151,7 @@ export async function mountFlier(root, api) {
     const stop = h('select', { 'aria-label': 'Stop playing', onchange: (ev) => { s.stopRule = ev.target.value; paint(); } }, STOP.map(([v, t]) => h('option', { value: v, selected: v === s.stopRule }, t)));
     const expires = expiryFor(s.event);
     const make = h('button', { class: 'primary', type: 'button', onclick: async () => {
+      if (!(await guard.confirmSpend([{ kind: 'speak', text: s.variants[s.chosen], speechModel: s.pick.speechModel || undefined, persona: s.personaId, station: stationId() || undefined }], 'Make the audio'))) return;
       make.disabled = true; status.busy('Generating the audio');
       try {
         s.audio = await speaker.render(s.variants[s.chosen], speakBase(), { onProgress: (m, p) => status.busy(m, p) });
@@ -166,7 +172,7 @@ export async function mountFlier(root, api) {
       h('div', { class: 'grid cols' }, h('label', { class: 'field' }, 'Stop playing it', stop),
         h('div', { class: 'hint small' }, expires ? h('span', {}, h('b', {}, 'Expires: '), when(expires), ' (', s.tz, '). Nothing will play it after this, even if it is still queued or scheduled.') : h('span', { class: 'bad' }, 'No expiry: set the event\'s dates above.'))),
       h('div', { class: 'row' }, make),
-      s.audio ? h('div', { class: 'clip' }, h('p', { class: 'clip-script' }, s.audio.scriptText), h('audio', { controls: true, src: s.audioUrl }), s.saved ? null : h('div', { class: 'row' }, save)) : null,
+      s.audio ? h('div', { class: 'clip' }, h('p', { class: 'clip-script' }, s.audio.scriptText), h('audio', { controls: true, src: s.audioUrl }), h('div', { class: 'row' }, downloadMenu({ load: async () => s.audio.blob, name: () => s.event.name || 'promo' }), s.saved ? null : save)) : null,
       s.saved ? afterSave(expires) : null);
   }
 
@@ -199,6 +205,6 @@ export async function mountFlier(root, api) {
   clear(root, h('div', { class: 'stack' },
     h('section', { class: 'card' }, h('h2', {}, 'Flier to promo'),
       h('p', { class: 'muted small' }, `For ${stationName('the station')}. Turn an event flier into a promo clip in a persona's voice. The clip knows when the event ends and stops playing then, on its own.`)),
-    status.el, body));
+    status.el, guard.el, body));
   paint();
 }

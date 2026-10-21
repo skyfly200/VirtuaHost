@@ -6,6 +6,9 @@ import { stationId } from '../shared/station.js';
 import { createStatus } from '../shared/status.js';
 import { amountSlider } from '../shared/amount.js';
 import { FX_PREVIEWS } from './fx.js';
+import { downloadMenu } from '../shared/download.js';
+import { costGuard } from '../shared/estimate.js';
+import { modelLabel, allowsStrongLanguage, infoOf } from '../shared/modelinfo.js';
 
 const GEMINI_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Zephyr', 'Orus'];
 const OTHER = '__other';
@@ -39,9 +42,17 @@ export async function mountGenerate(root, api) {
     mode: prefs.mode === 'ai' ? 'ai' : 'say', format: prefs.format || '', persona: personas.some((p) => p.id === prefs.persona) ? prefs.persona : '', tone: prefs.tone || '',
     textModel: prefs.textModel || options.models.defaultText, speechModel: prefs.speechModel || options.models.defaultSpeech, voice: prefs.voice || '',
     fx: FX_PREVIEWS[prefs.fx] ? prefs.fx : '', fxAmount: typeof prefs.fxAmount === 'number' ? Math.min(1, Math.max(0, prefs.fxAmount)) : 1,
-    textCustom: '', speechCustom: '', text: takePrefill(),
+    textCustom: '', speechCustom: '', text: takePrefill(), explicit: prefs.explicit === true,
   };
-  const persist = () => savePrefs({ mode: state.mode, format: state.format, persona: state.persona, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice, fx: state.fx, fxAmount: state.fxAmount });
+  // Strong language mode leaves out models that filter it, and moves a chosen filtered model to the first one that does not.
+  const useUnfiltered = () => {
+    for (const [key, list] of [['textModel', options.models.text || []], ['speechModel', (options.models.speech || []).map((m) => m.id)]]) {
+      if (allowsStrongLanguage(options, state[key])) continue;
+      const next = list.find((id) => allowsStrongLanguage(options, id));
+      if (next) { toast(`Switched ${key === 'textModel' ? 'writing' : 'speech'} model to ${next}: ${state[key]} filters strong language.`, 'info'); state[key] = next; }
+    }
+  };
+  const persist = () => savePrefs({ explicit: state.explicit, mode: state.mode, format: state.format, persona: state.persona, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice, fx: state.fx, fxAmount: state.fxAmount });
   const formatOf = () => options.formats.find((f) => f.id === state.format);
 
   const note = options.warning
@@ -55,13 +66,21 @@ export async function mountGenerate(root, api) {
   const status = createStatus();
   const clipsBox = h('div');
   let textArea;
+  // Marks each model with its price tier (from /api/options) so the dear ones stand out before they are chosen.
+  const tierLabel = (id) => modelLabel(options, id);
+  const guard = costGuard(api);
+  // What the next press will use, shown under the text: the writing step for "ask the AI", the speech step for "say verbatim".
+  const estimateBodies = (text = state.text) => (state.mode === 'ai'
+    ? [{ kind: 'write', prompt: text, ...writerBase() }]
+    : [{ kind: 'speak', text, ...speakChoice() }]);
+  const refreshEstimate = () => guard.show(estimateBodies());
 
   function paintForm() {
     const f = formatOf();
     textArea = h('textarea', {
       rows: 4, 'aria-label': state.mode === 'say' ? 'Text to speak' : 'Brief for the AI',
       placeholder: state.mode === 'say' ? 'Coming up, the top of the hour news.' : "hype up the next song, it's a summer anthem",
-      oninput: (e) => { state.text = e.target.value; },
+      oninput: (e) => { state.text = e.target.value; refreshEstimate(); },
     });
     textArea.value = state.text;
 
@@ -82,10 +101,11 @@ export async function mountGenerate(root, api) {
     paintChips();
 
     const modelSelect = (key, customKey, values, label, dim) => {
-      const items = values.map((v) => h('option', { value: v, selected: state[key] === v }, v));
+      const shown = state.explicit ? values.filter((v) => allowsStrongLanguage(options, v)) : values;
+      const items = shown.map((v) => h('option', { value: v, selected: state[key] === v }, tierLabel(v)));
       if (options.models.allowAny) items.push(h('option', { value: OTHER, selected: state[key] === OTHER }, 'Other (type a model name)...'));
       const custom = h('input', { value: state[customKey], placeholder: 'provider/model-name', hidden: state[key] !== OTHER, 'aria-label': `${label} name`, oninput: (e) => { state[customKey] = e.target.value; } });
-      const select = h('select', { disabled: !options.models.choosable, 'aria-label': label, onchange: (e) => { state[key] = e.target.value; custom.hidden = state[key] !== OTHER; persist(); paintVoices(); } }, items);
+      const select = h('select', { disabled: !options.models.choosable, 'aria-label': label, onchange: (e) => { state[key] = e.target.value; custom.hidden = state[key] !== OTHER; persist(); paintVoices(); refreshEstimate(); } }, items);
       return h('label', { class: 'field', style: dim ? 'opacity:.6' : '' }, label, select, custom);
     };
     // What the chosen speech model does with tone and inline tags like [laughs] (decided on the server, lib/cues.ts).
@@ -125,6 +145,10 @@ export async function mountGenerate(root, api) {
       textArea,
       f ? h('div', {}, h('button', { type: 'button', onclick: () => { state.text = state.mode === 'say' ? f.example : f.prompt; textArea.value = state.text; textArea.focus(); } }, state.mode === 'say' ? 'Use the example line' : 'Use the example brief')) : null,
       h('div', {}, h('div', { class: 'label' }, 'Tone (click any that fit, or describe your own)'), chips, toneInput),
+      h('label', { class: 'row small', title: 'Models that filter or soften profanity are hidden while this is on' },
+        h('input', { type: 'checkbox', checked: state.explicit, onchange: (e) => { state.explicit = e.target.checked; if (state.explicit && options.models.choosable) useUnfiltered(); persist(); paintForm(); } }),
+        'Allow strong language (profanity). Hides models marked "filtered"; the writer is told not to censor.'),
+      options.models.choosable ? h('p', { class: 'small muted' }, [['Writing', state.mode === 'ai' ? state.textModel : ''], ['Speech', state.speechModel]].filter(([, id]) => id && infoOf(options, id) && infoOf(options, id).content).map(([label, id]) => `${label} (${id}): ${infoOf(options, id).content.note}`).join(' ')) : null,
       h('div', { class: 'grid cols' },
         modelSelect('textModel', 'textCustom', options.models.text, 'Writing model (used when the AI writes the line)', state.mode !== 'ai'),
         modelSelect('speechModel', 'speechCustom', options.models.speech.map((m) => m.id), 'Speech model'),
@@ -145,10 +169,13 @@ export async function mountGenerate(root, api) {
         h('li', {}, h('b', {}, 'Tone '), 'guides the AI writer and is sent to the voice as a direction ("Say in a warm tone"). The same text can sound very different per model: generate, listen, adjust.'),
         h('li', {}, h('b', {}, 'Ask the AI to write it '), 'writes the line first and shows it to you; nothing is spoken until you press "Make the audio", so you can edit the words (and add effect tags) first.'),
         h('li', {}, h('b', {}, 'Sound effects and music '), 'in the text are mixed into the preview: ', h('code', {}, '[sfx:ding]'), ', ', h('code', {}, '[sfx:whoosh over]'), ' (over the next words), ', h('code', {}, '[sfx:crowd vol=0.5]'), ', ', h('code', {}, '[sfx:beep wait=0.5]'), `, and ${library.music.length ? `[music:${library.music[0].name} vol=0.2] for a music bed under the clip` : 'a music bed with [music:name] once a library is connected'}. Built in: ${effectNames().join(', ')}${library.sfx.length ? `. From your library: ${library.sfx.map((i) => i.name).join(', ')}` : ''}.`))),
+      guard.el,
       h('div', {}, h('button', { class: 'primary', id: 'generate-btn', onclick: submit }, state.mode === 'ai' ? 'Write the line' : 'Generate preview')),
       status.el);
+    refreshEstimate();
   }
 
+  const speakChoice = () => ({ ...(state.explicit ? { explicit: true } : {}), ...(state.persona ? { persona: state.persona } : {}), ...(stationId() ? { station: stationId() } : {}), ...(options.models.choosable && chosen('speechModel', 'speechCustom') ? { speechModel: chosen('speechModel', 'speechCustom') } : {}) });
   const chosen = (key, customKey) => (state[key] === OTHER ? state[customKey].trim() : state[key]);
 
   // ----- preview, then save -----
@@ -158,7 +185,7 @@ export async function mountGenerate(root, api) {
   let draft = null;
   const writerBase = () => ({
     ...(stationId() ? { station: stationId() } : {}),
-    ...(state.persona ? { persona: state.persona } : {}), ...(state.format ? { format: state.format } : {}), ...(state.tone.trim() ? { tone: state.tone.trim() } : {}),
+    ...(state.persona ? { persona: state.persona } : {}), ...(state.format ? { format: state.format } : {}), ...(state.tone.trim() ? { tone: state.tone.trim() } : {}), ...(state.explicit ? { explicit: true } : {}),
     ...(options.models.choosable ? (() => { const m = chosen('textModel', 'textCustom'); return m ? { textModel: m } : {}; })() : {}),
   });
 
@@ -170,6 +197,7 @@ export async function mountGenerate(root, api) {
     button.disabled = true;
     try {
       // "Ask the AI to write it" writes the line first and stops, so it can be read and edited before any speech is generated.
+      if (!(await guard.confirmSpend(estimateBodies(value), state.mode === 'ai' ? 'Write the line' : 'Generate the audio'))) return;
       if (state.mode === 'ai') await writeLine(value);
       else await makeAudio(value, { mode: 'say', input: value });
     } catch (err) {
@@ -194,11 +222,11 @@ export async function mountGenerate(root, api) {
     const make = h('button', { class: 'primary', type: 'button', onclick: async () => {
       if (!script.text.trim()) { status.fail('The line is empty.'); return; }
       make.disabled = true; 
-      try { await makeAudio(script.text.trim(), { mode: 'ai', input: script.brief, textModel: script.textModel }); } catch (err) { status.fail(err.message); } finally { make.disabled = false; }
+      try { if (!(await guard.confirmSpend([{ kind: 'speak', text: script.text, ...speakChoice() }], 'Make the audio'))) { make.disabled = false; return; } await makeAudio(script.text.trim(), { mode: 'ai', input: script.brief, textModel: script.textModel }); } catch (err) { status.fail(err.message); } finally { make.disabled = false; }
     } }, 'Make the audio');
     const again = h('button', { type: 'button', onclick: async () => {
       again.disabled = true; 
-      try { await writeLine(script.brief); } catch (err) { status.fail(err.message); again.disabled = false; }
+      try { if (!(await guard.confirmSpend(estimateBodies(script.brief), 'Write it again'))) { again.disabled = false; return; } await writeLine(script.brief); } catch (err) { status.fail(err.message); again.disabled = false; }
     } }, 'Write it again');
     clear(draftBox, h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'written line, not spoken yet'), script.textModel ? h('span', { class: 'chip' }, script.textModel) : null),
@@ -250,7 +278,7 @@ export async function mountGenerate(root, api) {
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'preview, not saved yet'), draft.effects.length ? h('span', { class: 'chip' }, `sounds: ${[...new Set(draft.effects)].join(', ')}`) : null, draft.fx ? h('span', { class: 'chip' }, `effect: ${FX_PREVIEWS[draft.fx.name].label} ${Math.round(draft.fx.amount * 100)}%`) : null, h('span', {}, `${(draft.blob.size / 1024).toFixed(0)} KB`)),
       h('p', { class: 'clip-script' }, draft.scriptText),
       player, details,
-      h('div', { class: 'row' }, saveButton, h('button', { type: 'button', onclick: discard }, 'Discard'), saveStatus.el)));
+      h('div', { class: 'row' }, saveButton, downloadMenu({ load: async () => draft.blob, name: () => detail.title.trim() || draft.scriptText }), h('button', { type: 'button', onclick: discard }, 'Discard'), saveStatus.el)));
     player.play().catch(() => {});
   }
   function discard() { if (draft) URL.revokeObjectURL(draft.url); draft = null; clear(draftBox); }
@@ -265,7 +293,7 @@ export async function mountGenerate(root, api) {
           clip.speechModel ? h('span', { class: 'chip' }, clip.speechModel) : null, clip.tone ? h('span', { class: 'chip' }, clip.tone) : null,
           clip.info && clip.info.kind ? h('span', { class: 'chip' }, clip.info.kind) : null, expiryChip(clip)),
         h('p', { class: 'clip-script' }, clip.scriptText),
-        h('div', { class: 'row' }, playButton(clip.id), ...(expired(clip) ? [] : sendButtons(clip.id))))) : h('p', { class: 'empty' }, 'No clips yet. Generate one above.'));
+        h('div', { class: 'row' }, playButton(clip.id), downloadMenu({ load: () => api.get(`/clips/${encodeURIComponent(clip.id)}`, { blob: true }), name: (clip.info && clip.info.title) || clip.scriptText }), ...(expired(clip) ? [] : sendButtons(clip.id))))) : h('p', { class: 'empty' }, 'No clips yet. Generate one above.'));
     } catch (err) {
       clear(clipsBox, h('p', { class: 'empty' }, `Failed to load clips: ${err.message}`));
     }

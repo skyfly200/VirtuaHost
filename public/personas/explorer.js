@@ -67,7 +67,7 @@ export function mountExplorer(box, persona, ctx) {
     text.value = row.text;
     return h('div', { class: 'line row', style: 'align-items:flex-start' }, player.button, h('div', { class: 'grow' },
       text,
-      h('div', { class: 'row' }, rewrite, h('button', { type: 'button', class: 'link', onclick: () => ctx.onUse(fill(row.text)) }, 'Use in Generate'),
+      h('div', { class: 'row' }, rewrite, player.download(`${kind.label}-line`), h('button', { type: 'button', class: 'link', onclick: () => ctx.onUse(fill(row.text)) }, 'Use in Generate'),
         (row.st ||= createStatus()).el)));
   }
 
@@ -98,7 +98,7 @@ export function mountExplorer(box, persona, ctx) {
       return h('div', { class: 'card variant' },
         choosable ? h('label', { class: 'field' }, 'Model', h('select', { onchange: (ev) => { c.speechModel = ev.target.value; c.voice = ''; player.invalidate(); paint(); } }, models.map((m) => h('option', { value: m.id, selected: m.id === c.speechModel }, m.id)))) : null,
         h('label', { class: 'field' }, 'Voice', h('input', { value: c.voice, list: `cv-${i}`, placeholder: (e && e.voice) || 'default', oninput: (ev) => { c.voice = ev.target.value; player.invalidate(); } }), dl),
-        h('div', { class: 'row' }, player.button, h('button', { type: 'button', onclick: () => { settings.speechModel = c.speechModel; settings.voice = c.voice; toast('Now using this voice for the samples above.', 'info'); paintSettings(); } }, 'Use this voice'),
+        h('div', { class: 'row' }, player.button, player.download(`${c.speechModel || 'voice'}-${c.voice || 'default'}`), h('button', { type: 'button', onclick: () => { settings.speechModel = c.speechModel; settings.voice = c.voice; toast('Now using this voice for the samples above.', 'info'); paintSettings(); } }, 'Use this voice'),
           h('button', { type: 'button', class: 'link danger', onclick: () => { player.stop(); compare.splice(i, 1); paint(); } }, 'Remove')));
     }));
     if (!compare.length) compare = [{ speechModel: settings.speechModel, voice: settings.voice }, { speechModel: (models[1] || models[0] || {}).id || '', voice: '' }];
