@@ -24,9 +24,9 @@ export function clear(el, ...children) { el.replaceChildren(...children.flat().f
 export function toast(message, type = 'info') {
   let box = $('#toasts');
   if (!box) { box = h('div', { id: 'toasts', role: 'status', 'aria-live': 'polite' }); document.body.append(box); }
-  const t = h('div', { class: `toast ${type}` }, message);
+  const t = h('div', { class: `toast ${type}`, title: 'Click to dismiss', onclick: () => t.remove() }, message);
   box.append(t);
-  setTimeout(() => t.remove(), type === 'error' ? 7000 : 3500);
+  setTimeout(() => t.remove(), type === 'error' ? 10000 : 3500);
 }
 
 export class ApiError extends Error {
