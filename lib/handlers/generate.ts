@@ -8,7 +8,8 @@ import { getStation } from "../station-profile-store.js";
 import { listClips, saveClip } from "../store.js";
 import { embedTags, sanitizeInfo } from "../clip-info.js";
 import { sendToStation, stationConfigured } from "../station-send.js";
-import { authorize, canView, ownerFor } from "../auth.js";
+import { authorize, canView, ownerFor, type Principal } from "../auth.js";
+import { stationOf, withKeys } from "../with-keys.js";
 import { chargeAi, checkCount } from "../quota.js";
 import { createLogger } from "../log.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
@@ -31,6 +32,11 @@ export async function handleGenerate(req: Request): Promise<Response> {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
+  // The person's own AI key beats the station's, which beats the site's (lib/credentials.ts); the station may also limit the models.
+  return withKeys(who, await stationOf(req), () => generate(req, who));
+}
+
+async function generate(req: Request, who: Principal): Promise<Response> {
   let body: GenerateRequest;
   try {
     body = (await req.json()) as GenerateRequest;

@@ -31,7 +31,7 @@ export async function mountFlier(root, api) {
   clear(root, h('p', { class: 'muted' }, 'Loading...'));
   let options; let personas = [];
   try {
-    [options, { personas }] = await Promise.all([api.get('/options'), api.get('/personas').catch(() => ({ personas: [] }))]);
+    [options, { personas }] = await Promise.all([api.get('/options', { query: { station: stationId() } }), api.get('/personas').catch(() => ({ personas: [] }))]);
   } catch (err) { clear(root, h('p', { class: 'bad' }, `Could not load: ${err.message}`)); return; }
   const speaker = createSpeaker(api, options.features);
   await speaker.loadLibrary();

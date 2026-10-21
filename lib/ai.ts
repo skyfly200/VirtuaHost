@@ -5,6 +5,7 @@
 //
 // With OpenRouter the writing model and speech model can be chosen per request (lib/openrouter.ts). Gemini is used
 // directly with its fixed models.
+import { apiKey, keySource } from "./credentials.js";
 import { writeDjLine, describeImage, synthesizeSpeech as geminiSpeech, DEFAULT_VOICE } from "./gemini.js";
 import * as openrouter from "./openrouter.js";
 import { pcmToWav } from "./wav.js";
@@ -12,13 +13,16 @@ import { buildSystemPrompt, type DjFormat } from "./formats.js";
 
 export type ProviderName = "openrouter" | "gemini";
 
+// A key a person or station brought (lib/credentials.ts) is used before the site's, whichever provider it is for; PROVIDER only
+// chooses between the site's own keys.
 export function activeProvider(): ProviderName | null {
+  for (const p of ["openrouter", "gemini"] as const) if (keySource(p) !== "site") return p;
   const forced = process.env.PROVIDER?.trim().toLowerCase();
-  if (forced === "openrouter" && process.env.OPENROUTER_API_KEY) return "openrouter";
-  if (forced === "gemini" && process.env.GEMINI_API_KEY) return "gemini";
+  if (forced === "openrouter" && apiKey("openrouter")) return "openrouter";
+  if (forced === "gemini" && apiKey("gemini")) return "gemini";
   if (forced === "openrouter" || forced === "gemini") return null; // forced to a provider whose key is missing
-  if (process.env.OPENROUTER_API_KEY) return "openrouter";
-  if (process.env.GEMINI_API_KEY) return "gemini";
+  if (apiKey("openrouter")) return "openrouter";
+  if (apiKey("gemini")) return "gemini";
   return null;
 }
 

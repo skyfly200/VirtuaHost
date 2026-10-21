@@ -1,18 +1,22 @@
 import { GoogleGenAI } from "@google/genai";
+import { apiKey } from "./credentials.js";
 
 const TEXT_MODEL = "gemini-3.6-flash";
 const TTS_MODEL = "gemini-3.1-flash-tts-preview";
 export const DEFAULT_VOICE = "Kore";
 
-let client: GoogleGenAI | undefined;
+// One client per key: the site's, and any a person or station brought (lib/credentials.ts).
+const clients = new Map<string, GoogleGenAI>();
 
 function getClient(): GoogleGenAI {
+  const key = apiKey("gemini");
+  if (!key) {
+    throw new Error("GEMINI_API_KEY is not set");
+  }
+  let client = clients.get(key);
   if (!client) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not set");
-    }
-    client = new GoogleGenAI({ apiKey });
+    client = new GoogleGenAI({ apiKey: key });
+    clients.set(key, client);
   }
   return client;
 }
@@ -74,8 +78,8 @@ export async function synthesizeSpeech(
   text: string,
   voice: string = DEFAULT_VOICE,
 ): Promise<SynthesizedSpeech> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const key = apiKey("gemini");
+  if (!key) {
     throw new Error("GEMINI_API_KEY is not set");
   }
 
@@ -85,7 +89,7 @@ export async function synthesizeSpeech(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-goog-api-key": apiKey,
+        "x-goog-api-key": key,
       },
       body: JSON.stringify({
         contents: [{ parts: [{ text }] }],

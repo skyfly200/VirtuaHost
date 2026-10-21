@@ -1,5 +1,5 @@
 import { authorize, canModify, canView, ownerFor } from "../auth.js";
-import { chargeAi, checkCount } from "../quota.js";
+import { checkCount } from "../quota.js";
 import { applySchedulePatch, buildSchedule, MAX_SCHEDULES } from "../schedule.js";
 import { deleteSchedule, getSchedule, listSchedules, saveSchedule } from "../schedule-store.js";
 import { runSchedule } from "../scheduler.js";
@@ -35,8 +35,6 @@ export async function handleSchedules(req: Request, id: string | undefined, acti
   if (!canModify(who, existing.ownerId)) return Response.json({ error: "That schedule is shared; only an admin can change it" }, { status: 403 });
 
   if (action === "run" && req.method === "POST") {
-    const over = existing.content.kind === "clip" ? null : await chargeAi(who);
-    if (over) return over;
     try {
       const result = await runSchedule(existing);
       await saveSchedule({ ...existing, lastRunAt: new Date().toISOString(), lastResult: `${result} (run by hand)` });

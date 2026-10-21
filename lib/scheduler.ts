@@ -13,6 +13,7 @@ import { sendToStation, queueMode } from "./station-send.js";
 import { createLogger } from "./log.js";
 import { chargeAi } from "./quota.js";
 import { findAccount } from "./session.js";
+import { withKeys } from "./with-keys.js";
 
 const log = createLogger("scheduler");
 
@@ -20,7 +21,10 @@ export const GRACE_MS = 10 * 60_000;       // a run later than this (the site wa
 const BUDGET_MS = 22_000;                  // a scheduled function has about 30 seconds: stop starting new work after this
 
 // Makes the clip for one schedule and sends it as asked. Returns a short result for the UI.
-export async function runSchedule(s: Schedule): Promise<string> {
+// The owner's own AI key (or the station's) is used when they have one; see lib/credentials.ts.
+export const runSchedule = (s: Schedule): Promise<string> => withKeys({ username: s.ownerId }, s.stationId, () => runScheduleScoped(s));
+
+async function runScheduleScoped(s: Schedule): Promise<string> {
   // A person's schedule runs only while they can sign in, and each run spends their AI quota.
   if (s.ownerId && s.content.kind !== "clip") {
     const owner = await findAccount(s.ownerId);

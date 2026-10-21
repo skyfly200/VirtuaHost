@@ -1,6 +1,7 @@
 // Users tab (admins): add people, set their role, disable or remove them, reset passwords, and set their limits.
 // Also exports mountAccount for everyone: your role, how much of your limits you have used, and a change-password form.
 import { h, clear, toast } from '../shared/kit.js';
+import { keyBox } from '../shared/keybox.js';
 
 const patch = (api, path, body) => api.request('PATCH', path, { body });
 const LIMITS = [
@@ -101,6 +102,7 @@ export function accountCard(api, me) {
   return h('details', { class: 'card' },
     h('summary', {}, `${me.username} (${me.role})`),
     h('p', { class: 'small muted' }, lines.length ? lines.join(' · ') : 'No limits set for you.'),
+    me.username === 'api-key' || me.username === 'local' ? null : keyBox(api),
     me.username === 'api-key' || me.username === 'local' ? null : h('form', { class: 'grid cols', onsubmit: async (e) => {
       e.preventDefault();
       try { await patch(api, '/users/me', { currentPassword: current.value, newPassword: next.value }); current.value = ''; next.value = ''; toast('Password changed', 'info'); } catch (err) { toast(err.message, 'error'); }

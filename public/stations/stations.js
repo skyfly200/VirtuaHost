@@ -6,6 +6,7 @@ import { loadStations, setStation, currentStation, allStations } from '../shared
 import { mountHostCard } from '../shared/hostcard.js';
 import { modelVoiceFields } from '../shared/voicepicker.js';
 import { createSpeaker } from '../shared/speaker.js';
+import { keyBox } from '../shared/keybox.js';
 
 const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
 const LINES = (v) => v.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -134,6 +135,10 @@ export async function mountStationProfiles(root, api) {
         select('Persona', 'defaultPersonaId', personas.map((p) => [p.id, `${p.emoji || ''} ${p.name}`.trim()]), 'None'),
         fxPresets.length ? select('Audio treatment at the station', 'defaultFx', fxPresets.map((f) => [f, f]), 'None') : null),
       voiceBox.el,
+      h('h3', {}, 'Allowed models'),
+      h('p', { class: 'small muted' }, 'Optional. Limit this station to these models, one per line (OpenRouter names like openai/gpt-4o-mini; a speech model may add a voice: hexgrad/kokoro-82m|af_heart). Empty uses the site\'s list. The limit applies even to people using their own key.'),
+      h('div', { class: 'grid cols' }, listField('Writing models', 'textModels', 4, 'openai/gpt-4o-mini'), listField('Speech models', 'speechModels', 4, 'hexgrad/kokoro-82m|af_heart')),
+      c.id ? keyBox(api, { station: c.id }) : null,
       listField('Skip list: spots and relays, one artist per line (the host says nothing over or about them)', 'skipArtists', 3, 'Jingle Radio'),
       h('h3', {}, 'Sending clips to this station'),
       h('p', { class: 'muted small' }, 'Defaults for clips made for this station. A request, a schedule or a button press can still choose differently.'),

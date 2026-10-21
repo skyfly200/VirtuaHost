@@ -15,6 +15,8 @@
 // documented in public summaries, and `google/*` models are asked for raw 24 kHz PCM. Errors from OpenRouter are passed
 // through to the caller so a wrong voice or model name is visible.
 
+import { apiKey, currentScope, keySource } from "./credentials.js";
+
 import { cuesFor } from "./cues.js";
 
 const DEFAULT_TEXT_MODELS = ["openai/gpt-4o-mini", "anthropic/claude-3.5-haiku", "meta-llama/llama-3.1-8b-instruct"];
@@ -36,18 +38,30 @@ export interface SpeechModel {
 
 const list = (value: string | undefined): string[] => (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
-export const configured = (): boolean => Boolean(process.env.OPENROUTER_API_KEY);
-export const allowAnyModel = (): boolean => process.env.OPENROUTER_ALLOW_ANY_MODEL === "true";
+export const configured = (): boolean => Boolean(apiKey("openrouter"));
+// Any model slug is allowed with OPENROUTER_ALLOW_ANY_MODEL, or when the person is paying with their own key, unless the station limits the models.
+export const allowAnyModel = (): boolean => {
+  const scope = currentScope();
+  if (scope?.textModels || scope?.speechModels) return false;
+  return process.env.OPENROUTER_ALLOW_ANY_MODEL === "true" || keySource("openrouter") === "user";
+};
 
 export function textModels(): string[] {
+  const limited = currentScope()?.textModels;
+  if (limited) return limited;
   const fromEnv = list(process.env.OPENROUTER_TEXT_MODELS);
   const all = fromEnv.length ? fromEnv : DEFAULT_TEXT_MODELS;
   const def = process.env.OPENROUTER_TEXT_MODEL?.trim();
   return def && !all.includes(def) ? [def, ...all] : all;
 }
-export const defaultTextModel = (): string => process.env.OPENROUTER_TEXT_MODEL?.trim() || textModels()[0];
+export const defaultTextModel = (): string => {
+  const def = process.env.OPENROUTER_TEXT_MODEL?.trim();
+  return def && textModels().includes(def) ? def : textModels()[0];
+};
 
 export function speechModels(): SpeechModel[] {
+  const limited = currentScope()?.speechModels;
+  if (limited) return limited.map((entry) => { const [id, voice] = entry.split("|").map((s) => s.trim()); return { id, ...(voice ? { voice } : {}) }; });
   const fromEnv = list(process.env.OPENROUTER_SPEECH_MODELS);
   const all = (fromEnv.length ? fromEnv : DEFAULT_SPEECH_MODELS).map((entry) => {
     const [id, voice] = entry.split("|").map((s) => s.trim());
@@ -71,7 +85,8 @@ let discovered: { at: number; models: SpeechModel[] } | undefined;
 const DISCOVERY_TTL_MS = 10 * 60_000;
 
 export async function discoverSpeechModels(): Promise<SpeechModel[]> {
-  if (discovered && Date.now() - discovered.at < DISCOVERY_TTL_MS) return discovered.models;
+  const shared = keySource("openrouter") === "site";                         // a person's or station's key may see other models: do not share the cache
+  if (shared && discovered && Date.now() - discovered.at < DISCOVERY_TTL_MS) return discovered.models;
   let models: SpeechModel[] = [];
   try {
     const res = await fetch(`${base()}/models?output_modalities=speech`, { headers: headers(), signal: AbortSignal.timeout(8_000) });
@@ -86,12 +101,13 @@ export async function discoverSpeechModels(): Promise<SpeechModel[]> {
   } catch {
     // unreachable or not JSON: fall back to the built-in list
   }
-  discovered = { at: Date.now(), models };
+  if (shared) discovered = { at: Date.now(), models };
   return models;
 }
 
 // The configured list plus whatever OpenRouter reports; configured entries keep their own default voice.
 export async function allSpeechModels(): Promise<SpeechModel[]> {
+  if (currentScope()?.speechModels) return speechModels();                  // the station limits the choice: nothing else is offered
   const configuredList = speechModels();
   const extra = await discoverSpeechModels();
   // With no list of your own (OPENROUTER_SPEECH_MODELS), the built-in models OpenRouter does not list are left out.
@@ -136,7 +152,7 @@ export function pickSpeechModel(requested: string | undefined, extra: SpeechMode
 const base = () => (process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
 
 function headers(): Record<string, string> {
-  const key = process.env.OPENROUTER_API_KEY;
+  const key = apiKey("openrouter");
   if (!key) throw new Error("OPENROUTER_API_KEY is not set");
   return {
     authorization: `Bearer ${key}`,

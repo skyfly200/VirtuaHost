@@ -8,7 +8,7 @@ import { effectNames } from '../generate/mixer.js';
 import { createPlayer } from '../shared/playbutton.js';
 import { createStatus } from '../shared/status.js';
 import { amountSlider } from '../shared/amount.js';
-import { stationName } from '../shared/station.js';
+import { stationId, stationName } from '../shared/station.js';
 
 const MAX_SLOTS = 4;
 const PREF_KEY = 'djPrefs';
@@ -17,7 +17,7 @@ export async function mountLab(root, api) {
   clear(root, h('p', { class: 'muted' }, 'Loading...'));
   let options; let personas = [];
   try {
-    [options, { personas }] = await Promise.all([api.get('/options'), api.get('/personas').catch(() => ({ personas: [] }))]);
+    [options, { personas }] = await Promise.all([api.get('/options', { query: { station: stationId() } }), api.get('/personas').catch(() => ({ personas: [] }))]);
   } catch (err) { clear(root, h('p', { class: 'bad' }, `Could not load: ${err.message}`)); return; }
   const speaker = createSpeaker(api, options.features);
   await speaker.loadLibrary();
