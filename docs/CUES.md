@@ -11,7 +11,8 @@ form the model takes, and inline `[tags]` are removed for models that would read
 | `openai/gpt-4o-mini-tts-*` | yes, via `instructions` | not performed, removed | tone documented; tags assumed |
 | `mistralai/voxtral-*` | none: delivery follows the chosen voice | not performed, removed | assumed from Mistral's "voice as instruction" description |
 | `hexgrad/kokoro-82m` | none | not performed, removed | assumed |
-| `elevenlabs/*` (your own ElevenLabs voices, including clones) | none: the voice carries the delivery | not performed, removed | assumed |
+| `elevenlabs/eleven_v3` | none: the voice and the tags carry the delivery | performed (per ElevenLabs' docs; not tested here) | assumed |
+| other `elevenlabs/*` (your own ElevenLabs voices, including clones) | none: the voice carries the delivery | not performed, removed | assumed |
 | anything else | sent as an instruction | left in the text | unknown |
 
 "Assumed" means no source confirmed it either way, so listen to a clip with a `[laughs]` and a tone before relying on it,

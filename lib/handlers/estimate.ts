@@ -1,7 +1,7 @@
 import { authorize, canView, type Principal } from "../auth.js";
 import { activeProvider } from "../ai.js";
 import { buildSystemPrompt, cleanTone, findFormat } from "../formats.js";
-import { defaultSpeechModel, ensureListed, resolveTextModel, visionModel } from "../openrouter.js";
+import { IMAGE_MAX_TOKENS, WRITE_MAX_TOKENS, defaultSpeechModel, ensureListed, resolveTextModel, visionModel } from "../openrouter.js";
 import { getPersona } from "../persona-store.js";
 import { estimateSpeech, estimateText, type Estimate } from "../pricing.js";
 import { contentFilter } from "../content.js";
@@ -50,7 +50,7 @@ async function estimate(req: Request, who: Principal): Promise<Response> {
       const m = textModel();
       if ("error" in m) return Response.json({ error: m.error }, { status: 400 });
       const system = buildSystemPrompt({ station: station?.name || process.env.STATION_NAME || "the station", tagline: station?.tagline, tone: cleanTone(body.tone), format: findFormat(str(body.format, 40)), persona: seen?.instructions, explicit: body.explicit === true, targetSeconds: typeof body.seconds === "number" ? body.seconds : undefined, placeholders: promptHelp(contextFor({ station, persona: seen, targetSeconds: typeof body.seconds === "number" ? body.seconds : undefined })) });
-      return Response.json({ estimate: await withContent(await estimateText({ kind: "write", model: m.model, inputChars: str(body.prompt, 4000).length, systemChars: system.length, maxOut: 300, expectedOut: 80 }), body.explicit === true) });
+      return Response.json({ estimate: await withContent(await estimateText({ kind: "write", model: m.model, inputChars: str(body.prompt, 4000).length, systemChars: system.length, maxOut: WRITE_MAX_TOKENS, expectedOut: 250 }), body.explicit === true) });
     }
     case "speak": {
       const text = str(body.text, 4000).replace(/\[[^\]]*\]/g, "");
@@ -60,7 +60,7 @@ async function estimate(req: Request, who: Principal): Promise<Response> {
     case "flier-read": {
       const image = typeof body.image === "string" && body.image.length > 0;
       const model = provider === "openrouter" ? visionModel() : "gemini-3.6-flash";
-      return Response.json({ estimate: await estimateText({ kind: "flier-read", model, inputChars: str(body.text, 4000).length + 120, maxOut: 900, expectedOut: 400, image }) });
+      return Response.json({ estimate: await estimateText({ kind: "flier-read", model, inputChars: str(body.text, 4000).length + 120, maxOut: IMAGE_MAX_TOKENS, expectedOut: 450, image }) });
     }
     case "flier-promo": {
       const m = textModel();

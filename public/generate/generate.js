@@ -240,7 +240,7 @@ export async function mountGenerate(root, api) {
   async function writeLine(brief) {
     status.busy('Writing the line (nothing is spoken yet)');
     const data = await api.post('/generate', { mode: 'ai', prompt: brief, textOnly: true, ...writerBase() });
-    showScript({ brief, text: data.scriptText, filledIn: data.filledIn, textModel: data.textModel });
+    showScript({ brief, text: data.scriptText, textModel: data.textModel });
     status.ok(`Line written${data.textModel ? ` by ${data.textModel}` : ''}. Edit it if you like, then make the audio.`);
   }
 
@@ -260,7 +260,7 @@ export async function mountGenerate(root, api) {
     } }, 'Write it again');
     clear(draftBox, h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'written line, not spoken yet'), script.textModel ? h('span', { class: 'chip' }, script.textModel) : null),
-      box, script.filledIn && script.filledIn !== script.text ? h('p', { class: 'small muted' }, `Right now this would say: "${script.filledIn}" (the {{placeholders}} are filled in when the audio is made.)`) : null,
+      box,
       h('div', { class: 'row' }, make, again, h('button', { type: 'button', onclick: discard }, 'Discard'))));
   }
 

@@ -35,6 +35,10 @@ const TABLE: Array<{ match: RegExp; cues: Cues }> = [
     cues: { tone: "none", tags: false, basis: "assumed", note: "Takes its delivery from the chosen voice, not from a tone direction. Inline tags are removed before speaking." },
   },
   {
+    match: /^elevenlabs\/eleven_v3/i,
+    cues: { tone: "none", tags: true, basis: "assumed", note: "ElevenLabs v3 performs audio tags such as [whispers] and [laughs] (per ElevenLabs' documentation, not tested here); tone is carried by the voice and the tags." },
+  },
+  {
     match: /^elevenlabs\//i,
     cues: { tone: "none", tags: false, basis: "assumed", note: "Your ElevenLabs voice, including clones. Delivery comes from the voice itself: tone is ignored and inline tags are removed before speaking." },
   },

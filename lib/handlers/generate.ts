@@ -122,14 +122,17 @@ async function generate(req: Request, who: Principal): Promise<Response> {
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
   }
 
-  // The writing step on its own: nothing is spoken, stored or sent anywhere.
+  // Placeholders are filled in here, for every path, so no {{braces}} ever reach a person or the voice.
+  const template = scriptText;
+  const filled = await renderTemplate(scriptText, tctx);
+
+  // The writing step on its own: nothing is spoken, stored or sent anywhere. `scriptText` is what would be said now; `template` is what the
+  // writer wrote, with its {{placeholders}}, for anyone who wants to keep them (a schedule).
   if (body.textOnly === true) {
     if (mode !== "ai") return Response.json({ error: 'textOnly needs mode "ai"' }, { status: 400 });
-    // scriptText keeps its placeholders so they can be edited; `filledIn` shows what it would say right now.
-    return Response.json({ textOnly: true, scriptText, filledIn: (await renderTemplate(scriptText, tctx)).text, provider, ...(textModel ? { textModel } : {}) });
+    return Response.json({ textOnly: true, scriptText: filled.text, ...(template !== filled.text ? { template } : {}), ...(filled.missing.length ? { templateMissing: filled.missing } : {}), provider, ...(textModel ? { textModel } : {}) });
   }
 
-  const filled = await renderTemplate(scriptText, tctx);
   scriptText = filled.text;
   if (filled.missing.length) log.warn("template values missing", { missing: filled.missing });
   if (!scriptText) return Response.json({ error: "The text is empty once the placeholders are filled in" }, { status: 400 });

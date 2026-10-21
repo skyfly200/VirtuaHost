@@ -12,7 +12,7 @@ Why it matters: an AI never has to guess the time or the temperature (it is told
 
 ## Where it runs
 
-- **Generate tab** (`POST /api/generate`): text you type in *Say verbatim*, and lines the AI writes. With *Ask the AI to write it*, the line you review and edit still shows the placeholders (plus "Right now this would say: ..."); they are filled in when you press *Make the audio*.
+- **Generate tab** (`POST /api/generate`): text you type in *Say verbatim*, and lines the AI writes. With *Ask the AI to write it*, the line you review is already filled in (what you see is what will be said); type `{{placeholders}}` into it yourself if you want them filled in again when the audio is made. For a line that should stay a template (a schedule), save the AI's `template` field or write the text with placeholders.
 - **Schedules**: every run fills in fresh values (a daily "time check" is correct each day).
 - **Virtual host links** (`lib/host-link.ts`): `{{artist}}` and `{{title}}` of the song, plus everything else.
 - Not applied to: the Voice Lab, the older persona line banks' `{artist}` / `{title}` / `{station}` (single braces; those still work as before), or flier promos.
@@ -66,7 +66,7 @@ Weather comes from [Open-Meteo](https://open-meteo.com/) (free, no key), is cach
 
 | Where | Field |
 |---|---|
-| `POST /api/generate` | `seconds` (3-90); the response's `scriptText` is the filled-in text, `templateMissing` lists unfilled names; with `textOnly`, `scriptText` keeps placeholders and `filledIn` shows the result now |
+| `POST /api/generate` | `seconds` (3-90); the response's `scriptText` is the filled-in text, `templateMissing` lists unfilled names; with `textOnly`, `scriptText` is also filled in (so no braces ever show) and `template` is the writer's original with its placeholders |
 | `GET /api/template` | `?station=&persona=&seconds=` -> variables with values |
 | `POST /api/template` | `{ text, station?, persona?, seconds?, artist?, title? }` -> `{ text, used, missing }` |
 | Station profile | `lat`, `lon`, `tempUnit` (`F`/`C`), `variables` (`{name: text}` or `name=text` lines) |

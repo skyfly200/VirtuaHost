@@ -77,7 +77,7 @@ export function buildSystemPrompt(options: { station: string; tagline?: string; 
     "Output only the words to be spoken -- no stage directions, sound effect cues, emoji, or markdown.",
   ];
   if (options.tagline) parts.push(`The station's tagline is "${options.tagline}".`);
-  if (options.persona) parts.push(`Your character: ${options.persona}`);
+  if (options.persona) parts.push(`Your character: ${options.persona}`, "Any example lines in that description only show the voice and style: never repeat or lightly reword them, write something new every time.");
   if (options.format) parts.push(`Format: ${options.format.label}. Structure: ${options.format.structure}`);
   if (options.tone) parts.push(`Tone: ${options.tone}.`);
   if (options.explicit) parts.push("This station is for adult listeners: profanity and strong language are allowed when they suit the character and the brief. Write them out plainly; do not censor, bleep, star out or soften them, and do not add warnings or disclaimers.");

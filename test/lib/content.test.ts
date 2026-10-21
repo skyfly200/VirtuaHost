@@ -37,6 +37,14 @@ describe("strong language in the writing prompt", () => {
   });
 });
 
+describe("persona example lines", () => {
+  it("tells the writer to use them for style only", () => {
+    const p = buildSystemPrompt({ station: "KRAP", persona: "Rocky. Example: Not even your dog." });
+    expect(p).toMatch(/example lines[^.]*only show the voice and style: never repeat or lightly reword them/);
+    expect(buildSystemPrompt({ station: "KRAP" })).not.toMatch(/example lines/);
+  });
+});
+
 describe("estimate flags filtered models when strong language is wanted", () => {
   const fetchMock = vi.fn();
   beforeEach(() => {
