@@ -62,20 +62,23 @@ export async function mountUsers(root, api) {
   }
 
   // ---------- add a person ----------
-  const name = h('input', { autocomplete: 'off', 'aria-label': 'Username' });
-  const pass = h('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'Password' });
+  const name = h('input', { autocomplete: 'off', 'aria-label': 'Username', required: true, maxlength: 40, placeholder: 'letters, numbers . _ @ -' });
+  const pass = h('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'Password', required: true, minlength: 10, placeholder: 'at least 10 characters' });
+  const problem = h('p', { class: 'bad small', role: 'alert' });
   const role = h('select', { 'aria-label': 'Role' }, h('option', { value: 'user' }, 'Regular user'), h('option', { value: 'admin' }, 'Admin'));
   const form = h('form', { class: 'card', onsubmit: async (e) => {
     e.preventDefault();
+    problem.textContent = '';
     try {
       await api.post('/users', { username: name.value, password: pass.value, role: role.value });
       name.value = ''; pass.value = '';
       toast('User added', 'info');
       await reload();
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) { problem.textContent = err.message; toast(err.message, 'error'); }
   } },
   h('h2', {}, 'Add a person'),
   h('div', { class: 'grid cols' }, h('label', { class: 'field' }, 'Username', name), h('label', { class: 'field' }, 'Password (10+ characters)', pass), h('label', { class: 'field' }, 'Role', role)),
+  problem,
   h('button', { class: 'primary', type: 'submit' }, 'Add'));
 
   clear(root,

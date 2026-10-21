@@ -52,8 +52,9 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line
 th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
 dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); padding: 20px; width: min(440px, 92vw); }
 dialog::backdrop { background: rgba(0, 0, 0, .5); }
-#toasts { position: fixed; right: 12px; bottom: 12px; display: grid; gap: 8px; z-index: 20; max-width: min(380px, 92vw); }
-.toast { background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 10px; font-size: 14px; box-shadow: 0 4px 20px rgba(0, 0, 0, .25); }
+/* Bottom middle, and high enough to clear the "Powered by Netlify" badge that sits in the bottom corner of free sites. */
+#toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: 64px; display: grid; justify-items: center; gap: 8px; z-index: 2147483000; width: max-content; max-width: min(480px, 92vw); pointer-events: none; }
+.toast { background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; text-align: center; box-shadow: 0 4px 20px rgba(0, 0, 0, .35); pointer-events: auto; cursor: pointer; }
 .toast.error { background: var(--bad); color: #fff; }
 .slot-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
 @media (max-width: 600px) { main { padding: 10px; } .card { padding: 12px; } }
