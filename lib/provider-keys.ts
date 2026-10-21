@@ -7,7 +7,7 @@ import type { KeyProvider, KeyScope } from "./credentials.js";
 //   SECRETS_KEY     32+ characters that protect the stored keys. Falls back to SESSION_SECRET, but then changing SESSION_SECRET
 //                   (which signs everyone out) also makes every stored key unreadable; set SECRETS_KEY to keep them apart.
 // A stored key is never sent back to the browser: only whether one is set and its last four characters.
-export const PROVIDERS: KeyProvider[] = ["openrouter", "gemini"];
+export const PROVIDERS: KeyProvider[] = ["openrouter", "gemini", "elevenlabs"];
 export type Owner = { kind: "user" | "station"; id: string };
 
 interface Stored { ct: string; last4: string; updatedAt: string }

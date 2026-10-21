@@ -26,7 +26,7 @@ describe("model configuration", () => {
   it("has working defaults", () => {
     expect(textModels().length).toBeGreaterThan(1);
     expect(defaultTextModel()).toBe(textModels()[0]);
-    expect(defaultSpeechModel()).toEqual({ id: "google/gemini-3.1-flash-tts-preview", voice: "Kore" });
+    expect(defaultSpeechModel()).toEqual({ id: "hexgrad/kokoro-82m", voice: "af_heart" });      // the cheapest first
   });
 
   it("reads lists from the environment, with an optional default voice per speech model", () => {
@@ -210,7 +210,7 @@ describe("models that do not exist", () => {
     vi.resetModules();
     const { allSpeechModels } = await import("../../lib/openrouter.js");
     fetchMock.mockRejectedValue(new Error("offline"));
-    expect((await allSpeechModels()).map((m) => m.id)).toEqual(["google/gemini-3.1-flash-tts-preview", "hexgrad/kokoro-82m"]);
+    expect((await allSpeechModels()).map((m) => m.id)).toEqual(["hexgrad/kokoro-82m", "google/gemini-3.1-flash-tts-preview"]);
   });
 
   it("explains a missing model instead of just repeating the error", async () => {

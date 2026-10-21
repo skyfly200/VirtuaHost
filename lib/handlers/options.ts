@@ -1,12 +1,15 @@
 import { authorize } from "../auth.js";
 import { stationOf, withKeys } from "../with-keys.js";
 import { activeProvider, NO_PROVIDER_MESSAGE } from "../ai.js";
-import { textModels, allSpeechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
+import { allTextModels, allSpeechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
 import { cuesFor, GEMINI_DIRECT_CUES } from "../cues.js";
 import { features } from "./proxy.js";
 import { queueMode } from "../station-send.js";
 import { libraryFeatures } from "../library/index.js";
 import { getStation } from "../station-profile-store.js";
+import { priceOf, speechTier, textTier } from "../pricing.js";
+import { contentFilter } from "../content.js";
+import { modelPrices } from "../openrouter.js";
 import { TONES, FORMATS, MAX_TONE_LENGTH, fillStation } from "../formats.js";
 
 // What the test console offers: the provider in use, the models that can be chosen, tones, and script formats with examples.
@@ -32,6 +35,13 @@ async function options(req: Request): Promise<Response> {
   const wanted = defaultSpeechModel().id;
   const defaultSpeech = speech.some((m) => m.id === wanted) ? wanted : speech[0]?.id ?? wanted;
 
+  // Price tier and (when known) USD per million tokens for each model, so the pickers can mark the dear ones.
+  const listed = openrouter ? await modelPrices().catch(() => new Map()) : new Map();
+  const info = openrouter ? Object.fromEntries(await Promise.all([
+    ...(await allTextModels()).map(async (m) => { const p = await priceOf(m); return [m, { tier: textTier(p), content: contentFilter(m, listed.get(m)), ...(p ? { inPerM: p.inPerM, outPerM: p.outPerM } : {}) }] as const; }),
+    ...speech.map(async (m) => { const p = await priceOf(m.id); return [m.id, { tier: speechTier(m.id, p), content: contentFilter(m.id, listed.get(m.id)), ...(p ? { inPerM: p.inPerM, outPerM: p.outPerM } : {}) }] as const; }),
+  ])) : {};
+
   return Response.json({
     provider,
     features: { ...features(), library: libraryFeatures(), stationQueue: queueMode() },
@@ -39,8 +49,8 @@ async function options(req: Request): Promise<Response> {
     station,
     // Models can only be chosen with OpenRouter; with Gemini direct the models are fixed.
     models: openrouter
-      ? { choosable: true, allowAny: allowAnyModel(), text: textModels(), speech, defaultText: defaultTextModel(), defaultSpeech }
-      : { choosable: false, fixedCues: GEMINI_DIRECT_CUES, allowAny: false, text: [], speech: [], defaultText: "", defaultSpeech: "" },
+      ? { choosable: true, allowAny: allowAnyModel(), text: await allTextModels(), speech, defaultText: defaultTextModel(), defaultSpeech, info }
+      : { choosable: false, fixedCues: GEMINI_DIRECT_CUES, allowAny: false, text: [], speech: [], defaultText: "", defaultSpeech: "", info: {} },
     tones: TONES,
     maxToneLength: MAX_TONE_LENGTH,
     formats: FORMATS.map((f) => ({ ...f, example: fillStation(f.example, station) })),

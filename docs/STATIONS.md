@@ -10,6 +10,9 @@ a station, and choose **Work on this station** (or pick it in the header). Every
 | Default persona, speech model, voice | New clips for this station use them when the request names none (a request, then a persona, then the station). |
 | Audio treatment | The fx preset the station applies to queued clips (for example `hull`). |
 | Skip list | Spots and relays the virtual host says nothing over or about. |
+| Latitude/longitude, temperature unit, your own placeholders | Fill `{{weather}}`, `{{temp}}` and your own `{{name}}` placeholders in drops (see [DROPS.md](DROPS.md)). With no coordinates the city is looked up. |
+| Allowed models | Optional lists of writing and speech models this station may use (one per line). They also bind people using their own key, and the pickers offer only these. See [KEYS.md](KEYS.md). |
+| AI key (admins) | A station-level OpenRouter, Gemini or ElevenLabs key used for requests made for this station when the person has no key of their own. Write-only. |
 | Call sign, frequency, genres, city, links, contact, notes | Shown on the card and available to other tools; nothing depends on them. |
 | Connection | A note of what the station will connect to later (Chips Voice, RadioDJ, Icecast, a hub id). Nothing connects. |
 
@@ -32,7 +35,7 @@ Open a saved station in the Stations tab (Edit) and you get its own:
 - **Defaults** for how new clips sound (persona, speech model, voice) and the audio treatment the station applies (`defaultFx`).
 - **Virtual host**: on/off, how often, persona, lines (example lines or the AI), audio treatment, skip list, whether it may cut in over a live DJ. It starts from the station's own persona, voice, treatment and skip list; what you save on top wins. Its status (now playing, the waiting link, counters) is reported per station.
 
-A daemon started with `STATION_ID=<id>` reads and reports exactly that station's host settings; another station's daemon never sees them.
+Only **admins** can create, edit or delete stations and change their host settings; everyone can view them and work on one. A daemon started with `STATION_ID=<id>` reads and reports exactly that station's host settings; another station's daemon never sees them.
 
 ## What gets tagged with the station
 

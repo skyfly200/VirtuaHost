@@ -15,9 +15,9 @@
   **RadioDJ agent** (`chips-voice/agent-radiodj/`) does it for RadioDJ on Windows.
 - **Hub** (`chips-voice/hub/`): keeps the list of stations, polls them, and does what needs more than one: broadcasts that start together,
   playlists pushed to several stations, host settings copied between them. No dependencies; Node 18+.
-- **The site's UI** (`public/`): one page with three tabs, **Generate** (always on), **Voice Lab** (needs a Chips Voice server) and **Stations** (needs the hub).
-  The last two stay switched off, with a short "what to set" card, until the site is connected to them. You sign in once, to the site; the site talks to the
-  voice server and the hub for you, so their keys never reach the browser.
+- **The site's UI** (`public/`): one page with tabs for **Generate**, **Personas**, **Flier**, **Promos**, **Schedules**, **Library**, **Voice Lab**, **Stations** and **Users** (all on the site itself), and **Control**, which needs the hub (`HUB_URL`, `HUB_KEY`) and is admin-only.
+  Control stays switched off, with a short "what to set" card, until the site is connected to the hub. You sign in once, to the site; the site talks to the
+  hub for you, so its key never reaches the browser.
 
 **Where does what run?** The hub is just a small coordinator. It does not play audio and it does not run RadioDJ. Put it anywhere that can reach your stations and is
 reachable over HTTPS by the site: usually on the same VPS as Icecast. RadioDJ and the other Windows software stay on their Windows machine, with a small **RadioDJ agent**

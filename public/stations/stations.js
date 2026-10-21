@@ -8,7 +8,7 @@ import { modelVoiceFields } from '../shared/voicepicker.js';
 import { createSpeaker } from '../shared/speaker.js';
 import { keyBox } from '../shared/keybox.js';
 
-const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
+const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], lat: '', lon: '', tempUnit: '', variablesText: '', autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
 const LINES = (v) => v.split('\n').map((l) => l.trim()).filter(Boolean);
 const clock = (tz) => { try { return new Intl.DateTimeFormat([], { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date()); } catch { return ''; } };
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -74,7 +74,7 @@ export async function mountStationProfiles(root, api) {
   // ---------- the editor ----------
   function edit(station) {
     // The placeholder becomes a real station with the same name when you "make it yours".
-    editing = { ...blank(), ...station, id: station.builtin ? undefined : station.id, builtin: false, connection: { kind: 'none', hubStationId: '', note: '', ...(station.connection || {}) }, links: [...(station.links || [])], genres: [...(station.genres || [])], skipArtists: [...(station.skipArtists || [])] };
+    editing = { ...blank(), ...station, id: station.builtin ? undefined : station.id, builtin: false, connection: { kind: 'none', hubStationId: '', note: '', ...(station.connection || {}) }, links: [...(station.links || [])], genres: [...(station.genres || [])], skipArtists: [...(station.skipArtists || [])], variablesText: Object.entries(station.variables || {}).map(([k, v]) => `${k}=${v}`).join('\n'), lat: station.lat ?? '', lon: station.lon ?? '' };
     paintEditor();
     editorBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
@@ -106,7 +106,7 @@ export async function mountStationProfiles(root, api) {
     const save = h('button', { class: 'primary', type: 'button', onclick: async () => {
       save.disabled = true;
       try {
-        const body = { ...c, genres: c.genres };
+        const body = { ...c, genres: c.genres, variables: c.variablesText };
         const { station } = c.id ? await api.put(`/stations/${encodeURIComponent(c.id)}`, body) : await api.post('/stations', body);
         await changed();
         if (!c.id) setStation(station.id);
@@ -139,6 +139,11 @@ export async function mountStationProfiles(root, api) {
       h('p', { class: 'small muted' }, 'Optional. Limit this station to these models, one per line (OpenRouter names like openai/gpt-4o-mini; a speech model may add a voice: hexgrad/kokoro-82m|af_heart). Empty uses the site\'s list. The limit applies even to people using their own key.'),
       h('div', { class: 'grid cols' }, listField('Writing models', 'textModels', 4, 'openai/gpt-4o-mini'), listField('Speech models', 'speechModels', 4, 'hexgrad/kokoro-82m|af_heart')),
       c.id ? keyBox(api, { station: c.id }) : null,
+      h('h3', {}, 'Placeholders for drops'),
+      h('p', { class: 'small muted' }, 'Drops can say {{time}}, {{weather}}, {{station}}, {{dj}} and more, filled in when the audio is made. Weather needs a location: give the coordinates, or leave them empty and the city above is looked up (Open-Meteo, free).'),
+      h('div', { class: 'grid cols' }, text('Latitude', 'lat', { placeholder: '29.76' }), text('Longitude', 'lon', { placeholder: '-95.37' }),
+        h('label', { class: 'field' }, 'Temperature unit', h('select', { onchange: (e) => { c.tempUnit = e.target.value; } }, [['', 'Automatic (F in the Americas)'], ['F', 'Fahrenheit'], ['C', 'Celsius']].map(([v, t]) => h('option', { value: v, selected: v === (c.tempUnit || '') }, t))))),
+      area('Your own placeholders, one per line as name=text (for example sponsor=Joe\'s Pizza, then {{sponsor}} in a drop)', 'variablesText', 3, { placeholder: 'sponsor=Joe\'s Pizza\nhotline=555 0100' }),
       listField('Skip list: spots and relays, one artist per line (the host says nothing over or about them)', 'skipArtists', 3, 'Jingle Radio'),
       h('h3', {}, 'Sending clips to this station'),
       h('p', { class: 'muted small' }, 'Defaults for clips made for this station. A request, a schedule or a button press can still choose differently.'),

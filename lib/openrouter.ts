@@ -16,16 +16,27 @@
 // through to the caller so a wrong voice or model name is visible.
 
 import { apiKey, currentScope, keySource } from "./credentials.js";
+import { ELEVEN_MODELS, ELEVEN_PREFIX, listVoices } from "./elevenlabs.js";
 
 import { cuesFor } from "./cues.js";
 
-const DEFAULT_TEXT_MODELS = ["openai/gpt-4o-mini", "anthropic/claude-3.5-haiku", "meta-llama/llama-3.1-8b-instruct"];
+// Candidates, cheapest-first. When OpenRouter's model list can be read (allTextModels), any of these it does not list is left out, so a
+// slug that has been renamed or retired never shows up as a choice. Use OPENROUTER_TEXT_MODELS to pin your own list.
+const DEFAULT_TEXT_MODELS = [
+  "openai/gpt-4o-mini",
+  "anthropic/claude-haiku-5.5",
+  "google/gemini-3.6-flash",
+  "deepseek/deepseek-chat",
+  "meta-llama/llama-3.1-8b-instruct",
+];
 // Providers like Kokoro reject a request with no voice, so every built-in model carries one (the UI can still override it).
 // Only models known to exist are built in. Everything else OpenRouter offers is found by asking it (allSpeechModels below), and when
 // that list can be read, a built-in model that is not on it is hidden instead of failing later with "does not exist".
+// The first entry is the default, so the cheapest comes first. Kokoro is an open model that costs a fraction of the others but does not
+// perform delivery tags or tone (lib/cues.ts); pick the Google model for those.
 const DEFAULT_SPEECH_MODELS = [
-  "google/gemini-3.1-flash-tts-preview|Kore",
   "hexgrad/kokoro-82m|af_heart",
+  "google/gemini-3.1-flash-tts-preview|Kore",
 ];
 export const MODEL_SLUG = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/;
 
@@ -59,6 +70,9 @@ export const defaultTextModel = (): string => {
   return def && textModels().includes(def) ? def : textModels()[0];
 };
 
+// ElevenLabs models are offered whenever an ElevenLabs key is in scope (the site's, the station's or the person's).
+const elevenModels = (): SpeechModel[] => (apiKey("elevenlabs") ? ELEVEN_MODELS.map((m) => ({ id: `${ELEVEN_PREFIX}${m}` })) : []);
+
 export function speechModels(): SpeechModel[] {
   const limited = currentScope()?.speechModels;
   if (limited) return limited.map((entry) => { const [id, voice] = entry.split("|").map((s) => s.trim()); return { id, ...(voice ? { voice } : {}) }; });
@@ -67,8 +81,9 @@ export function speechModels(): SpeechModel[] {
     const [id, voice] = entry.split("|").map((s) => s.trim());
     return { id, ...(voice ? { voice } : {}) };
   });
+  const withEleven = [...all, ...elevenModels().filter((e) => !all.some((m) => m.id === e.id))];
   const def = process.env.OPENROUTER_SPEECH_MODEL?.trim();
-  return def && !all.some((m) => m.id === def) ? [{ id: def }, ...all] : all;
+  return def && !withEleven.some((m) => m.id === def) ? [{ id: def }, ...withEleven] : withEleven;
 }
 export const defaultSpeechModel = (): SpeechModel => {
   const def = process.env.OPENROUTER_SPEECH_MODEL?.trim();
@@ -106,14 +121,25 @@ export async function discoverSpeechModels(): Promise<SpeechModel[]> {
 }
 
 // The configured list plus whatever OpenRouter reports; configured entries keep their own default voice.
+// ElevenLabs entries list the voices on the account (clones first), so the voice box can suggest them by name.
+async function withElevenVoices(models: SpeechModel[]): Promise<SpeechModel[]> {
+  if (!models.some((m) => m.id.startsWith(ELEVEN_PREFIX))) return models;
+  const names = (await listVoices()).map((v) => v.name);
+  return models.map((m) => (m.id.startsWith(ELEVEN_PREFIX) && names.length ? { ...m, voices: names } : m));
+}
+
 export async function allSpeechModels(): Promise<SpeechModel[]> {
-  if (currentScope()?.speechModels) return speechModels();                  // the station limits the choice: nothing else is offered
+  if (currentScope()?.speechModels) return withElevenVoices(speechModels());   // the station limits the choice: nothing else is offered
+  return withElevenVoices(await allSpeechModelsUnlimited());
+}
+
+async function allSpeechModelsUnlimited(): Promise<SpeechModel[]> {
   const configuredList = speechModels();
   const extra = await discoverSpeechModels();
   // With no list of your own (OPENROUTER_SPEECH_MODELS), the built-in models OpenRouter does not list are left out.
   const builtInOnly = list(process.env.OPENROUTER_SPEECH_MODELS).length === 0;
   const pinned = process.env.OPENROUTER_SPEECH_MODEL?.trim();
-  const kept = builtInOnly && extra.length ? configuredList.filter((m) => m.id === pinned || extra.some((x) => x.id === m.id)) : configuredList;
+  const kept = builtInOnly && extra.length ? configuredList.filter((m) => m.id === pinned || m.id.startsWith(ELEVEN_PREFIX) || extra.some((x) => x.id === m.id)) : configuredList;
   const merged = kept.map((m) => {
     const live = extra.find((x) => x.id === m.id);
     return live?.voices ? { ...m, voices: live.voices } : m;
@@ -127,7 +153,7 @@ export const MODEL_GONE = /does not exist|No endpoints found|not a valid model|m
 // Resolves a requested model against the allowed list; returns an error message when it is not allowed.
 export function pickTextModel(requested: string | undefined): { model: string } | { error: string } {
   if (!requested) return { model: defaultTextModel() };
-  if (textModels().includes(requested) || (allowAnyModel() && MODEL_SLUG.test(requested))) return { model: requested };
+  if (textModels().includes(requested) || isListedFree(requested) || (allowAnyModel() && MODEL_SLUG.test(requested))) return { model: requested };
   return { error: `Unknown writing model "${requested.slice(0, 60)}". Allowed: ${textModels().join(", ")}` };
 }
 // The writing model for something that has preferences (a request, then a persona, then a station): the request is checked strictly (a
@@ -264,3 +290,60 @@ export async function speech(options: { model: string; voice?: string; text: str
   if (!audio.length) throw new Error(`${options.model} returned no audio`);
   return { audio, format };
 }
+
+// ---- prices ----
+// What OpenRouter lists for each model (USD per token, as strings): used for cost estimates before a request is made (lib/pricing.ts).
+// Best effort and cached for an hour; a person's own key may see different models, so only the site's key shares the cache.
+export interface ModelPrice { promptPerToken: number; completionPerToken: number; /** Listed under speech models. */ speech?: boolean; /** OpenRouter's `top_provider.is_moderated`, when it says. */ moderated?: boolean }
+let priced: { at: number; prices: Map<string, ModelPrice> } | undefined;
+export const resetPriceCache = (): void => { priced = undefined; };
+const PRICE_TTL_MS = 60 * 60_000;
+
+export async function modelPrices(): Promise<Map<string, ModelPrice>> {
+  const shared = keySource("openrouter") === "site";
+  if (shared && priced && Date.now() - priced.at < PRICE_TTL_MS) return priced.prices;
+  const prices = new Map<string, ModelPrice>();
+  for (const [path, speech] of [["/models", false], ["/models?output_modalities=speech", true]] as const) {
+    try {
+      const res = await fetch(`${base()}${path}`, { headers: headers(), signal: AbortSignal.timeout(6_000) });
+      if (!res.ok) continue;
+      const body = (await res.json()) as { data?: Array<{ id?: unknown; pricing?: { prompt?: unknown; completion?: unknown }; top_provider?: { is_moderated?: unknown } }> };
+      for (const m of body.data ?? []) {
+        const p = Number(m.pricing?.prompt);
+        const c = Number(m.pricing?.completion);
+        if (typeof m.id === "string" && Number.isFinite(p) && p >= 0) prices.set(m.id, { promptPerToken: p, completionPerToken: Number.isFinite(c) && c >= 0 ? c : 0, ...(speech ? { speech: true } : {}), ...(typeof m.top_provider?.is_moderated === "boolean" ? { moderated: m.top_provider.is_moderated } : {}) });
+      }
+    } catch {
+      // unreachable or not JSON: estimates fall back to the built-in table
+    }
+  }
+  if (shared && prices.size) priced = { at: Date.now(), prices };
+  return prices;
+}
+
+// ---- the writing models to offer ----
+// The configured list, checked against what OpenRouter lists (a built-in candidate it does not list is hidden; a list you set yourself in
+// OPENROUTER_TEXT_MODELS is kept as written), plus the free models OpenRouter lists (ids ending in ":free", capped). Free models are
+// rate limited and may log prompts, so they are labelled and not the default. When the listing cannot be read, the configured list is used.
+export const FREE_MODEL = /:free$/;
+const MAX_FREE_LISTED = 40;
+
+export async function allTextModels(): Promise<string[]> {
+  const base = textModels();
+  if (currentScope()?.textModels) return base;                                // the station limits the choice
+  const listed = await modelPrices().catch(() => new Map<string, ModelPrice>());
+  const chat = [...listed.entries()].filter(([, p]) => !p.speech).map(([id]) => id);
+  if (!chat.length) return base;
+  const custom = list(process.env.OPENROUTER_TEXT_MODELS).length > 0;
+  const pinned = process.env.OPENROUTER_TEXT_MODEL?.trim();
+  const kept = custom ? base : base.filter((id) => id === pinned || chat.includes(id));
+  const free = chat.filter((id) => FREE_MODEL.test(id)).sort().slice(0, MAX_FREE_LISTED);
+  return [...kept, ...free.filter((id) => !kept.includes(id))];
+}
+
+// A free model OpenRouter lists can be chosen even when it is not on the configured list: it costs nothing, so there is nothing to protect.
+// `modelPrices` is cached, so this is a cheap call; it makes sure the listing is loaded before a request names a free model.
+export async function ensureListed(model: string | undefined): Promise<void> {
+  if (model && FREE_MODEL.test(model) && !textModels().includes(model)) await modelPrices().catch(() => undefined);
+}
+const isListedFree = (model: string): boolean => FREE_MODEL.test(model) && Boolean(priced?.prices.has(model));

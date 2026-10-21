@@ -6,6 +6,7 @@ import { createSpeaker, parseDialogue, speakersOf } from '../shared/speaker.js';
 import { FX_PREVIEWS } from '../generate/fx.js';
 import { effectNames } from '../generate/mixer.js';
 import { createPlayer } from '../shared/playbutton.js';
+import { downloadMenu } from '../shared/download.js';
 import { createStatus } from '../shared/status.js';
 import { amountSlider } from '../shared/amount.js';
 import { stationId, stationName } from '../shared/station.js';
@@ -135,7 +136,7 @@ export async function mountLab(root, api) {
         cues ? h('p', { class: 'small muted' }, `Tone: ${cues.tone === 'none' ? 'ignored' : 'yes'} · tags like [laughs]: ${cues.tags === true ? 'performed' : cues.tags === false ? 'removed' : 'untested'}`) : null,
         h('button', { class: 'primary', onclick: () => generate(slot, card), disabled: slot.busy }, slot.take ? 'Generate again' : 'Generate'),
         slot.st.el,
-        slot.take ? h('div', { class: 'row' }, slot.player.button,
+        slot.take ? h('div', { class: 'row' }, slot.player.button, downloadMenu({ load: async () => slot.take.blob, name: () => `lab-variant-${state.slots.indexOf(slot) + 1}` }),
           h('button', { onclick: () => useInGenerate(slot) }, 'Use in Generate'),
           h('button', { onclick: (e) => saveTake(slot, e.currentTarget) }, 'Save to library')) : null)];
   }

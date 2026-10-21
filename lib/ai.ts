@@ -9,6 +9,7 @@ import { apiKey, keySource } from "./credentials.js";
 import { writeDjLine, describeImage, synthesizeSpeech as geminiSpeech, DEFAULT_VOICE } from "./gemini.js";
 import * as openrouter from "./openrouter.js";
 import { pcmToWav } from "./wav.js";
+import { elevenSpeech, isElevenModel } from "./elevenlabs.js";
 import { buildSystemPrompt, type DjFormat } from "./formats.js";
 
 export type ProviderName = "openrouter" | "gemini";
@@ -37,12 +38,18 @@ export interface WriteOptions {
   format?: DjFormat;
   /** A persona's character brief, from lib/personas.ts. */
   persona?: string;
+  /** Allow profanity and strong language (the model may still refuse; see lib/content.ts). */
+  explicit?: boolean;
+  /** Instructions about the {{placeholders}} the engine will fill in (lib/drop-template.ts promptHelp). */
+  placeholders?: string;
+  /** About how long the line should run when spoken. */
+  targetSeconds?: number;
   /** The station the line is for (its name and tagline go into the prompt); defaults to STATION_NAME. */
   station?: { name: string; tagline?: string };
 }
 
 export async function writeScript(options: WriteOptions): Promise<{ text: string; model: string }> {
-  const system = buildSystemPrompt({ station: options.station?.name || process.env.STATION_NAME || "the station", tagline: options.station?.tagline, tone: options.tone, format: options.format, persona: options.persona });
+  const system = buildSystemPrompt({ station: options.station?.name || process.env.STATION_NAME || "the station", tagline: options.station?.tagline, tone: options.tone, format: options.format, persona: options.persona, explicit: options.explicit, placeholders: options.placeholders, targetSeconds: options.targetSeconds });
   if (options.provider === "openrouter") {
     const model = options.textModel ?? openrouter.defaultTextModel();
     return { text: await openrouter.chat({ model, system, prompt: options.prompt }), model };
@@ -84,6 +91,11 @@ export interface Spoken {
 }
 
 export async function speak(options: SpeakOptions): Promise<Spoken> {
+  // An ElevenLabs model (voice clones) is spoken by ElevenLabs itself, whichever service writes the words.
+  if (isElevenModel(options.speechModel?.id)) {
+    const out = await elevenSpeech({ model: options.speechModel!.id, voice: options.voice, text: options.text });
+    return { audio: out.audio, mimeType: "audio/mpeg", voice: out.voice, model: options.speechModel!.id };
+  }
   if (options.provider === "openrouter") {
     const model = options.speechModel ?? openrouter.defaultSpeechModel();
     const voice = openrouter.voiceFor(model, options.voice);

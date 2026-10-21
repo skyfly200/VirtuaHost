@@ -14,6 +14,7 @@ import { createLogger } from "./log.js";
 import { chargeAi } from "./quota.js";
 import { findAccount } from "./session.js";
 import { withKeys } from "./with-keys.js";
+import { contextFor, promptHelp } from "./drop-template.js";
 
 const log = createLogger("scheduler");
 
@@ -35,6 +36,7 @@ async function runScheduleScoped(s: Schedule): Promise<string> {
   const station = s.stationId ? await getStation(s.stationId) : null;
   const persona = s.personaId ? await getPersona(s.personaId) : station?.defaultPersonaId ? await getPersona(station.defaultPersonaId) : null;
   const stationInfo = station && station.id !== "default" ? { station: station.id } : {};
+  const tctx = contextFor({ station, persona });
   let clipId: string;
   let audio: Buffer | undefined;
   let mimeType = "audio/mpeg";
@@ -54,13 +56,13 @@ async function runScheduleScoped(s: Schedule): Promise<string> {
       if (!provider) throw new Error("no AI provider is configured");
       if (provider === "openrouter") textModel = (resolveTextModel(undefined, [persona?.textModel, station?.defaultTextModel]) as { model: string }).model;
       const format = s.content.format ? findFormat(s.content.format) : undefined;
-      text = (await writeScript({ prompt: s.content.prompt, provider, textModel, tone: s.tone || persona?.tone, format, persona: persona?.instructions, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text;
+      text = (await writeScript({ prompt: s.content.prompt, provider, textModel, tone: s.tone || persona?.tone, format, persona: persona?.instructions, placeholders: promptHelp(tctx), ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text;
       mode = "ai";
     } else {
       text = s.content.text;
     }
     const info = { source: "schedule", ...stationInfo, ...(s.info ?? {}), ...(s.until ? { expiresAt: s.until } : {}) };
-    const made = await makeClip({ ...(s.ownerId ? { ownerId: s.ownerId } : {}), text, input: `schedule: ${s.name}`, mode, textModel, info, tone: s.tone || persona?.tone, voice: s.voice || persona?.voice || station?.defaultVoice, speechModel: s.speechModel || persona?.speechModel || station?.defaultSpeechModel });
+    const made = await makeClip({ ...(s.ownerId ? { ownerId: s.ownerId } : {}), templateContext: tctx, text, input: `schedule: ${s.name}`, mode, textModel, info, tone: s.tone || persona?.tone, voice: s.voice || persona?.voice || station?.defaultVoice, speechModel: s.speechModel || persona?.speechModel || station?.defaultSpeechModel });
     if (!made.ok) throw new Error(made.error);
     clipId = made.id; title = made.scriptText;
   }

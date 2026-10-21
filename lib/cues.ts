@@ -35,6 +35,10 @@ const TABLE: Array<{ match: RegExp; cues: Cues }> = [
     cues: { tone: "none", tags: false, basis: "assumed", note: "Takes its delivery from the chosen voice, not from a tone direction. Inline tags are removed before speaking." },
   },
   {
+    match: /^elevenlabs\//i,
+    cues: { tone: "none", tags: false, basis: "assumed", note: "Your ElevenLabs voice, including clones. Delivery comes from the voice itself: tone is ignored and inline tags are removed before speaking." },
+  },
+  {
     match: /^hexgrad\/kokoro/i,
     cues: { tone: "none", tags: false, basis: "assumed", note: "Fixed voices with no tone control or inline tags; tone is ignored and tags are removed before speaking." },
   },

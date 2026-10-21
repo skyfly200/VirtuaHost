@@ -34,6 +34,10 @@ Set per person in **Users -> Limits**, with site-wide defaults from `QUOTA_DAILY
 
 Counters are read-then-write on Blobs, so two simultaneous requests can both slip under a limit by one. That is fine for cost control.
 
+## Their own AI keys
+
+Every person can save their own OpenRouter, Gemini or ElevenLabs key (the card at the top of the page). Their requests then use it, are billed to them, and do not count toward their limits. Admins can also save a key per station. Details: [KEYS.md](KEYS.md).
+
 ## Moving to a database later
 
 Everything that reads or writes users is in `lib/user-store.ts`; usage counters are in `lib/quota.ts`. Replace those two files' storage calls (for example with Turso or D1 over HTTP) and nothing else changes.
