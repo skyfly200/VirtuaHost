@@ -202,7 +202,7 @@ async function errorMessage(res: Response): Promise<string> {
 // Token budgets. "Thinking" models (Gemini 3.x, Claude with reasoning, DeepSeek R1...) spend part of max_tokens on reasoning BEFORE the
 // answer, so a small cap gives empty or cut-off text even for a one-line drop. The budget is generous (you only pay for what is
 // generated), reasoning effort is asked to be low, and an empty or cut-off reply is retried once with a bigger budget.
-export const WRITE_MAX_TOKENS = 1500;
+export const WRITE_MAX_TOKENS = 3000;
 export const IMAGE_MAX_TOKENS = 2000;
 
 interface Choice { message?: { content?: unknown; reasoning?: unknown }; finish_reason?: string }

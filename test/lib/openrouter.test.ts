@@ -98,7 +98,7 @@ describe("chat", () => {
     expect(init.headers.authorization).toBe("Bearer or-key");
     expect(init.headers["x-title"]).toBe("Way High Radio");
     expect(init.headers["http-referer"]).toBe("https://site.example");
-    expect(JSON.parse(init.body)).toEqual({ model: "a/one", max_tokens: 1500, reasoning: { effort: "low" }, messages: [{ role: "system", content: "be brief" }, { role: "user", content: "say hi" }] });
+    expect(JSON.parse(init.body)).toEqual({ model: "a/one", max_tokens: 3000, reasoning: { effort: "low" }, messages: [{ role: "system", content: "be brief" }, { role: "user", content: "say hi" }] });
   });
 
   it("passes OpenRouter's error message through", async () => {
@@ -229,7 +229,7 @@ describe("thinking models (empty or cut-off replies)", () => {
     fetchMock.mockResolvedValueOnce(reply(null, "length", "hmm, let me think...")).mockResolvedValueOnce(reply("Hello crew."));
     expect(await chat({ model: "anthropic/claude-haiku-5.5", system: "s", prompt: "p" })).toBe("Hello crew.");
     const [first, second] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
-    expect([first.max_tokens, second.max_tokens]).toEqual([1500, 3000]);
+    expect([first.max_tokens, second.max_tokens]).toEqual([3000, 6000]);
     expect(second.reasoning).toEqual({ effort: "minimal" });
   });
 

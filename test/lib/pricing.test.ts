@@ -85,7 +85,7 @@ describe("POST /api/estimate", () => {
   it("estimates writing, speaking and flier steps without calling any AI model", async () => {
     fetchMock.mockImplementation(async () => listing([["openai/gpt-4o-mini", "0.00000015", "0.0000006"]]));
     const write = (await (await call({ kind: "write", prompt: "a station id" })).json()) as { estimate: { model: string; tokens: { out: number } } };
-    expect(write.estimate).toMatchObject({ model: "openai/gpt-4o-mini", tokens: { out: 1500 } });
+    expect(write.estimate).toMatchObject({ model: "openai/gpt-4o-mini", tokens: { out: 3000 } });
     const speak = (await (await call({ kind: "speak", text: "Hello [laughs] there" })).json()) as { estimate: { model: string; seconds: number } };
     expect(speak.estimate.model).toBe("hexgrad/kokoro-82m");
     expect(speak.estimate.seconds).toBeCloseTo("Hello  there".length / 15, 5);
