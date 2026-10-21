@@ -2,6 +2,7 @@
 // A profile is data only (name, frequency, time zone, defaults, links); connecting a real Icecast/Liquidsoap/hub later is a separate step
 // (see `connection`, which only records what it will be). Other parts read the station to name it in AI-written lines, pick its time
 // zone, and default its persona, voice and audio treatment.
+import { isReservedVariable, VARIABLE_NAME } from "./drop-template.js";
 import { validTimeZone } from "./schedule.js";
 
 export type ConnectionKind = "none" | "chips-voice" | "radiodj" | "icecast";
@@ -38,6 +39,13 @@ export interface Station {
   speechModels?: string[];
   /** Artists that are spots or relays on this station. */
   skipArtists: string[];
+  /** Where the station is, for the {{weather}} placeholders (lib/drop-template.ts). Without it the city name is looked up. */
+  lat?: number;
+  lon?: number;
+  /** Temperature unit for {{temp}}: F for the Americas by default, else C. */
+  tempUnit?: "F" | "C";
+  /** Station-specific placeholders, {{sponsor}} and so on: name -> text. */
+  variables?: Record<string, string>;
   /** Per-station send defaults: put new clips on air as soon as they arrive, and let them cut in over a live DJ. A request still overrides. */
   autoplay?: boolean;
   preempt?: boolean;
@@ -64,6 +72,20 @@ export function defaultStation(): Station {
   return {
     id: "default", name: process.env.STATION_NAME?.trim() || "the station", genres: [], tz: "UTC", links: [], skipArtists: [], connection: { kind: "none" }, builtin: true,
   };
+}
+
+const num = (v: unknown, lo: number, hi: number): number | undefined => { const n = typeof v === "string" && v.trim() ? Number(v) : v; return typeof n === "number" && Number.isFinite(n) && n >= lo && n <= hi ? n : undefined; };
+const geo = (r: Record<string, unknown>): { lat?: number; lon?: number } => { const lat = num(r.lat, -90, 90); const lon = num(r.lon, -180, 180); return lat !== undefined && lon !== undefined ? { lat, lon } : {}; };
+// Accepts { name: text } or lines of "name=text"; names are lowercase words, built-in placeholders cannot be replaced.
+function customVariables(raw: unknown): { variables?: Record<string, string> } {
+  const pairs: Array<[string, string]> = typeof raw === "string" ? raw.split("\n").map((l) => { const at = l.indexOf("="); return [l.slice(0, at), l.slice(at + 1)] as [string, string]; }) : raw && typeof raw === "object" ? Object.entries(raw as Record<string, unknown>).map(([k, v]) => [k, String(v)] as [string, string]) : [];
+  const out: Record<string, string> = {};
+  for (const [k, v] of pairs) {
+    const name = k.trim().toLowerCase();
+    const value = text(v, 200);
+    if (VARIABLE_NAME.test(name) && !isReservedVariable(name) && value && Object.keys(out).length < 20) out[name] = value;
+  }
+  return Object.keys(out).length ? { variables: out } : {};
 }
 
 const MODEL_ENTRY = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}(\|[A-Za-z0-9_. -]{1,60})?$/;
@@ -99,6 +121,7 @@ export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } 
       links,
       ...opt("defaultPersonaId", text(r.defaultPersonaId, 60)), ...opt("defaultFx", text(r.defaultFx, 40)), ...opt("defaultSpeechModel", text(r.defaultSpeechModel, 100)), ...opt("defaultTextModel", text(r.defaultTextModel, 100)), ...opt("defaultVoice", text(r.defaultVoice, 60)),
       skipArtists: list(r.skipArtists, 100, 100),
+      ...geo(r), ...(r.tempUnit === "F" || r.tempUnit === "C" ? { tempUnit: r.tempUnit } : {}), ...customVariables(r.variables),
       ...modelList("textModels", r.textModels), ...modelList("speechModels", r.speechModels),
       ...(typeof r.autoplay === "boolean" ? { autoplay: r.autoplay } : {}), ...(typeof r.preempt === "boolean" ? { preempt: r.preempt } : {}),
       ...opt("notes", text(r.notes, 1000)),

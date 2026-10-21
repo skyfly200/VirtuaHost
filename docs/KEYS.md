@@ -19,6 +19,10 @@ Encrypted with AES-256-GCM in Netlify Blobs (store `secrets`). The encryption se
 
 A schedule runs with its owner's key (then the station's, then the site's). Host links for a station use the station's key.
 
+## Downloading audio
+
+Every generated clip, sample and preview has a **Download** menu: *As saved* (the file as stored: WAV from Google/Kokoro-style PCM models, MP3 from most others), *WAV*, or *MP3*. Conversion happens in your browser (the audio is decoded with Web Audio; MP3 uses the lamejs encoder, loaded from cdnjs the first time you pick MP3). It works for the Generate preview and saved clips, the Library and Promos cards, Voice Lab takes, the Flier audio, and the persona and voice samples.
+
 ## ElevenLabs (voice clones)
 
 Add an ElevenLabs key the same way (Account card, or a station's editor for admins; the site's `ELEVENLABS_API_KEY` is the fallback). While a key is in scope, the speech-model lists include `elevenlabs/eleven_flash_v2_5`, `eleven_turbo_v2_5` and `eleven_multilingual_v2`, and their voice box suggests the voices on that account, **cloned voices first**. Type a voice name or paste a voice id. `ELEVENLABS_VOICES="Rocky=<id>,Britta=<id>"` adds named voices (same format as the Chips Voice server).

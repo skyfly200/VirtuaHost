@@ -42,7 +42,7 @@ export async function mountGenerate(root, api) {
     mode: prefs.mode === 'ai' ? 'ai' : 'say', format: prefs.format || '', persona: personas.some((p) => p.id === prefs.persona) ? prefs.persona : '', tone: prefs.tone || '',
     textModel: prefs.textModel || options.models.defaultText, speechModel: prefs.speechModel || options.models.defaultSpeech, voice: prefs.voice || '',
     fx: FX_PREVIEWS[prefs.fx] ? prefs.fx : '', fxAmount: typeof prefs.fxAmount === 'number' ? Math.min(1, Math.max(0, prefs.fxAmount)) : 1,
-    textCustom: '', speechCustom: '', text: takePrefill(), explicit: prefs.explicit === true,
+    textCustom: '', speechCustom: '', text: takePrefill(), explicit: prefs.explicit === true, seconds: Number(prefs.seconds) || 0,
   };
   // Strong language mode leaves out models that filter it, and moves a chosen filtered model to the first one that does not.
   const useUnfiltered = () => {
@@ -52,7 +52,7 @@ export async function mountGenerate(root, api) {
       if (next) { toast(`Switched ${key === 'textModel' ? 'writing' : 'speech'} model to ${next}: ${state[key]} filters strong language.`, 'info'); state[key] = next; }
     }
   };
-  const persist = () => savePrefs({ explicit: state.explicit, mode: state.mode, format: state.format, persona: state.persona, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice, fx: state.fx, fxAmount: state.fxAmount });
+  const persist = () => savePrefs({ seconds: state.seconds, explicit: state.explicit, mode: state.mode, format: state.format, persona: state.persona, tone: state.tone, textModel: state.textModel, speechModel: state.speechModel, voice: state.voice, fx: state.fx, fxAmount: state.fxAmount });
   const formatOf = () => options.formats.find((f) => f.id === state.format);
 
   const note = options.warning
@@ -145,6 +145,11 @@ export async function mountGenerate(root, api) {
       textArea,
       f ? h('div', {}, h('button', { type: 'button', onclick: () => { state.text = state.mode === 'say' ? f.example : f.prompt; textArea.value = state.text; textArea.focus(); } }, state.mode === 'say' ? 'Use the example line' : 'Use the example brief')) : null,
       h('div', {}, h('div', { class: 'label' }, 'Tone (click any that fit, or describe your own)'), chips, toneInput),
+      h('label', { class: 'row small' }, 'Length',
+        h('select', { 'aria-label': 'Length of the drop', onchange: (e) => { state.seconds = Number(e.target.value); persist(); refreshEstimate(); } },
+          [[0, 'Any (short)'], [5, 'About 5 seconds'], [10, 'About 10 seconds'], [15, 'About 15 seconds'], [20, 'About 20 seconds'], [30, 'About 30 seconds'], [45, 'About 45 seconds'], [60, 'About a minute']].map(([v, t]) => h('option', { value: v, selected: v === state.seconds }, t))),
+        h('span', { class: 'muted' }, 'The writer is told how long to aim for.')),
+      placeholderPanel(),
       h('label', { class: 'row small', title: 'Models that filter or soften profanity are hidden while this is on' },
         h('input', { type: 'checkbox', checked: state.explicit, onchange: (e) => { state.explicit = e.target.checked; if (state.explicit && options.models.choosable) useUnfiltered(); persist(); paintForm(); } }),
         'Allow strong language (profanity). Hides models marked "filtered"; the writer is told not to censor.'),
@@ -175,6 +180,31 @@ export async function mountGenerate(root, api) {
     refreshEstimate();
   }
 
+  // The placeholders the engine can fill in ({{time}}, {{weather}}, {{dj}}...), with today's values; click one to put it in the text.
+  function placeholderPanel() {
+    const body = h('div', { class: 'stack small' });
+    let loaded = false;
+    const insert = (name) => {
+      const token = `{{${name}}}`; const a = textArea; const at = a.selectionStart ?? a.value.length;
+      a.value = a.value.slice(0, at) + token + a.value.slice(a.selectionEnd ?? at); state.text = a.value; a.focus(); a.selectionStart = a.selectionEnd = at + token.length; refreshEstimate();
+    };
+    async function load() {
+      clear(body, h('span', { class: 'muted' }, 'Loading...'));
+      try {
+        const data = await api.get('/template', { query: { station: stationId(), persona: state.persona || undefined, seconds: state.seconds || undefined } });
+        const groups = {};
+        for (const v of data.variables) (groups[v.group] ||= []).push(v);
+        const preview = h('p', { class: 'muted' });
+        clear(body,
+          h('p', { class: 'muted' }, 'Write ', h('code', {}, '{{name}}'), ' where the value should go, ', h('code', {}, '{{name|fallback}}'), ' for a backup (always give one for weather), or ', h('code', {}, '{{pick: a | b | c}}'), ' for a random choice. They are filled in after the AI writes and before the voice speaks, so the line is right whenever it is made. The AI is told which ones exist.'),
+          Object.entries(groups).map(([g, vars]) => h('div', {}, h('strong', {}, g), h('div', { class: 'row' }, vars.map((v) => h('button', { type: 'button', class: 'chip', title: `${v.description}. Right now: ${v.value ?? 'not available'}`, onclick: () => insert(v.name) }, `${v.name}${v.value ? ` = ${v.value}` : ''}`))))),
+          h('div', { class: 'row' }, h('button', { type: 'button', onclick: async () => {
+            try { const r = await api.post('/template', { text: state.text, station: stationId(), persona: state.persona || undefined, seconds: state.seconds || undefined }); clear(preview, `Right now: "${r.text}"${r.missing.length ? ` (no value for: ${r.missing.join(', ')})` : ''}`); } catch (err) { toast(err.message, 'error'); }
+          } }, "Preview my text with today's values")), preview);
+      } catch (err) { clear(body, h('span', { class: 'bad' }, err.message)); }
+    }
+    return h('details', { class: 'tips', ontoggle: (e) => { if (e.target.open && !loaded) { loaded = true; load(); } } }, h('summary', {}, 'Placeholders (time, weather, station, DJ, length...)'), body);
+  }
   const speakChoice = () => ({ ...(state.explicit ? { explicit: true } : {}), ...(state.persona ? { persona: state.persona } : {}), ...(stationId() ? { station: stationId() } : {}), ...(options.models.choosable && chosen('speechModel', 'speechCustom') ? { speechModel: chosen('speechModel', 'speechCustom') } : {}) });
   const chosen = (key, customKey) => (state[key] === OTHER ? state[customKey].trim() : state[key]);
 
@@ -185,7 +215,7 @@ export async function mountGenerate(root, api) {
   let draft = null;
   const writerBase = () => ({
     ...(stationId() ? { station: stationId() } : {}),
-    ...(state.persona ? { persona: state.persona } : {}), ...(state.format ? { format: state.format } : {}), ...(state.tone.trim() ? { tone: state.tone.trim() } : {}), ...(state.explicit ? { explicit: true } : {}),
+    ...(state.persona ? { persona: state.persona } : {}), ...(state.format ? { format: state.format } : {}), ...(state.tone.trim() ? { tone: state.tone.trim() } : {}), ...(state.explicit ? { explicit: true } : {}), ...(state.seconds ? { seconds: state.seconds } : {}),
     ...(options.models.choosable ? (() => { const m = chosen('textModel', 'textCustom'); return m ? { textModel: m } : {}; })() : {}),
   });
 
@@ -210,7 +240,7 @@ export async function mountGenerate(root, api) {
   async function writeLine(brief) {
     status.busy('Writing the line (nothing is spoken yet)');
     const data = await api.post('/generate', { mode: 'ai', prompt: brief, textOnly: true, ...writerBase() });
-    showScript({ brief, text: data.scriptText, textModel: data.textModel });
+    showScript({ brief, text: data.scriptText, filledIn: data.filledIn, textModel: data.textModel });
     status.ok(`Line written${data.textModel ? ` by ${data.textModel}` : ''}. Edit it if you like, then make the audio.`);
   }
 
@@ -230,7 +260,8 @@ export async function mountGenerate(root, api) {
     } }, 'Write it again');
     clear(draftBox, h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'written line, not spoken yet'), script.textModel ? h('span', { class: 'chip' }, script.textModel) : null),
-      box, h('div', { class: 'row' }, make, again, h('button', { type: 'button', onclick: discard }, 'Discard'))));
+      box, script.filledIn && script.filledIn !== script.text ? h('p', { class: 'small muted' }, `Right now this would say: "${script.filledIn}" (the {{placeholders}} are filled in when the audio is made.)`) : null,
+      h('div', { class: 'row' }, make, again, h('button', { type: 'button', onclick: discard }, 'Discard'))));
   }
 
   // The speech step: each stretch of text goes to the speech service as plain "say" text; effects are mixed here.

@@ -5,6 +5,7 @@ import { getPersona } from "./persona-store.js";
 import { resolveTextModel } from "./openrouter.js";
 import type { Station } from "./station-profile.js";
 import { withKeys } from "./with-keys.js";
+import { contextFor } from "./drop-template.js";
 
 // Writes the link for a track: the persona's example lines, or the writing model (falling back to a template when it fails).
 export async function composeLink(artist: string, title: string, config: HostConfig, station: Station | null = null, now = new Date(), rng: () => number = Math.random): Promise<{ text: string; source: "template" | "llm"; note?: string }> {
@@ -34,6 +35,7 @@ async function makeHostLinkScoped(artist: string, title: string, config: HostCon
   const made = await makeClip({
     text: line.text, input: `host link: ${artist} - ${title}`, mode: line.source === "llm" ? "ai" : "say", format: "host-link",
     info: { kind: "link", source: "host", ...(station && station.id !== "default" ? { station: station.id } : {}), ...(config.personaId ? { persona: config.personaId } : {}) },
+    templateContext: contextFor({ station, persona, song: { artist, title } }),
     tone: config.tone || persona?.tone, voice: config.voice || persona?.voice || station?.defaultVoice, speechModel: config.speechModel || persona?.speechModel || station?.defaultSpeechModel,
   });
   return made.ok ? { ...made, source: line.source, ...(line.note ? { note: line.note } : {}) } : made;

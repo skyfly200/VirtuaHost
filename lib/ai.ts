@@ -40,12 +40,16 @@ export interface WriteOptions {
   persona?: string;
   /** Allow profanity and strong language (the model may still refuse; see lib/content.ts). */
   explicit?: boolean;
+  /** Instructions about the {{placeholders}} the engine will fill in (lib/drop-template.ts promptHelp). */
+  placeholders?: string;
+  /** About how long the line should run when spoken. */
+  targetSeconds?: number;
   /** The station the line is for (its name and tagline go into the prompt); defaults to STATION_NAME. */
   station?: { name: string; tagline?: string };
 }
 
 export async function writeScript(options: WriteOptions): Promise<{ text: string; model: string }> {
-  const system = buildSystemPrompt({ station: options.station?.name || process.env.STATION_NAME || "the station", tagline: options.station?.tagline, tone: options.tone, format: options.format, persona: options.persona, explicit: options.explicit });
+  const system = buildSystemPrompt({ station: options.station?.name || process.env.STATION_NAME || "the station", tagline: options.station?.tagline, tone: options.tone, format: options.format, persona: options.persona, explicit: options.explicit, placeholders: options.placeholders, targetSeconds: options.targetSeconds });
   if (options.provider === "openrouter") {
     const model = options.textModel ?? openrouter.defaultTextModel();
     return { text: await openrouter.chat({ model, system, prompt: options.prompt }), model };

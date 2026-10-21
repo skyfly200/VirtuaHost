@@ -1,6 +1,6 @@
 # Deploying on Netlify
 
-One Netlify site does everything the web side needs: it makes the clips (the AI), shows the UI (Generate, Voice Lab, Stations tabs), and signs people in.
+One Netlify site does everything the web side needs: it makes the clips (the AI), shows the UI (Generate, Flier, Personas, Schedules, Library, Voice Lab, Stations and Users tabs), and signs people in.
 The radio side (the Chips Voice server, the hub, the RadioDJ agent) runs on your own machines, because Netlify cannot run long-lived processes or reach a local RadioDJ.
 You can ignore the radio side until you have it: the Voice Lab and Stations tabs simply show "not connected yet" until you add its address and key.
 
@@ -49,13 +49,18 @@ Add these to the site's environment variables:
 | `PROVIDER` | `openrouter` or `gemini` to force one when both keys are set | no |
 | `STATION_NAME` | e.g. `Way High Radio` (used in the DJ prompt and the examples) | no |
 | `GEMINI_TTS_VOICE` | a Gemini voice name (default `Kore`) | no |
+| `SECRETS_KEY` | 32+ random characters that encrypt AI keys people and stations save in the app (`openssl rand -hex 32`). Falls back to `SESSION_SECRET`, but then changing that makes saved keys unreadable. Set it once and keep it | recommended |
+| `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICES` | ElevenLabs for voice clones (the site's key; people and stations can save their own). `ELEVENLABS_VOICES` is optional names, `Rocky=<voice id>,Britta=<voice id>` | no |
+| `QUOTA_DAILY_AI`, `QUOTA_MONTHLY_AI`, `QUOTA_MAX_CLIPS`, `QUOTA_MAX_SCHEDULES` | default limits for regular users with none of their own (empty = no limit; admins are never limited) | no |
+| `LOG_LEVEL` | `debug`, `info` (default), `warn`, `error` or `silent`: how much the functions write to Netlify's function logs (one JSON line per event) | no |
+| `OPENROUTER_BASE_URL` | point at another OpenAI-compatible router instead of OpenRouter | no |
 | `STATION_URL` | `https://your-chips-voice-server`, to hand every generated clip to the station | later |
 | `STATION_INGEST_TOKEN` | the server's `INGEST_TOKEN` | with `STATION_URL` |
 | `STATION_AUTOPLAY` | `true` puts every generated clip on air | no |
 | `STATION_PREEMPT` | `true` lets it cut in over a live DJ | no |
 | `STATION_FX` | e.g. `underground` or `hull` (applied by the station) | no |
 
-Mark `LOGIN_USERS`, `SESSION_SECRET`, `ACCESS_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY` and `STATION_INGEST_TOKEN` as secret values if Netlify offers that option. Netlify Blobs (where clips are stored) needs no setting: it is provided by the Netlify runtime.
+Mark `LOGIN_USERS`, `SESSION_SECRET`, `SECRETS_KEY`, `ACCESS_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY` and `STATION_INGEST_TOKEN` as secret values if Netlify offers that option. Netlify Blobs (where clips are stored) needs no setting: it is provided by the Netlify runtime.
 
 ## 4. Deploy and check
 

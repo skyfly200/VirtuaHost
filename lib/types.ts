@@ -10,6 +10,8 @@ export interface GenerateRequest {
   textModel?: string;
   /** OpenRouter speech model. Defaults to OPENROUTER_SPEECH_MODEL. */
   speechModel?: string;
+  /** About how long the spoken line should run, in seconds (3 to 90). The writer is told, and {{target_seconds}} / {{target_words}} are filled in. */
+  seconds?: number;
   /** mode "ai": allow profanity and strong language in the written line. Pair with a model not marked "filtered" (GET /api/options). */
   explicit?: boolean;
   /** A voice the chosen model understands. */

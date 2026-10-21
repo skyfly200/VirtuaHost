@@ -16,6 +16,8 @@ VirtuaHost (Netlify, Gemini) --POST /ingest--> Chips Voice server --telnet--> Li
 KRAP scripts / curl ---------POST /synth etc -->   (library, voices, ffmpeg effects, virtual host, schedules)
 ```
 
+The VirtuaHost web site itself grew a lot too: several logins with roles and limits, your own ElevenLabs/OpenRouter/Gemini keys (so Rocky and Britta can be used straight from the site), placeholders like `{{time}}` and `{{weather}}` in drops, cost estimates before anything is spent, and downloads of every clip. Those are summarised in [Added later: the VirtuaHost site](#added-later-the-virtuahost-site-netlify) at the end.
+
 Full setup and environment variables: [INTEGRATION.md](INTEGRATION.md). Per-feature details: `chips-voice/docs/CLOUD-AND-AI.md`.
 
 ## Your script to the server feature
@@ -24,7 +26,7 @@ Full setup and environment variables: [INTEGRATION.md](INTEGRATION.md). Per-feat
 |----------|--------------------|-------|
 | `virtual_host.py --watch` | The same loop, following Icecast instead of RadioDJ: `lib/host.js`, `GET/PUT /host`, a card in the UI | `chips-voice/googleTextToSpeech1/lib/host.js` |
 | `virtual_host.py --say A T [--dry-run]` | `POST /host/say {artist, title, dryRun, play}` | `routes/api.js` |
-| `TEMPLATES`, `TIME_LINES`, `SKIP_ARTISTS` | Copied exactly as defaults in `lib/host.js` (`TEMPLATES`, `TIME_LINES`, `DEFAULT_SKIP`); editable at runtime via `PUT /host` | `lib/host.js` |
+| `TEMPLATES`, `TIME_LINES`, `SKIP_ARTISTS` | Copied exactly as defaults in `lib/host.js` (`TEMPLATES`, `TIME_LINES`, `DEFAULT_SKIP`); editable at runtime via `PUT /host`. The Netlify site has its own, more general placeholders (`{{time}}`, `{{daypart}}`, `{{weather}}`, `{{artist}}`...): see [DROPS.md](DROPS.md) | `lib/host.js`, `lib/drop-template.ts` |
 | `gen.py` text-to-dialogue (R and B voices) | `turns` (or a pasted `script`) on `/speak` and `/synth`; Dialogue mode in the UI; same chunking and per-line fallback | `lib/providers/tts/elevenlabs.js` |
 | Voice ids `R` and `B` | `ELEVENLABS_VOICES="Rocky=5amD...,Britta=DOg6..."` (names are used everywhere) | env |
 | `TEXTURE` filter chain in `gen.py` | Effect preset `underground` (byte-for-byte the same filters, plus the pink-noise bed and loudnorm) | `lib/fx.js` |
@@ -84,7 +86,7 @@ Other providers voice each line with that speaker's voice and the parts are join
 
 ## Practical notes and gotchas
 
-- **Voice ids are per account.** `ELEVENLABS_VOICES` maps names to ids. Cloned voices are not reachable through OpenRouter, only with the ElevenLabs key.
+- **Voice ids are per account.** `ELEVENLABS_VOICES` maps names to ids. Cloned voices are not reachable through OpenRouter, only with the ElevenLabs key. The Netlify site now takes an ElevenLabs key too (site, station or personal) and offers your account's voices, clones first, by name: see [KEYS.md](KEYS.md).
 - **`TTS_PROVIDER` is a list.** First is the default, the rest are fallbacks. A request can pick one with `provider` (then no fallback).
 - **The clip library de-duplicates.** The same text, voice, settings and effect is generated once. Changing any of them makes a new clip.
 - **Imported audio is never evicted** (it cannot be regenerated); generated clips are evicted oldest-first past `CLIP_CACHE_MB` unless favorited.
@@ -105,7 +107,7 @@ ducking sound. Try the host on a quiet stream first.
 
 ## Not built yet
 
-Playing the link exactly as the track ends (needs remaining time from Liquidsoap), Britta in the links, a calendar view for schedules, and more than one login.
+Playing the link exactly as the track ends (needs remaining time from Liquidsoap), Britta in the links, and a calendar view for schedules. (More than one login is done on the Netlify site: see below.)
 
 ## Where to look in the code
 
@@ -126,3 +128,19 @@ Playing the link exactly as the track ends (needs remaining time from Liquidsoap
 - `chips-voice/agent-radiodj/agent.js` lets a hub put clips on RadioDJ the way your `virtual_host.py` does: write `current_link.mp3`, fire a cart with `PlayCartByNumber` (same REST commands as `radiodj_api.sh`). It does not touch your scripts.
 - Skip and volume for RadioDJ are off until the REST plugin's command names are set (`RADIODJ_CMD_SKIP`, `RADIODJ_CMD_VOLUME`); I could not confirm them. If you know them, that is the most useful thing to add.
 - Everything else (hub, the site's Voice Lab and Stations tabs, playlist sync): [HUB.md](HUB.md).
+
+## Added later: the VirtuaHost site (Netlify)
+
+Nothing in `krap-station/` changed. These are all on the web site (`public/`, `lib/`, `netlify/functions/`) and are separate from the Chips Voice server above.
+
+**Logins and limits** ([USERS.md](USERS.md)). More than one login is done: the first admin comes from the environment (`LOGIN_USERS`, `SESSION_SECRET`), then admins add people in the **Users** tab. Roles are admin and user; users see their own clips, personas and schedules plus the station's shared ones; admins also manage stations, the host settings and the Control tab. Each person can have limits (AI requests per day and month, saved clips, schedules).
+
+**Your own keys, and Rocky and Britta on the site** ([KEYS.md](KEYS.md)). Anyone can save their own OpenRouter, Gemini or **ElevenLabs** key in the card at the top of the page; an admin can save one per station. Keys are encrypted and never shown again (only the last four characters). With an ElevenLabs key in place the speech-model list gains `elevenlabs/eleven_flash_v2_5`, `eleven_turbo_v2_5` and `eleven_multilingual_v2`, and the voice box suggests the voices on that account with **cloned voices first**: type `Rocky`, or a voice id. `ELEVENLABS_VOICES="Rocky=<id>,Britta=<id>"` works here too (same format). What is different from `gen.py` / the Chips Voice server: the site speaks one voice per line (no two-voice dialogue and no `underground` filter chain; send the text to the Chips Voice `/speak` for those, or use the `fx` options when sending a clip to the station), and ElevenLabs models ignore tone and `[laughs]`-style tags. Writing the words still needs an OpenRouter or Gemini key. **Not verified against the real ElevenLabs service.**
+
+**Placeholders in drops** ([DROPS.md](DROPS.md)). Your `TEMPLATES` use `{artist}` and `{title}`; the site's drops can use `{{time}}`, `{{greeting}}`, `{{daypart}}`, `{{weather}}`, `{{station}}`, `{{dj}}`, `{{artist}}`, `{{title}}`, target length, and any `{{name}}` you define per station (a sponsor, a hotline), with `{{name|fallback}}` and `{{pick: a | b | c}}`. They are filled in after the AI writes and before the voice speaks, and the AI is told which ones exist and not to invent the values. Scheduled drops and the site's virtual-host links fill them in fresh each time. The Chips Voice server's own host (`lib/host.js`) still uses your original templates; the two systems do not interfere (single braces versus double).
+
+**Spending less, and knowing before you spend** ([KEYS.md](KEYS.md)). Before writing, speaking, or reading a flier, the page shows an estimate (about 4 characters a token; dollars where OpenRouter lists a price; ElevenLabs in characters of credits) and asks first for premium, unpriced or much dearer models. The defaults are the cheap ones: `openai/gpt-4o-mini` to write and Kokoro to speak (Kokoro has no tone or tags: pick a Google speech model for those). Models are labelled with a price tier and whether they filter strong language, and *Allow strong language* hides the filtered ones and tells the writer not to censor. The "filtered" labels are hints from model names unless OpenRouter reports moderation itself, so try a line before relying on one.
+
+**Download.** Every generated clip, sample and preview has a Download menu: as saved, WAV, or MP3 (converted in the browser).
+
+**Verified here:** the logic behind all of the above is covered by the root `npm test` with mocked services (about 260 tests). **Not verified live:** OpenRouter's current model names (the list checks them against OpenRouter's own list when it can), Open-Meteo weather, ElevenLabs, and the exact prices (only OpenRouter's own listed prices are used; a small built-in table is marked "approx").

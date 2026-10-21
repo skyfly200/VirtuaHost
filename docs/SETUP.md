@@ -90,7 +90,7 @@ and say_on_air/play_clip/schedule/skip/volume/host_say (on air; their descriptio
 
 ## Deploying on Netlify
 
-See [NETLIFY.md](NETLIFY.md): one site with logins, the AI key, and (later) the Voice Lab and Stations tabs once the radio side is connected.
+See [NETLIFY.md](NETLIFY.md): one site with logins (first admin from the environment, everyone else in the Users tab: [USERS.md](USERS.md)), the AI key, per-person and per-station keys ([KEYS.md](KEYS.md)), and (later) the Control tab once the hub is connected. Placeholders such as `{{time}}` and `{{weather}}` for drops: [DROPS.md](DROPS.md).
 
 ## Persona: CHIP
 

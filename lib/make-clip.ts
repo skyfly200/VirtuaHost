@@ -10,6 +10,7 @@ import { defaultSpeechModel, discoverSpeechModels, pickSpeechModel, speechModels
 import { saveClip } from "./store.js";
 import { createLogger } from "./log.js";
 import { elevenConfigured, isElevenModel } from "./elevenlabs.js";
+import { renderTemplate, type TemplateContext } from "./drop-template.js";
 import type { ClipMetadata } from "./types.js";
 
 const log = createLogger("make-clip");
@@ -30,6 +31,8 @@ export interface MakeClipOptions {
   info?: ClipInfo;
   /** The person this clip belongs to (a username); leave out for the station's own. */
   ownerId?: string;
+  /** Fill in {{placeholders}} (time, weather, station, DJ, song...) before speaking. Without it, placeholders are still removed. */
+  templateContext?: TemplateContext;
 }
 
 export type MadeClip = { ok: true; id: string; scriptText: string; mimeType: string; speechModel: string; voice: string } | { ok: false; status: number; error: string };
@@ -49,7 +52,9 @@ export async function makeClip(options: MakeClipOptions): Promise<MadeClip> {
     speechModel = { id: options.speechModel! };
   }
 
-  let scriptText = options.text.replace(SFX_TAG, " ").replace(/\s{2,}/g, " ").trim();
+  const filled = await renderTemplate(options.text, options.templateContext ?? {});
+  if (filled.missing.length) log.warn("template values missing", { missing: filled.missing });
+  let scriptText = filled.text.replace(SFX_TAG, " ").replace(/\s{2,}/g, " ").trim();
   const cues = provider === "openrouter" || isElevenModel(speechModel?.id) ? cuesFor((speechModel ?? defaultSpeechModel()).id) : GEMINI_DIRECT_CUES;
   if (cues.tags === false) scriptText = stripDeliveryTags(scriptText).text;
   if (!scriptText) return { ok: false, status: 400, error: "There is nothing to say once tags are removed" };

@@ -1,7 +1,7 @@
 import { authorize } from "../auth.js";
 import { stationOf, withKeys } from "../with-keys.js";
 import { activeProvider, NO_PROVIDER_MESSAGE } from "../ai.js";
-import { textModels, allTextModels, allSpeechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
+import { allTextModels, allSpeechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
 import { cuesFor, GEMINI_DIRECT_CUES } from "../cues.js";
 import { features } from "./proxy.js";
 import { queueMode } from "../station-send.js";
