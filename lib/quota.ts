@@ -1,5 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import type { Principal } from "./auth.js";
+import { activeProvider } from "./ai.js";
+import { usingOwnKey } from "./credentials.js";
 import { getUser, type Quota } from "./user-store.js";
 
 // Per-person limits so one account cannot spend the whole AI budget or fill the storage.
@@ -59,6 +61,7 @@ const tooMany = (message: string) => Response.json({ error: message, quota: true
 /** Call before spending an AI request. Returns the 429 response to send when the person is over a limit, otherwise counts the request. */
 export async function chargeAi(who: Principal): Promise<Response | null> {
   try {
+    if (usingOwnKey(activeProvider())) return null;          // their own key pays: it does not use up the site's allowance
     const limits = await limitsFor(who);
     if (!limits || (limits.dailyAi === undefined && limits.monthlyAi === undefined)) return null;
     const used = await aiUsage(who.username);

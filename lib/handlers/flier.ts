@@ -1,4 +1,5 @@
-import { authorize, canView } from "../auth.js";
+import { authorize, canView, type Principal } from "../auth.js";
+import { stationOf, withKeys } from "../with-keys.js";
 import { chargeAi } from "../quota.js";
 import { activeProvider, complete, NO_PROVIDER_MESSAGE, readImage } from "../ai.js";
 import { IMAGE_URL, MAX_IMAGE_CHARS, normalizeEvent, parseJsonObject, parseVariants, PROMO_SYSTEM_PROMPT, promoFacts, READ_SYSTEM_PROMPT } from "../flier.js";
@@ -15,6 +16,10 @@ export async function handleFlier(req: Request): Promise<Response> {
   const { who, denied } = await authorize(req);
   if (denied) return denied;
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
+  return withKeys(who, await stationOf(req), () => flier(req, who));
+}
+
+async function flier(req: Request, who: Principal): Promise<Response> {
   const path = new URL(req.url).pathname.replace(/\/+$/, "");
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return Response.json({ error: "Request body must be JSON" }, { status: 400 });

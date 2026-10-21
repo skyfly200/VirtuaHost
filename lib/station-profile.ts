@@ -33,6 +33,9 @@ export interface Station {
   defaultSpeechModel?: string;
   defaultTextModel?: string;
   defaultVoice?: string;
+  /** Models this station may use (OpenRouter slugs; speech entries may carry a voice as "slug|Voice"). Empty = the site's list. Applies even with a station or personal key. */
+  textModels?: string[];
+  speechModels?: string[];
   /** Artists that are spots or relays on this station. */
   skipArtists: string[];
   /** Per-station send defaults: put new clips on air as soon as they arrive, and let them cut in over a live DJ. A request still overrides. */
@@ -63,6 +66,13 @@ export function defaultStation(): Station {
   };
 }
 
+const MODEL_ENTRY = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}(\|[A-Za-z0-9_. -]{1,60})?$/;
+const modelList = <K extends "textModels" | "speechModels">(key: K, raw: unknown): Partial<Record<K, string[]>> => {
+  const items = (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[\n,]/) : []).map((v) => String(v).trim()).filter((v) => MODEL_ENTRY.test(v));
+  const unique = [...new Set(items)].slice(0, 30);
+  return unique.length ? ({ [key]: unique } as Partial<Record<K, string[]>>) : {};
+};
+
 export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } | { error: string } {
   if (!raw || typeof raw !== "object") return { error: "Send the station as a JSON object" };
   const r = raw as Record<string, unknown>;
@@ -89,6 +99,7 @@ export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } 
       links,
       ...opt("defaultPersonaId", text(r.defaultPersonaId, 60)), ...opt("defaultFx", text(r.defaultFx, 40)), ...opt("defaultSpeechModel", text(r.defaultSpeechModel, 100)), ...opt("defaultTextModel", text(r.defaultTextModel, 100)), ...opt("defaultVoice", text(r.defaultVoice, 60)),
       skipArtists: list(r.skipArtists, 100, 100),
+      ...modelList("textModels", r.textModels), ...modelList("speechModels", r.speechModels),
       ...(typeof r.autoplay === "boolean" ? { autoplay: r.autoplay } : {}), ...(typeof r.preempt === "boolean" ? { preempt: r.preempt } : {}),
       ...opt("notes", text(r.notes, 1000)),
       connection: { kind, ...opt("hubStationId", text(conn.hubStationId, 60)), ...opt("note", text(conn.note, 200)) },

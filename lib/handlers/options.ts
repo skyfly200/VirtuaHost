@@ -1,4 +1,5 @@
-import { checkAuth } from "../auth.js";
+import { authorize } from "../auth.js";
+import { stationOf, withKeys } from "../with-keys.js";
 import { activeProvider, NO_PROVIDER_MESSAGE } from "../ai.js";
 import { textModels, allSpeechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
 import { cuesFor, GEMINI_DIRECT_CUES } from "../cues.js";
@@ -10,11 +11,15 @@ import { TONES, FORMATS, MAX_TONE_LENGTH, fillStation } from "../formats.js";
 
 // What the test console offers: the provider in use, the models that can be chosen, tones, and script formats with examples.
 export async function handleOptions(req: Request): Promise<Response> {
-  const denied = await checkAuth(req);
+  const { who, denied } = await authorize(req);
   if (denied) return denied;
   if (req.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405 });
   }
+  return withKeys(who, await stationOf(req), () => options(req));
+}
+
+async function options(req: Request): Promise<Response> {
 
   const provider = activeProvider();
   // ?station=<id>: the examples and the name shown are for that station

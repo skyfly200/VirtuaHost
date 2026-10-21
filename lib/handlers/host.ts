@@ -1,4 +1,5 @@
 import { authorize } from "../auth.js";
+import { withKeys } from "../with-keys.js";
 import { applyHostPatch, FX_PRESETS } from "../host.js";
 import { composeLink } from "../host-link.js";
 import { getHostConfig, getHostStatus, saveHostConfig } from "../host-store.js";
@@ -10,7 +11,7 @@ import { getStation } from "../station-profile-store.js";
 //   PUT  /api/host           change settings (any subset)
 //   POST /api/host/preview   { artist, title } -> the link that would be said (text only, nothing is voiced)
 export async function handleHost(req: Request): Promise<Response> {
-  const { denied } = await authorize(req, { admin: req.method !== "GET" });
+  const { who, denied } = await authorize(req, { admin: req.method !== "GET" });
   if (denied) return denied;
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, "");
@@ -37,7 +38,7 @@ export async function handleHost(req: Request): Promise<Response> {
     const title = typeof body?.title === "string" ? body.title.trim().slice(0, 200) : "";
     if (!title) return Response.json({ error: "title is required" }, { status: 400 });
     const artist = typeof body?.artist === "string" ? body.artist.trim().slice(0, 200) : "";
-    return Response.json(await composeLink(artist, title, await getHostConfig(station), station));
+    return Response.json(await withKeys(who, station?.id, async () => composeLink(artist, title, await getHostConfig(station), station)));
   }
   return new Response("Method Not Allowed", { status: 405 });
 }

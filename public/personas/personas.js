@@ -16,7 +16,7 @@ export async function mountPersonas(root, api) {
   clear(root, h('p', { class: 'muted' }, 'Loading...'));
   let personas = []; let options = null;
   try {
-    [{ personas }, options] = await Promise.all([api.get('/personas'), api.get('/options')]);
+    [{ personas }, options] = await Promise.all([api.get('/personas'), api.get('/options', { query: { station: stationId() } })]);
   } catch (err) {
     clear(root, h('p', { class: 'bad' }, `Could not load personas: ${err.message}`));
     return;

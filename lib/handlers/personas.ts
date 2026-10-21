@@ -1,5 +1,6 @@
 import { authorize, canModify, canView, ownerFor, type Principal } from "../auth.js";
 import { chargeAi } from "../quota.js";
+import { withKeys } from "../with-keys.js";
 import { activeProvider, complete, NO_PROVIDER_MESSAGE } from "../ai.js";
 import { pickTextModel } from "../openrouter.js";
 import { deletePersona, getPersona, listPersonas, newPersonaId, savePersona } from "../persona-store.js";
@@ -18,7 +19,7 @@ export async function handlePersonas(req: Request, id: string | undefined): Prom
   const { who, denied } = await authorize(req);
   if (denied) return denied;
 
-  if (id === "generate") return req.method === "POST" ? draft(req, who) : new Response("Method Not Allowed", { status: 405 });
+  if (id === "generate") return req.method === "POST" ? withKeys(who, undefined, () => draft(req, who)) : new Response("Method Not Allowed", { status: 405 });
 
   if (!id) {
     if (req.method === "GET") return Response.json({ personas: (await listPersonas()).filter((p) => canView(who, p.ownerId)) });
