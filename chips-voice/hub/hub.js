@@ -5,6 +5,7 @@
 // Stations are never trusted with each other's keys: each station's key stays in the hub's store and is never sent back to a browser.
 const crypto = require('crypto');
 const { createAuth, createLimiter } = require('./auth');
+const { createAlerts, AlertError } = require('./alerts');
 
 class HubError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -14,7 +15,7 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(
 const HOST_FIELDS = ['preset', 'fx', 'tone', 'persona', 'templates', 'lines', 'every', 'minGapSeconds', 'skipArtists'];
 const MAX_AHEAD_MS = 24 * 3600e3;
 
-function createHub({ store, key, voiceUrl = '', voiceKey = '', fetchImpl = globalThis.fetch, now = Date.now, statusTtlMs = 4000, timeoutMs = 6000, tickMs = 1000, corsOrigin = '*', maxAudioBytes = 25e6, ttlMs }) {
+function createHub({ store, key, voiceUrl = '', voiceKey = '', fetchImpl = globalThis.fetch, now = Date.now, statusTtlMs = 4000, timeoutMs = 6000, tickMs = 1000, corsOrigin = '*', maxAudioBytes = 25e6, ttlMs, alertsContact = '', alertPollMs = 120000 }) {
   const auth = createAuth({ key, now, ttlMs });
   const loginLimit = createLimiter({ max: 10, now });
   const jobTimers = new Set();
@@ -314,8 +315,20 @@ function createHub({ store, key, voiceUrl = '', voiceKey = '', fetchImpl = globa
     const keep = store.data.jobs.filter((j) => j.status === 'waiting' || j.status === 'running' || now() - j.at < 24 * 3600e3);
     if (keep.length !== store.data.jobs.length) { store.data.jobs = keep; store.save(); }
   }
-  function start() { if (!ticker) { ticker = setInterval(() => runDueJobs().catch(() => {}), tickMs); if (ticker.unref) ticker.unref(); } }
-  function stop() { if (ticker) clearInterval(ticker); ticker = null; for (const t of jobTimers) clearTimeout(t); }
+  // ---------- weather alerts (US, National Weather Service): see alerts.js and docs/ALERTS.md ----------
+  const alerts = createAlerts({
+    store, fetchImpl, now, contact: alertsContact,
+    broadcast: (body) => broadcast(body),
+    // The voice server makes the clip; the hub then broadcasts it like any other.
+    speak: voiceUrl ? async (text) => { const out = await voiceCall('POST', '/synth', { text }); return out && (out.id || (out.clip && out.clip.id)); } : null,
+  });
+  let alertTicker = null;
+
+  function start() {
+    if (!ticker) { ticker = setInterval(() => runDueJobs().catch(() => {}), tickMs); if (ticker.unref) ticker.unref(); }
+    if (!alertTicker && alertPollMs > 0) { alertTicker = setInterval(() => alerts.checkAll().catch(() => {}), alertPollMs); if (alertTicker.unref) alertTicker.unref(); }
+  }
+  function stop() { if (ticker) clearInterval(ticker); ticker = null; if (alertTicker) clearInterval(alertTicker); alertTicker = null; for (const t of jobTimers) clearTimeout(t); }
 
   // ---------- HTTP ----------
   async function readBody(req, limit) {
@@ -385,6 +398,18 @@ function createHub({ store, key, voiceUrl = '', voiceKey = '', fetchImpl = globa
     return { ok: true };
   });
 
+  const alertErr = (fn) => async (ctx) => { try { return await fn(ctx); } catch (err) { if (err instanceof AlertError) throw new HubError(err.message, err.status); throw err; } };
+  add('GET', '/alerts', async () => alerts.list());
+  add('POST', '/alerts/watches', alertErr(async (ctx) => ({ status: 201, body: alerts.add(await json(ctx.req)) })));
+  add('PUT', '/alerts/watches/:id', alertErr(async (ctx) => alerts.update(ctx.params.id, await json(ctx.req))));
+  add('DELETE', '/alerts/watches/:id', alertErr(async (ctx) => { alerts.remove(ctx.params.id); return { ok: true }; }));
+  // Run the checks now. ?dry=1 shows what would be handled without recording or airing anything.
+  add('POST', '/alerts/check', alertErr(async (ctx) => ({ results: await alerts.checkAll({ dry: ctx.query.get('dry') === '1' }) })));
+  add('GET', '/alerts/active', alertErr(async (ctx) => {
+    const q = ctx.query;
+    return { alerts: await alerts.peek(q.get('zone') ? { zone: q.get('zone') } : q.get('area') ? { area: q.get('area') } : { lat: q.get('lat'), lon: q.get('lon') }) };
+  }));
+
   async function handle(req, res) {
     const url = new URL(req.url, 'http://hub');
     const cors = { 'access-control-allow-origin': corsOrigin, 'access-control-allow-headers': 'authorization, content-type, x-api-key', 'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS', 'access-control-max-age': '600' };
@@ -407,7 +432,7 @@ function createHub({ store, key, voiceUrl = '', voiceKey = '', fetchImpl = globa
     }
   }
 
-  return { handle, start, stop, runDueJobs, status, auth, _call: call };
+  return { handle, start, stop, runDueJobs, status, auth, alerts, _call: call };
 }
 
 module.exports = { createHub, HubError };

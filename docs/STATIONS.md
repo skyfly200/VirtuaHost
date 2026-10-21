@@ -10,6 +10,8 @@ a station, and choose **Work on this station** (or pick it in the header). Every
 | Default persona, speech model, voice | New clips for this station use them when the request names none (a request, then a persona, then the station). |
 | Audio treatment | The fx preset the station applies to queued clips (for example `hull`). |
 | Skip list | Spots and relays the virtual host says nothing over or about. |
+| **Where is it?** (find by name) | Type a town or city ("Houston, TX") and press Find: pick the match and the city, coordinates and time zone are filled in, so nobody types latitude and longitude. The place is used for weather, alerts, `{{place}}` / `{{state}}`, and to tell which stations are near an event. Behind it is `GET /api/places?q=` (Open-Meteo's free geocoder; towns and cities, not street addresses; not verified live). |
+| Coverage radius (km) | A circle around the place: where the station can be heard. A first coverage model; see [COVERAGE.md](COVERAGE.md). |
 | Latitude/longitude, temperature unit, your own placeholders | Fill `{{weather}}`, `{{temp}}` and your own `{{name}}` placeholders in drops (see [DROPS.md](DROPS.md)). With no coordinates the city is looked up. |
 | Allowed models | Optional lists of writing and speech models this station may use (one per line). They also bind people using their own key, and the pickers offer only these. See [KEYS.md](KEYS.md). |
 | AI key (admins) | A station-level OpenRouter, Gemini or ElevenLabs key used for requests made for this station when the person has no key of their own. Write-only. |
@@ -48,7 +50,7 @@ daemon, and when its virtual host last reported.
 
 ## API
 
-`GET/POST /api/stations`, `GET/PUT/DELETE /api/stations/:id`, `GET /api/stations/:id/summary`. `POST /api/generate`, `/api/flier/*`
+`GET/POST /api/stations`, `GET/PUT/DELETE /api/stations/:id`, `GET /api/stations/:id/summary`, `GET /api/stations?near=<lat>,<lon>` (also ranks stations by distance from a point and says whether each covers it), `GET /api/places?q=` (find a place by name), `GET /api/alerts?station=` (active US weather alerts at the station). `POST /api/generate`, `/api/flier/*`
 accept `station` (an id); `GET /api/options?station=<id>` fills the examples with that station's name. With no stations made, the API
 offers one placeholder named from `STATION_NAME`.
 

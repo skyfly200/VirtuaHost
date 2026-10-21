@@ -8,7 +8,7 @@ import { modelVoiceFields } from '../shared/voicepicker.js';
 import { createSpeaker } from '../shared/speaker.js';
 import { keyBox } from '../shared/keybox.js';
 
-const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], lat: '', lon: '', tempUnit: '', variablesText: '', autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
+const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], place: null, coverageKm: '', lat: '', lon: '', tempUnit: '', variablesText: '', autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
 const LINES = (v) => v.split('\n').map((l) => l.trim()).filter(Boolean);
 const clock = (tz) => { try { return new Intl.DateTimeFormat([], { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date()); } catch { return ''; } };
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -103,6 +103,33 @@ export async function mountStationProfiles(root, api) {
     });
     const select = (label, key, pairs, blankLabel) => h('label', { class: 'field' }, label, h('select', { onchange: (e) => { c[key] = e.target.value; } }, h('option', { value: '' }, blankLabel), pairs.map(([v, t]) => h('option', { value: v, selected: v === c[key] }, t))));
 
+    // Find the station's place by name (town, "Houston, TX"): fills in the city, coordinates and time zone, so nobody types latitude and longitude.
+    const placeInput = h('input', { value: (c.place && c.place.label) || c.city || '', placeholder: 'Town or city, for example Houston, TX', 'aria-label': 'Find the station\'s place' });
+    const placeResults = h('div', { class: 'stack' });
+    const placeNote = h('p', { class: 'small muted' });
+    const paintPlaceNote = () => clear(placeNote, c.place
+      ? `📍 ${c.place.label}${c.lat !== '' && c.lat !== undefined ? ` (${c.lat}, ${c.lon})` : ''}${c.tz ? ` · ${c.tz}` : ''}. Used for weather, alerts, {{place}} and {{state}}, and to tell which stations are near an event.`
+      : 'No place chosen yet. Search for the town or city; the coordinates and time zone are filled in for you.');
+    paintPlaceNote();
+    async function findPlace() {
+      const q = placeInput.value.trim();
+      if (q.length < 2) { toast('Type at least two letters of a town or city.', 'error'); return; }
+      clear(placeResults, h('span', { class: 'muted small' }, 'Searching...'));
+      try {
+        const { places } = await api.get('/places', { query: { q } });
+        clear(placeResults, places.length ? places.map((p) => h('button', { type: 'button', class: 'chip', title: `${p.lat}, ${p.lon}${p.tz ? ` · ${p.tz}` : ''}`, onclick: () => {
+          c.place = { label: p.label, name: p.name, admin1: p.admin1, countryCode: p.countryCode };
+          c.city = p.name; c.lat = p.lat; c.lon = p.lon; if (p.tz) c.tz = p.tz;
+          paintEditor();
+        } }, `${p.label}${p.population ? ` (${p.population.toLocaleString()})` : ''}`)) : h('span', { class: 'bad small' }, 'No match. Try the town name alone, or add the state ("Springfield, IL").'));
+      } catch (err) { clear(placeResults, h('span', { class: 'bad small' }, err.message)); }
+    }
+    placeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); findPlace(); } });
+    const placeBlock = h('div', { class: 'stack' },
+      h('label', { class: 'field' }, 'Where is it? (find by name)', h('div', { class: 'row' }, placeInput, h('button', { type: 'button', onclick: findPlace }, 'Find'),
+        c.place ? h('button', { type: 'button', class: 'link danger', onclick: () => { c.place = null; c.lat = ''; c.lon = ''; paintEditor(); } }, 'Clear') : null)),
+      placeResults, placeNote,
+      h('label', { class: 'field' }, 'How far can it be heard? (km, optional: a circle around the place)', h('input', { type: 'number', min: 1, max: 3000, value: c.coverageKm || '', placeholder: 'e.g. 60', oninput: (e) => { c.coverageKm = e.target.value; } })));
     const save = h('button', { class: 'primary', type: 'button', onclick: async () => {
       save.disabled = true;
       try {
@@ -127,6 +154,7 @@ export async function mountStationProfiles(root, api) {
       area('About it', 'description', 3),
       listField('Genres and vibes (one per line)', 'genres', 3, 'punk\ntalk\nlate night'),
       h('h3', {}, 'Where it is'),
+      placeBlock,
       h('div', { class: 'grid cols' }, text('City', 'city'), h('label', { class: 'field' }, 'Time zone (its wall clock: schedules and promos use it)', h('input', { value: c.tz, list: 'st-zones', oninput: (e) => { c.tz = e.target.value; } }), zones), text('Contact', 'contact', { placeholder: 'studio line or email' })),
       h('div', { class: 'grid cols' }, text('Website', 'website', { placeholder: 'https://' }), text('Stream address', 'streamUrl', { placeholder: 'https://.../stream' })),
       h('div', {}, h('div', { class: 'label' }, 'Links (chat, socials, schedule page)'), links),
@@ -140,7 +168,7 @@ export async function mountStationProfiles(root, api) {
       h('div', { class: 'grid cols' }, listField('Writing models', 'textModels', 4, 'openai/gpt-4o-mini'), listField('Speech models', 'speechModels', 4, 'hexgrad/kokoro-82m|af_heart')),
       c.id ? keyBox(api, { station: c.id }) : null,
       h('h3', {}, 'Placeholders for drops'),
-      h('p', { class: 'small muted' }, 'Drops can say {{time}}, {{weather}}, {{station}}, {{dj}} and more, filled in when the audio is made. Weather needs a location: give the coordinates, or leave them empty and the city above is looked up (Open-Meteo, free).'),
+      h('p', { class: 'small muted' }, 'Drops can say {{time}}, {{weather}}, {{station}}, {{dj}} and more, filled in when the audio is made. Weather and alerts need a location: find the place above, or enter the coordinates here by hand.'),
       h('div', { class: 'grid cols' }, text('Latitude', 'lat', { placeholder: '29.76' }), text('Longitude', 'lon', { placeholder: '-95.37' }),
         h('label', { class: 'field' }, 'Temperature unit', h('select', { onchange: (e) => { c.tempUnit = e.target.value; } }, [['', 'Automatic (F in the Americas)'], ['F', 'Fahrenheit'], ['C', 'Celsius']].map(([v, t]) => h('option', { value: v, selected: v === (c.tempUnit || '') }, t))))),
       area('Your own placeholders, one per line as name=text (for example sponsor=Joe\'s Pizza, then {{sponsor}} in a drop)', 'variablesText', 3, { placeholder: 'sponsor=Joe\'s Pizza\nhotline=555 0100' }),

@@ -52,6 +52,7 @@ HUB_KEY=$(openssl rand -hex 24)  HUB_PORT=3200  VOICE_URL=https://voice.example.
 | `HUB_PORT`, `HUB_HOST` | default 3200, 0.0.0.0 |
 | `HUB_DATA` | JSON file for stations, playlists and timed broadcasts (default `hub/data/hub.json`, mode 600 because it holds station keys) |
 | `VOICE_URL`, `VOICE_KEY` | a Chips Voice server, only needed to broadcast a clip by id (the hub asks it for a signed link; set its `STREAM_SECRET`) |
+| `ALERTS_CONTACT`, `ALERTS_POLL_SECONDS` | an email or URL for the National Weather Service User-Agent (set it), and how often to poll (default 120; 0 turns alerts off): [ALERTS.md](ALERTS.md) |
 | `HUB_CORS_ORIGIN` | only if a browser calls the hub directly (the site's UI goes through its own `/api/hub` proxy, so this is normally not needed) |
 
 Put it behind HTTPS (Caddy or nginx, as in `chips-voice/docs/DEPLOY-VPS.md`). Add stations in the Stations tab or `POST /stations {name,url,key,site}`.
@@ -117,6 +118,14 @@ Nothing in the Lab goes on air.
 ## 7. Stations tab
 
 Stations grouped by site with now playing, skip, volume and playlist; select several and skip them together, **broadcast** one file to all of them at the same moment (or at a chosen time), manage shared playlists (coverage, push, import from a folder), and copy host settings from one station to others.
+
+## 8. Weather alerts (US)
+
+The hub can watch the US National Weather Service for alerts in an area and either record them (`notify`, the default) or have the voice server speak them and broadcast the clip to chosen stations (`broadcast`). It polls every `ALERTS_POLL_SECONDS` (default 120; `0` = off) and sets the NWS-required `User-Agent` from `ALERTS_CONTACT`. Routes: `GET /alerts`, `POST|PUT|DELETE /alerts/watches`, `POST /alerts/check[?dry=1]`, `GET /alerts/active`. This is a relay of NWS alerts, **not** the Emergency Alert System. Everything about it, including what is said, the safety defaults and what is planned (coverage-aware relevance): [ALERTS.md](ALERTS.md).
+
+## 9. Putting the hub on the server, and RadioDJ at Greenlight
+
+The plan for co-locating the hub on the IONOS server with the web-based DJ for Way High Radio, and adding RadioDJ-based stations for Way High and Greenlight, with the questions that decide the RadioDJ agent's schedule endpoint: [GREENLIGHT-AND-IONOS.md](GREENLIGHT-AND-IONOS.md). An AI agent can drive the hub through the site's MCP endpoint: [MCP.md](MCP.md).
 
 ## What is verified, and what is not
 

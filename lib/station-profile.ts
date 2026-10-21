@@ -4,6 +4,7 @@
 // zone, and default its persona, voice and audio treatment.
 import { isReservedVariable, VARIABLE_NAME } from "./drop-template.js";
 import { validTimeZone } from "./schedule.js";
+import { stateCode } from "./places.js";
 
 export type ConnectionKind = "none" | "chips-voice" | "radiodj" | "icecast";
 export const CONNECTION_KINDS: readonly ConnectionKind[] = ["none", "chips-voice", "radiodj", "icecast"];
@@ -42,6 +43,10 @@ export interface Station {
   /** Where the station is, for the {{weather}} placeholders (lib/drop-template.ts). Without it the city name is looked up. */
   lat?: number;
   lon?: number;
+  /** The place the coordinates came from (found by name in the Stations tab), so it can be shown and used as {{place}} / {{state}}. */
+  place?: { label: string; name: string; admin1?: string; state?: string; countryCode?: string };
+  /** How far the station can be heard, in km (a circle around its location). A first coverage model; see docs/COVERAGE.md. */
+  coverageKm?: number;
   /** Temperature unit for {{temp}}: F for the Americas by default, else C. */
   tempUnit?: "F" | "C";
   /** Station-specific placeholders, {{sponsor}} and so on: name -> text. */
@@ -88,6 +93,15 @@ function customVariables(raw: unknown): { variables?: Record<string, string> } {
   return Object.keys(out).length ? { variables: out } : {};
 }
 
+const placeOf = (raw: unknown): { place?: NonNullable<Station["place"]> } => {
+  if (!raw || typeof raw !== "object") return {};
+  const p = raw as Record<string, unknown>;
+  const label = text(p.label, 200); const name = text(p.name, 100);
+  if (!label || !name) return {};
+  const admin1 = text(p.admin1, 80); const code = text(p.countryCode, 2).toUpperCase(); const state = stateCode(admin1);
+  return { place: { label, name, ...(admin1 ? { admin1 } : {}), ...(state ? { state } : {}), ...(code ? { countryCode: code } : {}) } };
+};
+
 const MODEL_ENTRY = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}(\|[A-Za-z0-9_. -]{1,60})?$/;
 const modelList = <K extends "textModels" | "speechModels">(key: K, raw: unknown): Partial<Record<K, string[]>> => {
   const items = (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[\n,]/) : []).map((v) => String(v).trim()).filter((v) => MODEL_ENTRY.test(v));
@@ -121,7 +135,7 @@ export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } 
       links,
       ...opt("defaultPersonaId", text(r.defaultPersonaId, 60)), ...opt("defaultFx", text(r.defaultFx, 40)), ...opt("defaultSpeechModel", text(r.defaultSpeechModel, 100)), ...opt("defaultTextModel", text(r.defaultTextModel, 100)), ...opt("defaultVoice", text(r.defaultVoice, 60)),
       skipArtists: list(r.skipArtists, 100, 100),
-      ...geo(r), ...(r.tempUnit === "F" || r.tempUnit === "C" ? { tempUnit: r.tempUnit } : {}), ...customVariables(r.variables),
+      ...geo(r), ...placeOf(r.place), ...(num(r.coverageKm, 1, 3000) !== undefined ? { coverageKm: num(r.coverageKm, 1, 3000) } : {}), ...(r.tempUnit === "F" || r.tempUnit === "C" ? { tempUnit: r.tempUnit } : {}), ...customVariables(r.variables),
       ...modelList("textModels", r.textModels), ...modelList("speechModels", r.speechModels),
       ...(typeof r.autoplay === "boolean" ? { autoplay: r.autoplay } : {}), ...(typeof r.preempt === "boolean" ? { preempt: r.preempt } : {}),
       ...opt("notes", text(r.notes, 1000)),

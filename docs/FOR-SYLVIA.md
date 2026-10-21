@@ -143,4 +143,12 @@ Nothing in `krap-station/` changed. These are all on the web site (`public/`, `l
 
 **Download.** Every generated clip, sample and preview has a Download menu: as saved, WAV, or MP3 (converted in the browser).
 
-**Verified here:** the logic behind all of the above is covered by the root `npm test` with mocked services (about 260 tests). **Not verified live:** OpenRouter's current model names (the list checks them against OpenRouter's own list when it can), Open-Meteo weather, ElevenLabs, and the exact prices (only OpenRouter's own listed prices are used; a small built-in table is marked "approx").
+**Where is the station?** In the Stations tab, type a town ("Houston, TX") and press Find: coordinates and time zone are filled in. That location drives weather, US weather alerts ([ALERTS.md](ALERTS.md)), `{{place}}`, and ranking which stations an event is near ([COVERAGE.md](COVERAGE.md)).
+
+**Weather alerts (US).** `{{alert}}` placeholders on the site, and in the hub (`chips-voice/hub/alerts.js`) watches that record or broadcast National Weather Service alerts. It is not the Emergency Alert System; read [ALERTS.md](ALERTS.md) first.
+
+**An AI agent can run it.** The site has an MCP endpoint (`/api/mcp`) so an assistant, yours or ours, can manage stations; anything that reaches the public stream or deletes needs a person's yes: [MCP.md](MCP.md).
+
+**Your next steps** (hub on the IONOS server, RadioDJ at Way High and Greenlight, and the questions about your scripts and scheduling layer): [GREENLIGHT-AND-IONOS.md](GREENLIGHT-AND-IONOS.md).
+
+**Verified here:** the logic behind all of the above is covered by the root `npm test` with mocked services (about 290 tests). **Not verified live:** OpenRouter's current model names (the list checks them against OpenRouter's own list when it can), Open-Meteo weather, ElevenLabs, and the exact prices (only OpenRouter's own listed prices are used; a small built-in table is marked "approx").

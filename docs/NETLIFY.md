@@ -53,6 +53,8 @@ Add these to the site's environment variables:
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICES` | ElevenLabs for voice clones (the site's key; people and stations can save their own). `ELEVENLABS_VOICES` is optional names, `Rocky=<voice id>,Britta=<voice id>` | no |
 | `QUOTA_DAILY_AI`, `QUOTA_MONTHLY_AI`, `QUOTA_MAX_CLIPS`, `QUOTA_MAX_SCHEDULES` | default limits for regular users with none of their own (empty = no limit; admins are never limited) | no |
 | `LOG_LEVEL` | `debug`, `info` (default), `warn`, `error` or `silent`: how much the functions write to Netlify's function logs (one JSON line per event) | no |
+| `ALERTS_CONTACT`, `ALERT_MIN_SEVERITY` | the National Weather Service asks for a contact in its User-Agent (an email or URL); minimum severity for `{{alert}}` placeholders (default `Moderate`): [ALERTS.md](ALERTS.md) | recommended if you use alerts |
+| `MCP_READ_ONLY` | `true` makes the MCP endpoint offer only read tools: [MCP.md](MCP.md) | no |
 | `OPENROUTER_BASE_URL` | point at another OpenAI-compatible router instead of OpenRouter | no |
 | `STATION_URL` | `https://your-chips-voice-server`, to hand every generated clip to the station | later |
 | `STATION_INGEST_TOKEN` | the server's `INGEST_TOKEN` | with `STATION_URL` |

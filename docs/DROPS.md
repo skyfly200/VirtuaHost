@@ -31,9 +31,10 @@ Names are case-insensitive. A placeholder with no value and no fallback is remov
 
 | Group | Names | Example value |
 |---|---|---|
-| station | `station`, `callsign`, `frequency`, `tagline`, `city`, `website` | Way High Radio, KRAP, 97.7 FM |
+| station | `station`, `callsign`, `frequency`, `tagline`, `city`, `place`, `state`, `website` (`place` and `state` come from the place found by name in the Stations tab) | Way High Radio, KRAP, 97.7 FM |
 | time (in the station's time zone) | `time`, `time_24`, `hour`, `daypart`, `greeting`, `weekday`, `date`, `month`, `day`, `year` | 3:45 PM, 15:45, afternoon, Good afternoon, Wednesday, Wednesday October 21 |
 | weather | `weather`, `temp`, `conditions` | 62 degrees and overcast, 62 degrees, overcast |
+| alerts (US) | `alert`, `alert_headline`, `alert_area`, `alert_count`: the most serious active National Weather Service alert at the station's location. **Empty when there is none, so always give a fallback**: `{{alert\|No weather alerts right now}}`. See [ALERTS.md](ALERTS.md) | Tornado Warning, Harris TX |
 | DJ | `dj`, `dj_tagline` (the persona speaking) | DJ Midnight |
 | length | `target_seconds`, `target_words` (from the *Length* choice) | 10, 25 |
 | song | `artist`, `title` (host links, song intros) | Ada Lovelace, Analytical Love |
@@ -55,7 +56,7 @@ The Generate tab's **Length** choice (about 5 to 60 seconds) is sent as `seconds
 
 In **Stations -> edit a station**, section *Placeholders for drops*:
 
-- **Latitude and longitude** for weather. Leave them empty and the station's **city** is looked up once (Open-Meteo's geocoder).
+- **Where is it?** Find the place by name ("Houston, TX"): the coordinates and time zone are filled in. (Or enter latitude and longitude by hand; with neither, the city is looked up each time.) The same location feeds weather and alerts.
 - **Temperature unit**: automatic (Fahrenheit when the station's time zone is in the Americas, otherwise Celsius), or choose.
 - **Your own placeholders**, one per line as `name=text`, for example `sponsor=Joe's Pizza` then `{{sponsor}}` in any drop. Names are lowercase words; built-in names (like `time`) cannot be replaced; up to 20.
 
