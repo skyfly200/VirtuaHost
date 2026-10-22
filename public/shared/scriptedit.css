@@ -11,3 +11,6 @@
 .line-row textarea { min-height: 0; }
 .seg-row { display: flex; gap: 6px; }
 .seg-row .seg { flex: 0 0 auto; }
+
+/* Mode buttons keep their words whole on a phone. */
+.seg { white-space: nowrap; flex: 0 0 auto; }

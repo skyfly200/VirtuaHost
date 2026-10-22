@@ -37,7 +37,7 @@ so a new file can take that long to show up.
 
 ## Using it
 
-In the Generate tab, put the tags in the text (or in the line the AI wrote, before pressing "Make the audio"):
+In the Studio, put the tags in the text (or in the line the AI wrote, before pressing "Make the audio"):
 `[music:late-jazz vol=0.2] Good evening. [sfx:big-ding] You're listening to the station.` The preview is mixed in the
 browser, and what you hear is what gets saved.
 

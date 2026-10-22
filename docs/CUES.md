@@ -1,7 +1,7 @@
 # Tone and nonverbal cues by speech model
 
 Not every speech model can act on a tone direction or an inline cue such as `[laughs]`. The app keeps a table
-(`lib/cues.ts`) and uses it three ways: the Generate tab shows what the chosen model supports, a tone is sent only in the
+(`lib/cues.ts`) and uses it three ways: the Studio shows what the chosen model supports, a tone is sent only in the
 form the model takes, and inline `[tags]` are removed for models that would read the brackets aloud
 (the response says so with `cueTagsRemoved` / `toneIgnored`).
 
@@ -19,4 +19,4 @@ form the model takes, and inline `[tags]` are removed for models that would read
 then correct the table in `lib/cues.ts` if the model surprises you. Gemini tag spellings vary between sources
 (`[whispers]` / `[whispering]`, `[laughs]` / `[laughing]`); put a tag at the start of a sentence and never two side by side.
 
-**Default speech model.** The built-in default is now the cheap one, `hexgrad/kokoro-82m` (no tone, no tags); pick a Google speech model in the Generate tab, a persona or a station when you want tone and `[laughs]` tags performed. The pickers show each model's price tier and whether it filters strong language (see [KEYS.md](KEYS.md)).
+**Default speech model.** The built-in default is now the cheap one, `hexgrad/kokoro-82m` (no tone, no tags); pick a Google speech model in the Studio, a persona or a station when you want tone and `[laughs]` tags performed. The pickers show each model's price tier and whether it filters strong language (see [KEYS.md](KEYS.md)).

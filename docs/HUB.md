@@ -1,4 +1,4 @@
-# Several stations: the hub, the agents, and the Voice Lab and Stations tabs of the site
+# Several stations: the hub, the agents, and the Studio and Stations tabs of the site
 
 ```
  Browser ──sign in──► the site (Netlify: UI + /api)
@@ -15,7 +15,7 @@
   **RadioDJ agent** (`chips-voice/agent-radiodj/`) does it for RadioDJ on Windows.
 - **Hub** (`chips-voice/hub/`): keeps the list of stations, polls them, and does what needs more than one: broadcasts that start together,
   playlists pushed to several stations, host settings copied between them. No dependencies; Node 18+.
-- **The site's UI** (`public/`): one page with tabs for **Generate**, **Personas**, **Flier**, **Promos**, **Schedules**, **Library**, **Voice Lab**, **Stations** and **Users** (all on the site itself), and **Control**, which needs the hub (`HUB_URL`, `HUB_KEY`) and is admin-only.
+- **The site's UI** (`public/`): one page with tabs for **Generate**, **Personas**, **Flier**, **Promos**, **Schedules**, **Library**, **Studio**, **Stations** and **Users** (all on the site itself), and **Control**, which needs the hub (`HUB_URL`, `HUB_KEY`) and is admin-only.
   Control stays switched off, with a short "what to set" card, until the site is connected to the hub. You sign in once, to the site; the site talks to the
   hub for you, so its key never reaches the browser.
 
@@ -91,12 +91,12 @@ live in its database, so the agent does not define or switch them (the hub shows
 
 ## 5. Connect the site to the hub and the voice server
 
-The Voice Lab and Stations tabs turn on when the site has the address and key of what they need. In the site's environment variables (Netlify: Site configuration, Environment variables):
+The Studio and Stations tabs turn on when the site has the address and key of what they need. In the site's environment variables (Netlify: Site configuration, Environment variables):
 
 | Variable | Value |
 |----------|-------|
 | `HUB_URL`, `HUB_KEY` | the hub's public https address and its `HUB_KEY`. Turns on **Stations** |
-| `VOICE_URL`, `VOICE_KEY` | a Chips Voice server's https address and its `API_KEY`. Turns on **Voice Lab** |
+| `VOICE_URL`, `VOICE_KEY` | a Chips Voice server's https address and its `API_KEY`. Turns on **Studio** |
 
 Redeploy afterwards. Notes:
 
@@ -108,7 +108,7 @@ Redeploy afterwards. Notes:
 
 Everything about signing in to the site itself (`LOGIN_USERS`, `SESSION_SECRET`) is in [NETLIFY.md](NETLIFY.md).
 
-## 6. Voice Lab
+## 6. Studio
 
 Write or draft a script (one voice, or a conversation with "Name: line" per line and "Name (direction): line" for delivery), click sound effects to insert
 `[sfx:name]`, choose up to four variants (provider, voice, model, tone, effect) and **Generate all** to hear them side by side. "Keep" favorites a clip. The persona section lists the server's
@@ -131,7 +131,7 @@ The plan for co-locating the hub on the IONOS server with the web-based DJ for W
 
 Verified by automated tests: the hub's API against fake stations (auth, status, group actions, playlists, broadcasts, timed jobs, host copy), the hub
 driving the real RadioDJ agent with a stand-in RadioDJ, the agent's own API, the music library code (path safety), and the site's UI driven in a real browser
-against the real site handlers (sign-in with a password and with the access key, generating with a stand-in OpenRouter, the Voice Lab and Stations tabs through the proxy, and the "not connected" cards).
+against the real site handlers (sign-in with a password and with the access key, generating with a stand-in OpenRouter, the Studio and Stations tabs through the proxy, and the "not connected" cards).
 
 Not verified: a live RadioDJ (the `/npjson` format and the skip/volume command names), a live Liquidsoap playing a `list:` playlist (the m3u is written and selected with
 `music.uri`; check it on your server), real speech providers in the Lab, and simultaneous start across real Icecast streams.
@@ -210,3 +210,7 @@ Decided: the nightly playlist keeps a planned (evergreen) clip at every dynamic 
 - The generated clip goes to the planned clip's position; your `INSERT_EXEC` is called `<file> <position> <replace-id>` and must remove the planned item as part of the same step.
 - Afterwards the agent reads the queue back: `replaced: true` (new clip there, planned clip gone), `false` (both queued: the hub marks the item as failed rather than inserted, because both would air), or `null` (could not read the queue).
 - The mechanism that removes or swaps the item is still the unverified part (it lives in `INSERT_EXEC` or a REST command you have tested).
+
+### Slots that use a saved script
+
+A dynamic slot may carry `script: {id, mode}` (a saved script from the site; docs/SCRIPTS.md): `fixed` says its saved text with placeholders filled for the air time, `draft` has the AI write a fresh version from the script's topic and cast (using the slot's allowed names and facts). The speaker labels are not counted when the words are validated; the hub speaks it through `POST /api/generate` `mode: "script"` (one voice per speaker, joined into one clip). The Dynamic tab's slot form has a **Saved script** picker. The service key (`SITE_KEY`) needs the scopes `generate` and `scripts.read`. Roadmap items that build on this (song requests, relay shows, Google Calendar): [ROADMAP.md](ROADMAP.md).

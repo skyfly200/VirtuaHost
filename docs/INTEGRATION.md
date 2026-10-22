@@ -158,10 +158,14 @@ See [SETUP.md](SETUP.md) for the setup paths (script, API, stream server AutoDJ)
 
 ## 8. Several stations
 
-One hub can control several Chips Voice/Liquidsoap servers and RadioDJ machines, start a broadcast on all of them together, share playlists and copy host settings; the site's Voice Lab and Stations tabs sit in front of it. See [HUB.md](HUB.md).
+One hub can control several Chips Voice/Liquidsoap servers and RadioDJ machines, start a broadcast on all of them together, share playlists and copy host settings; the site's Studio and Stations tabs sit in front of it. See [HUB.md](HUB.md).
 
 ## 9. Just-in-time drops and the RadioDJ agent (JIT)
 
 Flow: nightly builder (Sylvia, 23:30 Denver) writes `GLR YYYY-MM-DD` **and** `GLR YYYY-MM-DD.json` (dynamic-slot markers, shape in `chips-voice/agent-radiodj/schedule.js`) with an evergreen clip at each slot -> agent (`SCHEDULE_DIR`) sends the slots to the hub -> hub writes and speaks the line at `startsAt - leadSeconds` through the site's `/api/generate` -> clip waits in the hub queue -> the agent pulls it, Sylvia's local processing (loudness, same-room EQ) can run in `INSERT_EXEC`, and the clip is inserted at least 2 items ahead. Interfaces to keep stable: a shared `now()` using `broadcastTz`; a `tts_line` backend switch (ElevenLabs direct, or this site's `/api/generate` with `preview: true`); the slot markers; the insert script contract (`<file> <position> <replace-id>`). Details and the live-verification list: [HUB.md](HUB.md#10-just-in-time-jit-drops-shadow-mode-and-the-pull-model).
 
 `/api/generate` additions: `textOnly` returns **`filledIn`** (primary: what would be said now), `raw` (the writer's text with `{{placeholders}}`), `scriptText` (= `filledIn`, kept for older callers), `unresolvedPlaceholders`, `copiedExample`; `at` (ISO time the line will be heard, within 3 h) fills `{{time}}` for that moment; `preview` also returns `filledIn`.
+
+## 10. Scripts and conversations
+
+`POST /api/generate` has a third mode, `"script"`: `scriptId` (or an inline `cast` of up to 4 speakers and `text` as `Name: line`), spoken line by line in each speaker's voice and joined into one clip; `preview: true` returns it without saving. Saved scripts (`/api/scripts`, docs/SCRIPTS.md) are usable in site schedules (`content: {kind: "script", scriptId, fresh}`) and hub slots (`script: {id, mode}`). Service keys gain the scope `scripts.read`. The Generate and Voice Lab tabs are now the **Studio**; their API calls are unchanged. What is planned next: [ROADMAP.md](ROADMAP.md).

@@ -35,7 +35,7 @@ that replicates it (virtual host, ElevenLabs dialogue, the "underground" audio t
 ## Architecture
 
 ```
-public/                    the web UI (static, no build step): sign-in, then Generate, Personas, Flier, Promos, Schedules, Library (clips, sound effects, music), Voice Lab, Stations (profiles) and Control (the hub) tabs
+public/                    the web UI (static, no build step): sign-in, then a grouped menu (Create: Studio, Flier, Promos; Library; Plan: Schedules, Dynamic; Station: Stations, Personas, Control; Admin: Users) that turns into a drawer on phones. Studio replaces the old Generate and Voice Lab tabs
 netlify/functions/*.mts   thin Netlify Function adapters (routing/config only)
         |
 lib/handlers/*.ts         request handling logic, framework-agnostic (Request -> Response)
@@ -96,9 +96,9 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
   throttled through Netlify Blobs in `lib/throttle.ts`) or the optional machine key `ACCESS_KEY` (`x-api-key` or Bearer). With
   neither configured the API answers 503 rather than being open; `AUTH_DISABLED=true` is the explicit local-dev opt-out.
   `npm run hash-password -- <user>` makes an entry for the first admin; everyone else is added in the Users tab (see Users, roles above).
-- **The UI and its proxy.** `public/index.html` is one page (`app.js`): login, then tabs. `generate/`, `lab/` and `panel/` are
+- **The UI and its proxy.** `public/index.html` is one page (`app.js`): login, then tabs. `studio/`, `dynamic/` and `panel/` (and the shared editors in `shared/`) are
   ES modules that draw into a tab, using clients from `shared/kit.js`. Every tab except Stations runs on this site's own `/api/*`
-  (Voice Lab included: `public/shared/speaker.js` speaks and mixes, `public/generate/fx.js` previews effects in the browser). Control (the old hub screen) talks to
+  (Studio included: `public/shared/speaker.js` speaks and mixes, `public/generate/fx.js` previews effects in the browser). Control (the old hub screen) talks to
   `/api/hub/*`, which `lib/handlers/proxy.ts` forwards (after the auth check, with `HUB_KEY`, https only, same-origin paths, 5 MB body cap) to the
   hub in `chips-voice/`; that tab is switched off (a "not connected" card) until `HUB_URL`+`HUB_KEY` are set. `GET /api/options` reports `features`.
   The page itself is public and holds no secrets; the session credential lives in `sessionStorage`.
@@ -133,6 +133,8 @@ lib/store.ts               Netlify Blobs wrapper: saveClip/getClip/listClips
 - **Sound-effect tags.** `[sfx:name]` in a script is mixed in by the Chips Voice server; `handleGenerate`
   strips them before Gemini speaks (`sfxTagsRemoved`). Setup for script/API/AutoDJ/chat/MCP: `docs/SETUP.md`.
 - **Several stations.** `chips-voice/hub/` (zero-dependency Node) controls stations that speak the agent API (a Chips Voice server, or `chips-voice/agent-radiodj/` for RadioDJ);
-  Their UI is the Voice Lab and Stations tabs in `public/` (see above). Tests: `node --test test/*.test.js` inside `hub/` and `agent-radiodj/`. See `docs/HUB.md`.
+  Their UI is the Dynamic, Control and Stations tabs in `public/` (see above). Tests: `node --test test/*.test.js` inside `hub/` and `agent-radiodj/`. See `docs/HUB.md`.
 
 - **Just-in-time drops, two clocks, scoped keys** (`chips-voice/hub/jit.js`, `validate.js`, `chips-voice/agent-radiodj/{agent,puller,schedule,tz,audit}.js`, `lib/timezones.ts`, `lib/copy-guard.ts`, `lib/model-health.ts`, `public/dynamic/`, `docs/HUB.md` sections 10-11): the hub writes and speaks lines shortly before they air (shadow mode default, approval queue, kill switches, caps, fail open to the planned clip), stations behind NAT pull them; `broadcastTz` (the station) and `machineTz` (the PC) are separate everywhere; `SERVICE_KEYS` are scoped keys for unattended jobs. Anything touching a real RadioDJ is flagged "needs live verification".
+- **Scripts, the Studio and conversations** (`lib/scripts.ts`, `lib/script-store.ts`, `lib/script-draft.ts`, `lib/script-clip.ts`, `lib/audio-join.ts`, `lib/handlers/scripts.ts`, `/api/scripts`, `public/studio/`, `public/shared/{casteditor,lineeditor}.js`, `docs/SCRIPTS.md`): a script is what is said (one voice, or a conversation of up to 4 speakers, `Name: line` per line) plus the cast (a persona, voice and role per speaker). It is saved, drafted by the AI from the cast's persona briefs (`POST /api/scripts/draft`, copy guard per speaker), spoken line by line in each speaker's voice and joined into one clip (`mode: "script"` on `/api/generate`; WAV joins with real gaps, MP3 by frames, mixed formats are refused), and reused: in the Studio, in schedules (`content.kind: "script"`, optionally written fresh each run) and in hub dynamic slots (`script: {id, mode: fixed|draft}`). `scripts.read` is a service-key scope.
+- **Roadmap** is `docs/ROADMAP.md` (song requests, song-neutral evergreens, relay shows, Google Calendar, alerts).

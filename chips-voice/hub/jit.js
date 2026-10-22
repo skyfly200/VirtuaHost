@@ -88,7 +88,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     const startsAt = input.startsAt !== undefined ? parseWhen(input.startsAt, zoneOf(station)) : existing.startsAt;
     const constraints = cleanConstraints(input.constraints !== undefined ? input.constraints : existing && existing.constraints);
     if (constraints.event && constraints.event.startsAt !== undefined) constraints.event.startsAt = parseWhen(constraints.event.startsAt, zoneOf(station));
-    const rawScript = input.script !== undefined ? input.script : existing && existing.script;
+    const rawScript = input.script !== undefined ? input.script : existing && existing.script;      // null clears it
     const script = rawScript && rawScript.id ? { id: text(rawScript.id, 60), mode: rawScript.mode === 'draft' ? 'draft' : 'fixed' } : undefined;
     if (script && !/^[a-z0-9][a-z0-9-]{0,59}$/.test(script.id)) throw new HubError('script.id is a saved script id from the site (lowercase letters, numbers, dashes)');
     if (kind === 'event-reminder' && !constraints.event) throw new HubError('an event-reminder slot needs constraints.event { name, startsAt }');

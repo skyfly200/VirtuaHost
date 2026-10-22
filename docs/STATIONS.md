@@ -64,3 +64,7 @@ station start flowing to it. The old hub controls (several live stations on one 
 
 - `broadcastTz` (same value as `tz`, kept in sync) is the station's own clock; `machineTz` is the playout PC's, only for reading the PC's timestamps. `GET /api/stations` returns `warnings` for each station: `zones-differ`, `machine-tz-missing` (RadioDJ stations), invalid zones, and `weather-location-missing` (`{{weather}}` needs a city or coordinates). The editor shows them live. The hub record has the same fields plus the agent's real offset check: docs/HUB.md.
 - Existing profiles keep working: `tz` still sets the zone.
+
+## Menu and phones
+
+The tabs are grouped (Create: Studio, Flier, Promos; Library; Plan: Schedules, Dynamic; Station: Stations, Personas, Control; Admin: Users). On a phone the groups collapse into a Menu drawer, grids become one column and tables scroll inside their card. A station's `warnings` (clocks, weather location) show in the Stations editor, the Studio and Schedules.
