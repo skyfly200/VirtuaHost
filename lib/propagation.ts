@@ -35,7 +35,7 @@ export type AntennaType = keyof typeof ANTENNAS;
 export interface Transmitter {
   /** Transmitter output power (TPO), watts. Used with the gain and loss unless `erpWatts` is given. */
   powerWatts?: number;
-  /** Effective radiated power, watts, if you know it (a licence or datasheet). Wins over power x gain. */
+  /** Effective radiated power, watts, if you know it (a datasheet or your own figure). Wins over power x gain. */
   erpWatts?: number;
   antenna: AntennaType;
   /** Antenna gain over a half-wave dipole, dB. Defaults from the antenna type. */
@@ -153,7 +153,7 @@ export function coverageModel(tx: Transmitter, at: { lat: number; lon: number })
       tx.haatFt === undefined ? "Uses the antenna's height above ground; give height above average terrain (HAAT) for a better answer, especially on a hill." : "Uses the height above average terrain you gave.",
       `Surroundings allowance: ${ENVIRONMENTS[tx.environment]} dB (${tx.environment})${tx.extraLossDb ? ` plus ${tx.extraLossDb} dB you added` : ""}.`,
       `Receiver at ${RX_HEIGHT_M} m. Planning levels: 70, 60 and 48 dBuV/m.`,
-      "A planning estimate, not a coverage study and not for regulatory filings.",
+      "A planning estimate, not a terrain-aware coverage study.",
     ],
   };
 }

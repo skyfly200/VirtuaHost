@@ -8,7 +8,7 @@ Enter a station's **transmitter power, antenna and height** in the Stations tab 
 
 How it works (`lib/propagation.ts`; every step is a plain formula):
 
-1. **ERP** = transmitter power x antenna gain (dB over a half-wave dipole) less cable loss. If you know the licensed/datasheet ERP, enter it and it wins.
+1. **ERP** = transmitter power x antenna gain (dB over a half-wave dipole) less cable loss. If you know the ERP (a datasheet or your own figure), enter it and it wins.
 2. **Free-space field strength** at distance d: `E = 106.92 + 10 log10(ERP in kW) - 20 log10(d in km)` dB(uV/m).
 3. **Radio horizon** `d_h = 4.12 (sqrt(h_tx) + sqrt(h_rx))` km (heights in metres, receiver 1.5 m). Beyond it the field falls **40 dB per decade** instead of 20.
 4. **Surroundings** allowance: open 0 dB, suburban 8 dB, dense city 16 dB (plus any extra loss you enter).
@@ -42,14 +42,11 @@ A **quarter-wave ground-plane antenna, 50 ft above ground, on Mapleton Hill in B
 
 ### Not in the quick model (so do not read more into it)
 
-Terrain and clutter beyond a flat allowance, ground conductivity, antenna vertical pattern and tilt, polarization, the receiver's real sensitivity, interference from other stations, night-time and weather effects, and any licensing or regulatory meaning. If you need a result you can defend, use terrain-aware software and, for filings, the regulator's own method.
+Terrain and clutter beyond a flat allowance, ground conductivity, antenna vertical pattern and tilt, polarization, the receiver's real sensitivity, interference from other stations, and night-time and weather effects. If you need a more exact picture, use terrain-aware software (below).
 
 ## These are FM stations
 
-Way High and Greenlight are **FM broadcast** stations, so the model's choices are FM ones: the planning levels (70, 60 and 48 dBuV/m) are the usual FM-style steps, the receiver is a car or portable radio at 1.5 m, and the frequency you enter should be on the 88 to 108 MHz band. Two things to keep straight:
-
-- **The estimate is not the regulator's contour.** For a licensed FM station the FCC defines service contours (for example 70 dBu city grade, 60 dBu principal community, and a protected contour that depends on the station class) from **ERP and HAAT averaged over eight radials, using its F(50,50) curves**. Our quick model uses the antenna's single height and a simple formula, so it will not match a filed contour, and it is not for filings.
-- **Power has to match the licence.** The 5 W used in the examples is an illustration, not advice. Put in what the station is actually licensed or authorised to run (ERP, and the antenna height and pattern in the licence or construction permit). Higher power than authorised is not something to model, it is something to check with whoever holds the licence.
+Way High and Greenlight are **FM broadcast** stations, so the model's choices are FM ones: the planning levels (70, 60 and 48 dBuV/m) are the usual FM-style steps, the receiver is a car or portable radio at 1.5 m, and the frequency you enter should be on the 88 to 108 MHz band. The 5 W in the examples is only an illustration: enter the station's real power. The quick model uses one antenna height and a simple formula, so it will not match a terrain-aware prediction (the standard FM contour methods use height above average terrain over several radials); that is the gap the Nautel import below closes.
 
 ## Adding a Nautel (or any terrain-aware) coverage map later
 
@@ -62,7 +59,7 @@ Run it for each station with the **real** numbers, and write these down next to 
 | Record | Why |
 |---|---|
 | Station and frequency | which map is which |
-| ERP (and the licence it came from), antenna type and pattern file, antenna height above ground **and HAAT**, transmitter site coordinates | so a number can be traced and redone |
+| ERP (and where it came from), antenna type and pattern file, antenna height above ground **and HAAT**, transmitter site coordinates | so a number can be traced and redone |
 | The terrain data and propagation model the tool used (and its version), receiver height, the date | predictions change with these |
 | The **signal levels** of each contour (for FM usually 70, 60, 54 or 48 dBu: whatever the tool drew) | each polygon needs its level |
 
@@ -101,7 +98,7 @@ Simplify each ring to roughly 500 points or fewer (mapshaper's `-simplify 10%` k
 - Population served (Census data) and overlap between stations, from [the ladder below](#the-model-so-it-can-grow), build on the same polygons.
 - The MCP `station_coverage` tool will report which source is in use.
 
-Until then nothing is lost by waiting: keep the exported files and the inputs in step 1 somewhere safe (and out of the repo if they contain licence details you would rather not publish).
+Until then nothing is lost by waiting: keep the exported files and the inputs in step 1 somewhere safe (and out of the repo if they contain details you would rather not publish).
 
 ## The model, so it can grow
 
@@ -109,7 +106,7 @@ A station's coverage is meant to be a small object that callers never look insid
 
 1. **Circle or rough ellipse from power and antenna** (done, above): good enough for "is the event or alert in range".
 1b. **Imported contour** (next, cheapest accurate step): upload a KML/GeoJSON contour from a terrain-aware tool (Nautel's, SPLAT!, Radio Mobile) and store it on the station in place of the estimate: [how to prepare it](#adding-a-nautel-or-any-terrain-aware-coverage-map-later).
-2. **Contour polygon:** a GeoJSON polygon, drawn by hand or imported. For a licensed FM/AM station, the FCC publishes service contours (FCC Media Bureau data); an internet stream has no contour, so it is the *audience* area you choose (a city, a county list, a region).
+2. **Contour polygon:** a GeoJSON polygon, drawn by hand or imported (for an FM station, a terrain-aware prediction; for an internet stream, the *audience* area you choose: a city, a county list, a region).
 3. **Named areas:** a list of counties or NWS zones (UGC codes like `TXC201`). This is the cleanest link to alerts, because NWS alerts are issued by zone and county.
 4. **Population served:** intersect the area with a population grid (US Census block/tract data, or a global grid such as WorldPop) to get "about N people", for ranking stations and for population-weighted decisions.
 5. **Audience reality:** for an internet stream, blend the geographic model with where listeners actually are (Icecast/Liquidsoap listener IPs, geolocated; aggregate and anonymised, never stored per person).
@@ -125,7 +122,7 @@ A station's coverage is meant to be a small object that callers never look insid
 
 ## Decisions we should make before building the next rung
 
-- Do we model **licensed contours** (FM/AM), **audience areas** (internet), or both on one station?
+- Do we model **transmitter contours** (FM/AM), **audience areas** (internet), or both on one station?
 - County/zone lists versus drawn polygons as the main way to edit (a map editor needs a map library and tile source: a deliberate choice, since the site has no build step and no map today).
-- Which population data and licence (Census is public domain; check any other source's terms).
+- Which population data to use (Census is public domain; check any other source's terms).
 - Where the geometry lives (the station profile in Blobs is fine for hundreds of points, not for large polygons; simplify, or store polygons as separate blobs).

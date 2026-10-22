@@ -3,8 +3,8 @@
 // matter, and either just records them (action "notify", the default) or has the voice server say them and broadcasts the clip to the
 // chosen stations (action "broadcast"). Nothing airs unless a watch is set to "broadcast".
 //
-// This relays what the NWS publishes. It is NOT the Emergency Alert System: it does not decode EAS/SAME, does not play the attention tones,
-// and does not satisfy the FCC's EAS rules for licensed broadcast stations (those need a certified EAS encoder/decoder). See docs/ALERTS.md.
+// This relays what the NWS publishes. It reads the NWS web service, not the EAS chain: it does not decode EAS/SAME or play the attention tones.
+// See docs/ALERTS.md.
 // Alerts are never "Test" or "Exercise" ones, and each alert id airs at most once.
 //
 // NOT VERIFIED against the live service (it could not be reached while this was written): the request and response shapes follow the
