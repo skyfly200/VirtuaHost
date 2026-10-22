@@ -8,7 +8,7 @@ import { amountSlider } from '../shared/amount.js';
 import { FX_PREVIEWS } from './fx.js';
 import { downloadMenu } from '../shared/download.js';
 import { costGuard } from '../shared/estimate.js';
-import { modelLabel, allowsStrongLanguage, infoOf } from '../shared/modelinfo.js';
+import { modelLabel, allowsStrongLanguage, infoOf, isOffered, flagOf } from '../shared/modelinfo.js';
 
 const GEMINI_VOICES = ['Kore', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Zephyr', 'Orus'];
 const OTHER = '__other';
@@ -101,8 +101,8 @@ export async function mountGenerate(root, api) {
     paintChips();
 
     const modelSelect = (key, customKey, values, label, dim) => {
-      const shown = state.explicit ? values.filter((v) => allowsStrongLanguage(options, v)) : values;
-      const items = shown.map((v) => h('option', { value: v, selected: state[key] === v }, tierLabel(v)));
+      const shown = (state.explicit ? values.filter((v) => allowsStrongLanguage(options, v)) : values).filter((v) => isOffered(options, v) || state[key] === v);       // retired models are never offered
+      const items = shown.map((v) => h('option', { value: v, selected: state[key] === v, title: flagOf(options, v) ? flagOf(options, v).note : undefined }, tierLabel(v)));
       if (options.models.allowAny) items.push(h('option', { value: OTHER, selected: state[key] === OTHER }, 'Other (type a model name)...'));
       const custom = h('input', { value: state[customKey], placeholder: 'provider/model-name', hidden: state[key] !== OTHER, 'aria-label': `${label} name`, oninput: (e) => { state[customKey] = e.target.value; } });
       const select = h('select', { disabled: !options.models.choosable, 'aria-label': label, onchange: (e) => { state[key] = e.target.value; custom.hidden = state[key] !== OTHER; persist(); paintVoices(); refreshEstimate(); } }, items);
@@ -240,7 +240,7 @@ export async function mountGenerate(root, api) {
   async function writeLine(brief) {
     status.busy('Writing the line (nothing is spoken yet)');
     const data = await api.post('/generate', { mode: 'ai', prompt: brief, textOnly: true, ...writerBase() });
-    showScript({ brief, text: data.scriptText, textModel: data.textModel });
+    showScript({ brief, text: data.filledIn ?? data.scriptText, raw: data.raw, textModel: data.textModel, unresolved: data.unresolvedPlaceholders, missing: data.templateMissing, copied: data.copiedExample });
     status.ok(`Line written${data.textModel ? ` by ${data.textModel}` : ''}. Edit it if you like, then make the audio.`);
   }
 
@@ -249,6 +249,8 @@ export async function mountGenerate(root, api) {
     if (draft) { URL.revokeObjectURL(draft.url); draft = null; }
     const box = h('textarea', { rows: 4, 'aria-label': 'Written line', oninput: (e) => { script.text = e.target.value; } });
     box.value = script.text;
+    // The filled-in line (what would be said now) is shown and edited; "raw" shows the writer's version with its {{placeholders}}, read only.
+    const rawToggle = script.raw && script.raw !== script.text ? h('label', { class: 'row small' }, h('input', { type: 'checkbox', onchange: (e) => { box.readOnly = e.target.checked; box.value = e.target.checked ? script.raw : script.text; make.disabled = e.target.checked; } }), 'Show the raw text with {{placeholders}}') : null;
     const make = h('button', { class: 'primary', type: 'button', onclick: async () => {
       if (!script.text.trim()) { status.fail('The line is empty.'); return; }
       make.disabled = true; 
@@ -260,7 +262,9 @@ export async function mountGenerate(root, api) {
     } }, 'Write it again');
     clear(draftBox, h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, 'written line, not spoken yet'), script.textModel ? h('span', { class: 'chip' }, script.textModel) : null),
-      box,
+      box, rawToggle,
+      script.copied ? h('p', { class: 'small bad' }, 'The writer repeated one of the persona\'s example lines. Write it again, or edit it.') : null,
+      script.missing && script.missing.length ? h('p', { class: 'small bad' }, `No value for: ${script.missing.join(', ')}. For {{weather}} the station needs a city or coordinates (Stations tab).`) : null,
       h('div', { class: 'row' }, make, again, h('button', { type: 'button', onclick: discard }, 'Discard'))));
   }
 

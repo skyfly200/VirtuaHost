@@ -135,3 +135,69 @@ against the real site handlers (sign-in with a password and with the access key,
 
 Not verified: a live RadioDJ (the `/npjson` format and the skip/volume command names), a live Liquidsoap playing a `list:` playlist (the m3u is written and selected with
 `music.uri`; check it on your server), real speech providers in the Lab, and simultaneous start across real Icecast streams.
+
+## 10. Just-in-time (JIT) drops, shadow mode and the pull model
+
+Pre-baked drops stay the default. Every dynamic spot has a planned ("evergreen") clip in the nightly playlist; the hub may write and speak a fresher line a few minutes before it airs, and **whenever anything fails the planned clip simply plays**. Code: `hub/jit.js`, `hub/validate.js`, UI: the **Dynamic** tab (admin, needs the hub).
+
+### Two clocks, never mixed
+
+| Setting | Meaning | Used for |
+|---------|---------|----------|
+| `broadcastTz` (`tz` on a site profile) | The station's wall clock (`America/Denver`) | `{{time}}`, schedules, "tonight at 7", event reminders, weather and alert wording, the broadcast day |
+| `machineTz` | The RadioDJ PC's own clock (currently Central) | Only reading timestamps that come from the PC |
+
+Both are on the site's station profile, the hub's station record and `GET /agent/info`. The UI warns when they differ, when the PC's real UTC offset (reported by the agent) does not match `machineTz`, and when the agent's declared zones differ from the hub record. `chips-voice/agent-radiodj/tz.js` (copied to `hub/tz.js`, and twinned in `lib/timezones.ts`) is tested for Central-machine/Denver-broadcast, DST edges (2026-03-08, 2026-11-01) and midnight rollover.
+
+### Keys and scopes
+
+| Key | Can |
+|-----|-----|
+| `HUB_KEY` | Everything (control) |
+| `HUB_READ_KEY` (optional) | GET routes only: stations, slots, items, audit |
+| per-station key (`POST /stations/:id/pullkey`, shown once, stored as a hash) | Only that station's `heartbeat`, `queue`, `queue/:id/audio`, `queue/:id/ack` and `slots` |
+
+Login tokens carry their scope. The site's proxy forwards the signed-in person as `x-actor`, so approvals and the **audit log** (`GET /audit`, append-only, capped, no keys) say who did what. Unattended jobs call the site with a scoped `SERVICE_KEYS` entry (docs/KEYS.md), not a 12-hour session token.
+
+### The pull model (a PC behind home NAT)
+
+The agent (`HUB_URL`, `HUB_STATION_ID`, `HUB_STATION_KEY`) makes only outbound calls, every 15 s: `POST /stations/:id/heartbeat` (its `/agent/status`), `PUT /stations/:id/slots` (the dynamic slots of today and tomorrow from its schedule), `GET /stations/:id/queue`, download, `POST .../ack`. A station record with `connection: "pull"` needs no URL; it is online while heartbeats arrive. Every clip goes through the **local** agent's own checks (kill switch, live show, shadow, allowlist, two items ahead).
+
+### The worker, per slot
+
+Slot = `{ id, stationId, kind (time-check|weather|event-reminder|host-break|station-id|promo), startsAt (broadcastTz), leadSeconds (600), personaId, fallbackClipId, constraints }`. When a slot is inside its lead window:
+
+1. Write the text with `/api/generate` `textOnly` (with `at` = the air time, so `{{time}}` is right when it airs). The hub uses **`filledIn`**, never `scriptText`/`raw`.
+2. Validate before any speech spend: length, blocklist, language policy per persona, placeholders resolved, no markdown/stage directions, no invented songs, artists, numbers, web addresses or phone numbers (a heuristic: only names and facts passed in `constraints` are allowed), and the site's own `copiedExample`/`templateMissing` flags. One retry with a nudge, then fall back.
+3. Check the daily cap, then speak (`preview: true`, nothing saved in the site library). Cached by content hash: a line that is the same for several stations is spoken (and billed) once.
+4. **Shadow mode (the default)**: store what would have aired; queue nothing. Live: wait for approval (default), then queue for the station to pull.
+5. Any error, timeout, cap, missing or tiny audio, kill switch or live show: a recorded reason, nothing queued, the planned clip plays.
+
+Controls: global and per-station kill switch (`POST /jit/kill`), per-day character cap (per station and global, counted in each station's broadcast day), `POST /jit/estimate` before spending, retry with backoff on 5xx/429/network errors, a circuit breaker per provider (3 failures, 5 min pause), suppression while the agent reports `live-show`. `POST /jit/broadcast` writes and speaks once and gives the same audio to many stations; stations whose zone/city/coordinates differ get their own line, identical lines still share the audio.
+
+Routes: `GET /jit/status`, `GET|PUT /jit/settings`, `POST /jit/kill`, `GET|POST /jit/slots`, `PUT|DELETE /jit/slots/:id`, `PUT /stations/:id/jit`, `GET /jit/items[?state=review]`, `GET /jit/items/:id[/audio]`, `POST /jit/items/:id/approve|reject`, `POST /jit/estimate`, `POST /jit/run` (needs `confirm: true`), `POST /jit/broadcast`, `GET /jit/alerts`. **Emergency alerts are not built**: the hook always refuses and the UI shows a disabled "planned" card.
+
+Env: `HUB_READ_KEY`, `SITE_URL`, `SITE_KEY` (a `SERVICE_KEYS` key with `generate`, `stations.read`, `personas.read`).
+
+## 11. The RadioDJ agent, JIT edition
+
+New in `chips-voice/agent-radiodj/` (read key = GET only; control key = everything; `AGENT_KEYS="hubA:read:..,hubA:control:.."` for one pair per hub):
+
+- `GET /agent/status`: stream up/down + listeners (Icecast `status-json.xsl`), loaded playlist, now playing with elapsed/remaining, next N (default 5), last watchdog restart, `machineTz`/`broadcastTz`, mode (live-show/automation), shadow, kill switch.
+- `GET /schedule?date=`: read-only day plan from `GLR YYYY-MM-DD*.json` in `SCHEDULE_DIR` (written by the nightly builder; shape in `schedule.js`). The default date is the broadcast date, not the PC's.
+- `POST /queue/insert {clip, ahead}`: at least 2 ahead (never the immediately-next item), idempotent by clip hash, refuses when fewer than `ahead-1` items are queued.
+- `POST /ingest`: hash-named file per clip in `LINKS_DIR` (default `C:\GreenLightRadio\clips`), `sha256` check, `generated=1` clips are held in shadow mode and, when fired, confirmed through `/npjson` (`played: true|false|null`).
+- `POST /playlist/load {name}`: only `GLR YYYY-MM-DD*` names; `skip` only with `RADIODJ_SKIP_VERIFIED=true`.
+- Safety: kill switch (`KILL` flag file, or `POST /agent/kill`; **only the PC can clear it**), live-show refusal (`mode` file; entering is remote, leaving is local), action allowlist (`AGENT_ALLOW`), per-hub rate limits, append-only audit log (`audit.jsonl`: who, what, when, result; no secrets), listens on `127.0.0.1` unless `AGENT_HOST` says otherwise. Shadow is on by default (`AGENT_SHADOW=false` to go live).
+- `/music/now` also returns `elapsedSeconds`/`durationSeconds` and reads `CurrentTrack.Remaining`.
+
+### Needs live verification on a real RadioDJ (do not claim any of these works until it has been)
+
+1. `/npjson` "Playlist" shape and the unit of `Elapsed`/`Remaining`/`Duration` (seconds assumed; `m:ss` also read).
+2. How a clip is inserted two ahead: set `INSERT_EXEC` (Sylvia's script, receives `<file> <position> <replace-id>`) or `RADIODJ_CMD_INSERT`/`RADIODJ_INSERT_ARG`. **No command name is guessed.** Also decide whether the JIT clip *replaces* the planned clip (`replace` is passed) or is added.
+3. Playlist loading (`LOAD_EXEC`; bulk REST loads have thrown "Index out of range").
+4. Skip (`RADIODJ_CMD_SKIP`), volume, and `played` confirmation by track match.
+5. The `GLR YYYY-MM-DD.json` plan file and the watchdog/loaded-playlist files (`WATCHDOG_FILE`, `LOADED_PLAYLIST_FILE`).
+6. Strong consistency on Netlify Blobs (see KEYS.md), and the new model-failure handling against real OpenRouter.
+
+**Nothing goes on the live station until the owner (Rocky) approves the shadow review and a live single-item test.**

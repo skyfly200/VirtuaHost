@@ -1,0 +1,23 @@
+/* Dynamic drops: supervision, review and spend. Uses the shared kit.css tokens. */
+.dyn-banner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; border-left: 6px solid var(--accent, #5b3df5); }
+.dyn-banner.killed { border-left-color: #c0392b; background: color-mix(in srgb, #c0392b 10%, transparent); }
+.dyn-banner .big { font-size: 1.1rem; font-weight: 700; }
+.dyn-stations { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); align-items: start; }
+.dyn-station.offline { opacity: .75; }
+.dyn-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 650; border: 1px solid currentColor; }
+.dyn-pill.on { color: #1e8e3e; } .dyn-pill.off { color: #888; } .dyn-pill.warn { color: #b26a00; } .dyn-pill.bad { color: #c0392b; } .dyn-pill.live { color: #c0392b; }
+.dyn-note { margin: 4px 0; padding: 6px 10px; border-radius: 6px; font-size: 13px; border: 1px solid currentColor; }
+.dyn-note.warn { color: #8a5300; background: color-mix(in srgb, #f5a623 14%, transparent); }
+.dyn-note.error { color: #a02820; background: color-mix(in srgb, #c0392b 12%, transparent); }
+.dyn-note.info { color: var(--muted); }
+.dyn-meter { width: 100%; height: 8px; }
+.dyn-item { border-left: 5px solid var(--border, #ccc); }
+.dyn-item.shadow, .dyn-item.awaiting-approval { border-left-color: #b26a00; }
+.dyn-item.inserted, .dyn-item.queued { border-left-color: #1e8e3e; }
+.dyn-item.fallback, .dyn-item.rejected { border-left-color: #c0392b; }
+.dyn-item.suppressed { border-left-color: #888; }
+.dyn-line { font-size: 1.05rem; margin: 6px 0; overflow-wrap: anywhere; }
+.dyn-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dyn-table th, .dyn-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border, #ddd); vertical-align: top; }
+.dyn-off { opacity: .6; }
+.dyn-key { font-family: ui-monospace, monospace; word-break: break-all; padding: 6px; border: 1px dashed currentColor; }

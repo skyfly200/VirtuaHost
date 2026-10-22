@@ -41,3 +41,25 @@ Before each AI step the app shows an estimate (tokens, and dollars when OpenRout
 - **Other routers:** any OpenAI-compatible router can stand in for OpenRouter by setting `OPENROUTER_BASE_URL` (and `OPENROUTER_API_KEY`); price and free-model discovery only work if it serves OpenRouter's `/models` shape.
 - **Content filtering:** every model in the pickers is labelled `filtered`, `light filter` or `unfiltered` (nothing shown means nobody has checked it). OpenRouter's own `is_moderated` flag is used when it reports one; otherwise the label is a hint from the model's name and what is publicly known (hosted OpenAI, Anthropic and Google models are treated as filtered; Kokoro and community "uncensored" fine-tunes as unfiltered; Llama, Mistral, DeepSeek, Qwen as light). **A hint is not a test:** models change and providers differ, so generate a line with the language you need before relying on one.
 - **Strong language:** the Generate tab has an *Allow strong language* switch. It tells the writer not to censor, bleep or soften, hides models marked `filtered`, and the estimate warns if a filtered model is still selected. Speech models read what they are given, but a few (notably some hosted ones) may refuse or alter it too; Kokoro is unfiltered.
+
+## Scoped service keys for unattended jobs
+
+Session tokens last 12 hours, so a station job should not use one. Set `SERVICE_KEYS` on the site:
+
+```
+SERVICE_KEYS="glr-hub@rocky:generate+stations.read+personas.read:<random 24+ chars>"
+```
+
+`name[@user]:scope+scope:key`, comma separated. Scopes: `generate`, `stations.read`, `personas.read`, `options.read`. A service key is **not an admin** and only opens the routes that name its scope (anything else answers 403), so a leaked one cannot change stations or users, and it is exempt from per-user AI quotas (the hub's daily character cap is its limit). With `@user` it acts as that user: their saved AI keys (for example Rocky's ElevenLabs key from the Account card) and personas are used; without it, only shared personas and the station's/site's keys. Use it as `SITE_KEY` on the hub.
+
+## Model failures
+
+`anthropic/claude-3.5-haiku` (and `claude-3-haiku`) are retired: they are never offered and are refused with a clear message (`lib/model-health.ts`). A model that fails twice in a row (empty or "no text") is flagged "failing lately" in the pickers. Replies of a single word are treated as an early stop and retried with less reasoning, then none (`reasoning: {enabled: false}`); this is the likely cause of Gemini "truncated after a few words" and Haiku 5.5 "no text", **but it has not been confirmed against the live service**. Writers that copy a persona's example lines (DeepSeek) are detected (`lib/copy-guard.ts`), retried once, and reported as `copiedExample`.
+
+## Persona instructions
+
+Limit 1500 characters. Over it, the API answers 400 with the exact overage (nothing is saved, nothing is cut); the editor shows a live counter. AI-drafted personas are cut at a sentence instead, because they are only a draft for editing.
+
+## Reading right after saving
+
+Stations, personas and schedules use Netlify Blobs with `consistency: "strong"`, and PUT/POST return the saved record. (Not verified against live Blobs.)

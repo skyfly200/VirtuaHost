@@ -154,3 +154,10 @@ Nothing in `krap-station/` changed. These are all on the web site (`public/`, `l
 **Your next steps** (hub on the IONOS server, RadioDJ at Way High and Greenlight, and the questions about your scripts and scheduling layer): [GREENLIGHT-AND-IONOS.md](GREENLIGHT-AND-IONOS.md).
 
 **Verified here:** the logic behind all of the above is covered by the root `npm test` with mocked services (about 290 tests). **Not verified live:** OpenRouter's current model names (the list checks them against OpenRouter's own list when it can), Open-Meteo weather, ElevenLabs, and the exact prices (only OpenRouter's own listed prices are used; a small built-in table is marked "approx").
+
+## Added later: just-in-time drops (what is yours, what is not)
+
+Mine (server side): hub scheduler, validation, shadow mode, approval queue, the agent API (`/agent/status`, `/schedule`, `/queue/insert`, hash-named `/ingest`, kill switch, audit log) and the pull loop, all tested against a fake RadioDJ and fake providers. **None of it has touched a live RadioDJ.** Read [HUB.md](HUB.md#10-just-in-time-jit-drops-shadow-mode-and-the-pull-model), especially the "needs live verification" list.
+
+Yours (please keep these stable): a shared `now()` using `broadcastTz` (America/Denver), never the PC's clock; `tts_line(speaker, text, file)` with a backend switch (ElevenLabs direct, or `POST /api/generate {mode:"say", preview:true}` on this site); the dynamic-slot markers in the nightly plan (`GLR YYYY-MM-DD.json`, shape in `chips-voice/agent-radiodj/schedule.js`) with an evergreen clip at each; local processing (loudness, same-room EQ) before insertion, which fits in `INSERT_EXEC` (called as `script <file> <position> <replace-id>`; it is run with no shell); and the queue-insert live test. Open question for you: should the JIT clip replace the evergreen item (the agent passes its id as `<replace-id>`) or be added next to it?
+The agent now defaults to `127.0.0.1`, `C:\GreenLightRadio\clips` (not `C:\KRAP`), a unique file per clip (the fixed `current_link.mp3` is only written when a cart is configured), and Windows-safe retries.

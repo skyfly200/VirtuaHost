@@ -11,6 +11,7 @@ import { mountSchedules } from './schedules/schedules.js';
 import { mountStationProfiles } from './stations/stations.js';
 import { loadStations, allStations, currentStation, setStation } from './shared/station.js';
 import { mountPanel, unmountPanel } from './panel/panel.js';
+import { mountDynamic, unmountDynamic } from './dynamic/dynamic.js';
 import { mountUsers, accountCard } from './users/users.js';
 
 const app = $('#app');
@@ -89,6 +90,8 @@ function showApp(credential, options, me) {
     { id: 'lab', label: 'Voice Lab', on: true },
     { id: 'stations', label: 'Stations', on: true },
     { id: 'users', label: 'Users', on: admin, hidden: !admin },
+    { id: 'dynamic', label: 'Dynamic', on: features.hub && admin, hidden: !admin, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
+      what: 'Supervise just-in-time drops: station status and clocks, shadow review, approvals, slots, spend and the audit log.' },
     { id: 'control', label: 'Control', on: features.hub && admin, hidden: !admin, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
       what: 'Control every station on one screen: now playing, skip, volume, playlists, broadcasts at the same moment, and host settings.' },
   ];
@@ -115,6 +118,7 @@ function showApp(credential, options, me) {
     if (id === 'lab') await mountLab(panel, clientFor('/api', credential));
     if (id === 'users') await mountUsers(panel, clientFor('/api', credential));
     if (id === 'stations') await mountStationProfiles(panel, clientFor('/api', credential));
+    if (id === 'dynamic') { leave = unmountDynamic; await mountDynamic(panel, clientFor('/api', credential), clientFor('/api/hub', credential)); }
     if (id === 'control') { leave = unmountPanel; await mountPanel(panel, clientFor('/api/hub', credential)); }
   };
 
