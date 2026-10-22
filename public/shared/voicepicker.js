@@ -3,14 +3,14 @@
 // is shown, so you can see what you would get. Values are kept in `value` and reported through `onchange`.
 import { h, clear } from './kit.js';
 import { createPlayer } from './playbutton.js';
-import { modelLabel } from './modelinfo.js';
+import { modelLabel, isOffered, flagOf } from './modelinfo.js';
 
 // options: GET /api/options. value: { speechModel, voice, textModel }. defaults: { speechModel, voice, textModel, label } shown for a blank.
 // sample: optional async (value) => object URL of a short sample in this voice; adds a play button.
 export function modelVoiceFields({ options, value, defaults = {}, onchange, sample, writing = true, disabled = false }) {
   const choosable = options.models.choosable;
   const speech = choosable ? options.models.speech || [] : [];
-  const texts = choosable ? options.models.text || [] : [];
+  const texts = choosable ? (options.models.text || []).filter((m) => isOffered(options, m) || m === (value && value.textModel)) : [];
   const where = defaults.label || 'the default';
   const tierLabel = (id) => modelLabel(options, id);
   const box = h('div', { class: 'grid' });
@@ -37,7 +37,7 @@ export function modelVoiceFields({ options, value, defaults = {}, onchange, samp
       fields.push(h('label', { class: 'field' }, 'Writing model (the words)',
         h('select', { disabled, onchange: (e) => { value.textModel = e.target.value; changed(); } },
           h('option', { value: '' }, `Use ${defaults.textModel ? `${where}: ${defaults.textModel}` : `the default: ${options.models.defaultText}`}`),
-          texts.map((m) => h('option', { value: m, selected: m === value.textModel }, tierLabel(m))))));
+          texts.map((m) => h('option', { value: m, selected: m === value.textModel, title: flagOf(options, m) ? flagOf(options, m).note : undefined }, tierLabel(m))))));
     }
     clear(row, fields);
   }

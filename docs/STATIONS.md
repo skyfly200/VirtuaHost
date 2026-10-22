@@ -59,3 +59,8 @@ offers one placeholder named from `STATION_NAME`.
 
 Nothing here changes: start the daemon with `STATION_ID` (see `station-daemon/README.md`) and the site's queue, host and schedules for that
 station start flowing to it. The old hub controls (several live stations on one screen) are the **Control** tab.
+
+## Two clocks, and the {{weather}} location
+
+- `broadcastTz` (same value as `tz`, kept in sync) is the station's own clock; `machineTz` is the playout PC's, only for reading the PC's timestamps. `GET /api/stations` returns `warnings` for each station: `zones-differ`, `machine-tz-missing` (RadioDJ stations), invalid zones, and `weather-location-missing` (`{{weather}}` needs a city or coordinates). The editor shows them live. The hub record has the same fields plus the agent's real offset check: docs/HUB.md.
+- Existing profiles keep working: `tz` still sets the zone.

@@ -85,6 +85,21 @@ export async function mountStationProfiles(root, api) {
     const text = (label, key, props = {}) => h('label', { class: 'field' }, label, h('input', { ...props, value: c[key] || '', oninput: (e) => { c[key] = e.target.value; } }));
     const area = (label, key, rows = 3, props = {}) => h('label', { class: 'field' }, label, Object.assign(h('textarea', { rows, ...props, oninput: (e) => { c[key] = e.target.value; } }), { value: c[key] || '' }));
     const listField = (label, key, rows, placeholder) => h('label', { class: 'field' }, label, Object.assign(h('textarea', { rows, placeholder, oninput: (e) => { c[key] = LINES(e.target.value); } }), { value: (c[key] || []).join('\n') }));
+    // Two clocks, never mixed up: the station's own (what listeners hear and schedules use) and the playout PC's (only for reading the PC's timestamps).
+    const offset = (zone) => { try { const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(new Date()).filter((x) => x.type !== 'literal').map((x) => [x.type, Number(x.value)])); return Math.round((Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second) - Math.floor(Date.now() / 1000) * 1000) / 60000); } catch { return null; } };
+    const warnBox = h('div', { class: 'stack' });
+    const paintWarnings = () => {
+      const list = [];
+      const a = c.broadcastTz || c.tz; const b = c.machineTz;
+      if (a && b && offset(a) !== null && offset(b) !== null && offset(a) !== offset(b)) list.push({ level: 'warn', message: `The PC clock (${b}) and the broadcast clock (${a}) differ by ${Math.abs(offset(a) - offset(b)) / 60} hour(s) right now. Times from the PC are converted; on-air wording uses ${a}.` });
+      for (const w of c.warnings || []) if (!(w.code === 'zones-differ' && list.length)) list.push(w);
+      if (c.lat === '' || c.lat === undefined) if (!c.city && !(c.warnings || []).some((w) => w.code === 'weather-location-missing')) list.push({ level: 'warn', message: '{{weather}} and {{temp}} need a place: set the city, or find the town above. Until then they are left out of the spoken line.' });
+      clear(warnBox, list.map((w) => h('p', { class: `small ${w.level === 'error' ? 'bad' : ''}`, role: w.level === 'error' ? 'alert' : undefined, style: 'margin:2px 0;padding:6px 10px;border:1px solid currentColor;border-radius:6px' }, `${w.level === 'error' ? '⛔ ' : '⚠ '}${w.message}`)));
+    };
+    const zoneField = (label, key, help, onSet) => h('label', { class: 'field' }, label, h('input', { value: c[key] || '', list: 'st-zones', placeholder: 'e.g. America/Denver', oninput: (e) => { onSet(e.target.value.trim()); paintWarnings(); } }), h('span', { class: 'small muted' }, help));
+    const clocks = h('div', { class: 'grid cols' },
+      zoneField('Broadcast time zone', 'tz', 'The station\'s own clock: {{time}}, schedules, "tonight at 7", weather and alert wording.', (v) => { c.tz = v; c.broadcastTz = v; }),
+      zoneField('Playout PC time zone', 'machineTz', 'Only for a RadioDJ PC whose clock is in another zone. Used just to read the PC\'s own timestamps.', (v) => { c.machineTz = v; }));
     const zones = h('datalist', { id: 'st-zones' }, (Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : []).map((z) => h('option', { value: z })));
     const links = h('div', { class: 'stack' });
     const paintLinks = () => clear(links, c.links.map((l, i) => h('div', { class: 'grid cols' },
@@ -93,6 +108,7 @@ export async function mountStationProfiles(root, api) {
       h('button', { type: 'button', class: 'link danger', onclick: () => { c.links.splice(i, 1); paintLinks(); } }, 'Remove'))),
     c.links.length < 12 ? h('button', { type: 'button', onclick: () => { c.links.push({ label: '', url: '' }); paintLinks(); } }, 'Add a link') : null);
     paintLinks();
+    paintWarnings();
     // The voice and models new clips for this station use by default (a persona or a request can still choose differently).
     const speaker = createSpeaker(api, options.features);
     const defaults = { speechModel: c.defaultSpeechModel || '', voice: c.defaultVoice || '', textModel: c.defaultTextModel || '' };
@@ -119,7 +135,7 @@ export async function mountStationProfiles(root, api) {
         const { places } = await api.get('/places', { query: { q } });
         clear(placeResults, places.length ? places.map((p) => h('button', { type: 'button', class: 'chip', title: `${p.lat}, ${p.lon}${p.tz ? ` · ${p.tz}` : ''}`, onclick: () => {
           c.place = { label: p.label, name: p.name, admin1: p.admin1, countryCode: p.countryCode };
-          c.city = p.name; c.lat = p.lat; c.lon = p.lon; if (p.tz) c.tz = p.tz;
+          c.city = p.name; c.lat = p.lat; c.lon = p.lon; if (p.tz) { c.tz = p.tz; c.broadcastTz = p.tz; }
           paintEditor();
         } }, `${p.label}${p.population ? ` (${p.population.toLocaleString()})` : ''}`)) : h('span', { class: 'bad small' }, 'No match. Try the town name alone, or add the state ("Springfield, IL").'));
       } catch (err) { clear(placeResults, h('span', { class: 'bad small' }, err.message)); }
@@ -210,7 +226,9 @@ export async function mountStationProfiles(root, api) {
       h('h3', {}, 'Where it is'),
       placeBlock,
       txBlock,
-      h('div', { class: 'grid cols' }, text('City', 'city'), h('label', { class: 'field' }, 'Time zone (its wall clock: schedules and promos use it)', h('input', { value: c.tz, list: 'st-zones', oninput: (e) => { c.tz = e.target.value; } }), zones), text('Contact', 'contact', { placeholder: 'studio line or email' })),
+      h('div', { class: 'grid cols' }, text('City', 'city'), text('Contact', 'contact', { placeholder: 'studio line or email' })),
+      clocks, zones,
+      warnBox,
       h('div', { class: 'grid cols' }, text('Website', 'website', { placeholder: 'https://' }), text('Stream address', 'streamUrl', { placeholder: 'https://.../stream' })),
       h('div', {}, h('div', { class: 'label' }, 'Links (chat, socials, schedule page)'), links),
       h('h3', {}, 'How new clips sound by default'),

@@ -40,7 +40,7 @@ describe("handleProxy", () => {
 
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe("https://hub.example.com/stations?fresh=1");
-    expect(init.headers).toEqual({ "x-api-key": "hub-secret-key-123", accept: "application/json" });   // nothing else is passed on
+    expect(init.headers).toEqual({ "x-api-key": "hub-secret-key-123", "x-actor": "api-key", accept: "application/json" });   // nothing else is passed on, except who is asking (for the hub's audit log)
     expect(JSON.stringify(init.headers)).not.toContain(KEY);
   });
 

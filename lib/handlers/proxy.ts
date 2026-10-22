@@ -33,7 +33,7 @@ export const features = () => ({
 });
 
 export async function handleProxy(req: Request): Promise<Response> {
-  const { denied } = await authorize(req, { admin: true });
+  const { who, denied } = await authorize(req, { admin: true });
   if (denied) return denied;
 
   const incoming = new URL(req.url);
@@ -73,7 +73,8 @@ export async function handleProxy(req: Request): Promise<Response> {
   }
 
   // Only what the radio side needs is passed on; the caller's own credentials are replaced with the server-side key.
-  const headers: Record<string, string> = { "x-api-key": target.key };
+  // `x-actor` tells the hub which signed-in person did this, for its audit log and approval records (the hub trusts it only from this key).
+  const headers: Record<string, string> = { "x-api-key": target.key, ...(target.name === "hub" ? { "x-actor": who.username.replace(/[^\w .@-]/g, "").slice(0, 40) } : {}) };
   const contentType = req.headers.get("content-type");
   if (contentType) headers["content-type"] = contentType;
   const accept = req.headers.get("accept");

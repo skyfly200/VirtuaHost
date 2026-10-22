@@ -20,7 +20,7 @@ test('hub -> RadioDJ agent -> RadioDJ: status, a broadcast, and honest "not supp
   });
   const rjPort = await listen(radiodj);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'int-'));
-  const agent = createAgent({ key: 'agent-key', radiodjUrl: `http://127.0.0.1:${rjPort}`, radiodjPass: 'pw', linksDir: dir, clipCart: '12' });
+  const agent = createAgent({ key: 'agent-key', radiodjUrl: `http://127.0.0.1:${rjPort}`, radiodjPass: 'pw', linksDir: dir, dataDir: path.join(dir, 'agent-data'), clipCart: '12' });
   const agentPort = await listen(agent.server);
 
   const store = createStore(null);

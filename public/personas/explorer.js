@@ -53,7 +53,7 @@ export function mountExplorer(box, persona, ctx) {
     try {
       const brief = kindsOf(persona, settings).find((k) => k.key === kind.key).brief;
       const out = await api.post('/generate', { mode: 'ai', prompt: brief, textOnly: true, persona: persona.id, ...(kind.format ? { format: kind.format } : {}), ...(settings.tone ? { tone: settings.tone } : {}) });
-      row.text = out.scriptText; if (row.player) row.player.invalidate(); row.st.clear();
+      row.text = out.filledIn ?? out.scriptText; if (row.player) row.player.invalidate(); row.st.clear();
     } catch (err) { row.st.fail(err.message); }
     repaint();
   }

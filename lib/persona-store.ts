@@ -2,7 +2,8 @@ import { getStore } from "@netlify/blobs";
 import { randomBytes } from "node:crypto";
 import { BUILTIN_PERSONAS, ID, normalizePersona, slugify, type Persona } from "./personas.js";
 
-const store = () => getStore("dj-personas");
+// Strong consistency: a read right after a save returns the saved version, not the one from before (Blobs is otherwise eventually consistent).
+const store = () => getStore({ name: "dj-personas", consistency: "strong" });
 const key = (id: string) => `personas/${id}.json`;
 
 export async function listPersonas(): Promise<Persona[]> {

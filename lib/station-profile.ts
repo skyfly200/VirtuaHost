@@ -24,8 +24,12 @@ export interface Station {
   color?: string;
   genres: string[];
   city?: string;
-  /** IANA time zone: the station's wall clock, used for schedules, promos and time-of-day lines. */
+  /** IANA time zone: the station's wall clock, used for schedules, promos and time-of-day lines. Same value as `broadcastTz` (kept for older records). */
   tz: string;
+  /** The broadcast clock (America/Denver): {{time}}, schedules, "tonight at 7", weather and alert wording. Always equal to `tz`. */
+  broadcastTz?: string;
+  /** The clock of the PC that runs the playout software, when it differs from the broadcast clock. Used ONLY to read timestamps that come from that PC. */
+  machineTz?: string;
   website?: string;
   streamUrl?: string;
   contact?: string;
@@ -137,8 +141,11 @@ export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } 
   const r = raw as Record<string, unknown>;
   const name = text(r.name, 60);
   if (!name) return { error: "A station needs a name" };
-  const tzIn = text(r.tz, 60);
+  // `broadcastTz` and the older `tz` are the same setting: whichever is sent (broadcastTz wins) is kept in both.
+  const tzIn = text(r.broadcastTz, 60) || text(r.tz, 60);
   if (tzIn && !validTimeZone(tzIn)) return { error: `Unknown time zone "${tzIn}" (use a name like America/New_York)` };
+  const machineIn = text(r.machineTz, 60);
+  if (machineIn && !validTimeZone(machineIn)) return { error: `Unknown machine time zone "${machineIn}" (use a name like America/Chicago)` };
   const color = text(r.color, 7);
   const conn = (r.connection && typeof r.connection === "object" ? r.connection : {}) as Record<string, unknown>;
   const kind = CONNECTION_KINDS.includes(conn.kind as ConnectionKind) ? (conn.kind as ConnectionKind) : "none";
@@ -150,7 +157,7 @@ export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } 
   const opt = <K extends string>(key: K, value: string): Partial<Record<K, string>> => (value ? ({ [key]: value } as Record<K, string>) : {});
   return {
     station: {
-      name, tz: tzIn || "UTC",
+      name, tz: tzIn || "UTC", broadcastTz: tzIn || "UTC", ...opt("machineTz", machineIn),
       ...opt("callsign", text(r.callsign, 20)), ...opt("frequency", text(r.frequency, 30)), ...opt("tagline", text(r.tagline, 120)), ...opt("description", text(r.description, 500)),
       ...opt("emoji", text(r.emoji, 8)), ...opt("color", /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : ""),
       genres: [...new Set(list(r.genres, 8, 24).map((g) => g.toLowerCase()))],

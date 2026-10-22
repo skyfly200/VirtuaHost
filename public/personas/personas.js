@@ -122,11 +122,22 @@ export async function mountPersonas(root, api) {
     const c = ui.current;
     if (!c) { clear(editorBox); return; }
     const locked = Boolean(c.builtin);
-    const input = (label, key, { rows, placeholder, list, tags } = {}) => {
+    const input = (label, key, { rows, placeholder, list, tags, max } = {}) => {
       const el = rows ? h('textarea', { rows, placeholder, disabled: locked }) : h('input', { placeholder, disabled: locked });
       el.value = list ? (c[key] || []).join('\n') : tags ? (c[key] || []).join(', ') : c[key] || '';
-      el.oninput = () => { c[key] = list ? LINES(el.value) : tags ? el.value.split(',').map((t) => t.trim()).filter(Boolean) : el.value; };
-      return h('label', { class: 'field' }, label, el);
+      // A field with a hard limit shows a live count and says plainly when it is over: saving is blocked instead of the text being cut.
+      const counter = max ? h('span', { class: 'small', 'aria-live': 'polite' }) : null;
+      const count = () => {
+        if (!counter) return;
+        const used = (c[key] || '').replace(/\s+/g, ' ').trim().length;
+        counter.textContent = used > max ? `${used} of ${max} characters: ${used - max} too many. Shorten it before saving; nothing is cut for you.` : `${used} of ${max} characters`;
+        counter.className = `small ${used > max ? 'bad' : used > max * 0.9 ? '' : 'muted'}`;
+        el.setAttribute('aria-invalid', String(used > max));
+        if (typeof save !== 'undefined' && save && !locked) save.disabled = used > max;
+      };
+      el.oninput = () => { c[key] = list ? LINES(el.value) : tags ? el.value.split(',').map((t) => t.trim()).filter(Boolean) : el.value; count(); };
+      setTimeout(count, 0);
+      return h('label', { class: 'field' }, label, el, counter);
     };
     const timeInput = (part) => {
       const el = h('input', { disabled: locked, placeholder: `${part}...` });
@@ -173,7 +184,7 @@ export async function mountPersonas(root, api) {
       h('div', { class: 'grid' },
         h('div', { class: 'grid cols' }, input('Emoji', 'emoji', { placeholder: '🎙️' }), input('Name', 'name'), input('Tagline', 'tagline', { placeholder: 'their catchphrase' })),
         input('One-line description', 'description'),
-        input('Character brief (who they are, how they talk; the AI writer reads this)', 'instructions', { rows: 5 }),
+        input('Character brief (who they are, how they talk; the AI writer reads this)', 'instructions', { rows: 5, max: 1500 }),
         input('Tone', 'tone', { placeholder: 'e.g. weathered, dry, slow' }),
         h('div', {}, h('div', { class: 'label' }, 'Voice and models for this persona (blank = the station\'s, then the site\'s default)'), voiceBox.el),
         input('Tags (comma separated)', 'tags', { tags: true, placeholder: 'jazz, late-night, chill' }),

@@ -24,7 +24,7 @@ async function fakeRadioDJ(npjson = '{"Artist":"Boards of Canada","Title":"Roygb
 async function boot(extra = {}, npjson) {
   const radiodj = await fakeRadioDJ(npjson);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-'));
-  const agent = createAgent({ key: 'secret', radiodjUrl: radiodj.url, radiodjPass: 'pw', linksDir: path.join(dir, 'links'), clipCart: '7', ...extra });
+  const agent = createAgent({ key: 'secret', radiodjUrl: radiodj.url, radiodjPass: 'pw', linksDir: path.join(dir, 'links'), dataDir: path.join(dir, 'data'), clipCart: '7', ...extra });
   await new Promise((r) => agent.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${agent.server.address().port}`;
   const call = async (method, p, body, headers = {}) => {
@@ -51,7 +51,14 @@ test('info reports what is configured: skip and volume only when their commands 
   assert.strictEqual((await t.call('POST', '/music/skip')).status, 501);
   assert.strictEqual((await t.call('POST', '/music/volume', '{"volume":0.5}')).status, 501);
   t.close();
-  const t2 = await boot({ cmdSkip: 'PlayNext', cmdVolume: 'SetVol' });
+  const unverified = await boot({ cmdSkip: 'PlayNext' });                  // skip is only offered once someone has tested it against the real RadioDJ
+  assert.strictEqual((await unverified.call('GET', '/agent/info')).json.capabilities.skip, false);
+  const refused = await unverified.call('POST', '/music/skip');
+  assert.strictEqual(refused.status, 501);
+  assert.match(refused.json.error, /not marked verified/);
+  assert.strictEqual(unverified.radiodj.calls.filter((c) => c.path === '/opt').length, 0);
+  unverified.close();
+  const t2 = await boot({ cmdSkip: 'PlayNext', skipVerified: true, cmdVolume: 'SetVol' });
   info = (await t2.call('GET', '/agent/info')).json;
   assert.deepStrictEqual([info.capabilities.skip, info.capabilities.volume], [true, true]);
   await t2.call('POST', '/music/skip');
@@ -66,7 +73,7 @@ test('info reports what is configured: skip and volume only when their commands 
 
 test('now playing is read from RadioDJ JSON, from text, and failures are reported', async () => {
   let t = await boot();
-  assert.deepStrictEqual((await t.call('GET', '/music/now')).json, { title: 'Boards of Canada - Roygbiv', artist: 'Boards of Canada', track: 'Roygbiv', remainingSeconds: 42, listeners: null, live: false });
+  assert.deepStrictEqual((await t.call('GET', '/music/now')).json, { title: 'Boards of Canada - Roygbiv', artist: 'Boards of Canada', track: 'Roygbiv', remainingSeconds: 42, elapsedSeconds: null, durationSeconds: null, listeners: null, live: false });
   t.close();
   t = await boot({}, '{"nested":{"trackartist":"A","tracktitle":"B"}}');
   assert.strictEqual((await t.call('GET', '/music/now')).json.title, 'A - B');

@@ -16,7 +16,7 @@ const readJson = async (req: Request): Promise<unknown | undefined> => {
 
 // GET /api/personas, GET|PUT|DELETE /api/personas/:id, POST /api/personas (create), POST /api/personas/generate (AI draft, not saved).
 export async function handlePersonas(req: Request, id: string | undefined): Promise<Response> {
-  const { who, denied } = await authorize(req);
+  const { who, denied } = await authorize(req, { scope: req.method === "GET" ? "personas.read" : undefined });
   if (denied) return denied;
 
   if (id === "generate") return req.method === "POST" ? withKeys(who, undefined, () => draft(req, who)) : new Response("Method Not Allowed", { status: 405 });

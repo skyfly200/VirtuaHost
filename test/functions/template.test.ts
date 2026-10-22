@@ -50,6 +50,40 @@ describe("templates in /api/generate", () => {
     expect(body.template).toBe("It's {{time}} on {{station}}.");
     expect(vi.mocked(synthesizeSpeech)).not.toHaveBeenCalled();
   });
+
+  it("text-only puts the filled-in line first (`filledIn`) and the writer's raw version beside it", async () => {
+    vi.mocked(writeDjLine).mockResolvedValue("It's {{time}} on {{station}}.");
+    const body = (await (await handleGenerate(post("/api/generate", { mode: "ai", prompt: "time check", station: "krap", textOnly: true }))).json()) as { filledIn: string; raw: string; scriptText: string; unresolvedPlaceholders?: boolean };
+    expect(body.filledIn).toMatch(/^It's \d{1,2}:\d{2} (AM|PM) on KRAP\.$/);
+    expect(body.raw).toBe("It's {{time}} on {{station}}.");
+    expect(body.scriptText).toBe(body.filledIn);
+    expect(body.unresolvedPlaceholders).toBeUndefined();
+  });
+
+  it("uses the station's broadcast time zone for {{time}}, whatever zone the server runs in", async () => {
+    vi.mocked(writeDjLine).mockResolvedValue("{{time}}");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-22T05:30:00Z"));          // the mocked station is America/Chicago: 12:30 AM there (it would read 11:30 PM in Denver)
+    try {
+      const body = (await (await handleGenerate(post("/api/generate", { mode: "ai", prompt: "t", station: "krap", textOnly: true }))).json()) as { filledIn: string };
+      expect(body.filledIn).toBe("12:30 AM");
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("`at`: lines written before they air", () => {
+  it("fills {{time}} for the moment it will be heard, in the station's zone", async () => {
+    vi.mocked(writeDjLine).mockResolvedValue("{{time}}");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-22T01:00:00Z"));                       // 8:00 PM in Chicago
+    try {
+      const at = (iso: string | undefined) => handleGenerate(post("/api/generate", { mode: "ai", prompt: "t", station: "krap", textOnly: true, ...(iso ? { at: iso } : {}) })).then((r) => r.json() as Promise<{ filledIn: string }>);
+      expect((await at("2026-10-22T01:10:00Z")).filledIn).toBe("8:10 PM");      // ten minutes ahead
+      expect((await at(undefined)).filledIn).toBe("8:00 PM");
+      expect((await at("2026-10-23T01:10:00Z")).filledIn).toBe("8:00 PM");      // a day ahead is ignored
+      expect((await at("garbage")).filledIn).toBe("8:00 PM");
+    } finally { vi.useRealTimers(); }
+  });
 });
 
 describe("/api/template", () => {

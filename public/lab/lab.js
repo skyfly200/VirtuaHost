@@ -63,7 +63,7 @@ export async function mountLab(root, api) {
         const names = state.mode === 'dialogue' ? speakersOf(state.text).slice(0, 3) : [];
         const prompt = state.mode === 'dialogue' ? `Write a short back-and-forth between ${names.length ? names.join(' and ') : 'two radio hosts'}, one "Name: line" per line, 4 to 8 lines. Topic: ${state.brief}` : state.brief;
         const out = await api.post('/generate', { mode: 'ai', prompt, textOnly: true, ...(state.briefPersona && state.mode === 'single' ? { persona: state.briefPersona } : {}) });
-        state.text = out.scriptText; area.value = out.scriptText; paintCast();
+        state.text = out.filledIn ?? out.scriptText; area.value = state.text; paintCast();
       } catch (err) { toast(err.message, 'error'); } finally { draft.disabled = false; }
     } }, 'Draft with AI');
     const mode = h('select', { 'aria-label': 'Mode', onchange: (e) => { state.mode = e.target.value; paintAll(); } },

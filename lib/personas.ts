@@ -36,7 +36,8 @@ export interface Persona {
 }
 
 export const ID = /^[a-z0-9][a-z0-9-]{0,49}$/;
-const LIMITS = { name: 60, description: 300, instructions: 1500, tone: 100, voice: 60, speechModel: 100, line: 300, templates: 20, stationIds: 10, promos: 10, signOffs: 10, tags: 8, tag: 24, tagline: 120, emoji: 8 };
+export const INSTRUCTIONS_MAX = 1500;
+const LIMITS = { name: 60, description: 300, instructions: INSTRUCTIONS_MAX, tone: 100, voice: 60, speechModel: 100, line: 300, templates: 20, stationIds: 10, promos: 10, signOffs: 10, tags: 8, tag: 24, tagline: 120, emoji: 8 };
 
 export { EXAMPLE_PERSONAS as BUILTIN_PERSONAS } from "./persona-library.js";
 
@@ -48,12 +49,19 @@ const lines = (value: unknown, count: number): string[] =>
 export const slugify = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 
 // Cleans user or AI supplied fields into a persona (without an id). Returns an error message when it cannot be one.
-export function sanitizePersona(raw: unknown): { persona: Omit<Persona, "id"> } | { error: string } {
+// `lenient` is for an AI-drafted persona that is only shown for editing: a long brief is cut at the last full sentence that fits instead of refused.
+export function sanitizePersona(raw: unknown, options: { lenient?: boolean } = {}): { persona: Omit<Persona, "id"> } | { error: string } {
   if (!raw || typeof raw !== "object") return { error: "Send the persona as a JSON object" };
   const r = raw as Record<string, unknown>;
   const name = clean(r.name, LIMITS.name);
   if (!name) return { error: "A persona needs a name" };
-  const instructions = clean(r.instructions, LIMITS.instructions);
+  let instructions = clean(r.instructions, 100_000);
+  if (instructions.length > INSTRUCTIONS_MAX) {
+    if (!options.lenient) return { error: `The instructions are ${instructions.length} characters; the limit is ${INSTRUCTIONS_MAX}. Shorten them by ${instructions.length - INSTRUCTIONS_MAX} characters (nothing was saved).` };
+    const cut = instructions.slice(0, INSTRUCTIONS_MAX);
+    const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+    instructions = end > INSTRUCTIONS_MAX / 2 ? cut.slice(0, end + 1) : cut;
+  }
   if (!instructions) return { error: "A persona needs instructions (who they are and how they talk)" };
   const voice = clean(r.voice, LIMITS.voice);
   const speechModel = clean(r.speechModel, LIMITS.speechModel);
@@ -108,7 +116,7 @@ export function parsePersonaReply(reply: string): { persona: Omit<Persona, "id">
   const end = reply.lastIndexOf("}");
   if (start < 0 || end <= start) return { error: "The model did not return a persona. Try again, or add more detail to the description." };
   try {
-    return sanitizePersona(JSON.parse(reply.slice(start, end + 1)));
+    return sanitizePersona(JSON.parse(reply.slice(start, end + 1)), { lenient: true });
   } catch {
     return { error: "The model's reply was not valid JSON. Try again." };
   }

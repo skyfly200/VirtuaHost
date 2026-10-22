@@ -245,6 +245,16 @@ describe("thinking models (empty or cut-off replies)", () => {
     await expect(chat({ model: "anthropic/claude-haiku-5.5", system: "s", prompt: "p" })).rejects.toThrow(/no text.*thinking/);
   });
 
+  it("treats a one-word reply as an early stop and retries with less reasoning, ending with none", async () => {
+    fetchMock.mockImplementation(async () => reply("Well", "stop"));
+    await expect(chat({ model: "google/gemini-3.6-flash", system: "s", prompt: "p" })).rejects.toThrow(/only returned "Well".*another writing model/);
+    const bodies = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(bodies.map((b) => b.reasoning)).toEqual([{ effort: "low" }, { effort: "minimal" }, { enabled: false }]);
+    expect(bodies.map((b) => b.max_tokens)).toEqual([3000, 6000, 12000]);
+    fetchMock.mockReset().mockResolvedValueOnce(reply("Well", "stop")).mockResolvedValueOnce(reply("Well, hello there, night owls."));
+    expect(await chat({ model: "google/gemini-3.6-flash", system: "s", prompt: "p" })).toBe("Well, hello there, night owls.");
+  });
+
   it("reads replies given as a list of parts", async () => {
     fetchMock.mockResolvedValue(reply([{ type: "text", text: "Hello " }, { type: "text", text: "there." }]));
     expect(await chat({ model: "a/one", system: "s", prompt: "p" })).toBe("Hello there.");

@@ -19,6 +19,7 @@ import { apiKey, currentScope, keySource } from "./credentials.js";
 import { ELEVEN_MODELS, ELEVEN_PREFIX, listVoices } from "./elevenlabs.js";
 
 import { cuesFor } from "./cues.js";
+import { RETIRED_MODELS } from "./model-health.js";
 
 // Candidates, cheapest-first. When OpenRouter's model list can be read (allTextModels), any of these it does not list is left out, so a
 // slug that has been renamed or retired never shows up as a choice. Use OPENROUTER_TEXT_MODELS to pin your own list.
@@ -57,13 +58,15 @@ export const allowAnyModel = (): boolean => {
   return process.env.OPENROUTER_ALLOW_ANY_MODEL === "true" || keySource("openrouter") === "user";
 };
 
+// Retired slugs (lib/model-health.ts) are never offered, even if an env list or a station's list still names them.
 export function textModels(): string[] {
+  const live = (models: string[]) => models.filter((m) => !RETIRED_MODELS[m]);
   const limited = currentScope()?.textModels;
-  if (limited) return limited;
+  if (limited) return live(limited);
   const fromEnv = list(process.env.OPENROUTER_TEXT_MODELS);
-  const all = fromEnv.length ? fromEnv : DEFAULT_TEXT_MODELS;
+  const all = live(fromEnv.length ? fromEnv : DEFAULT_TEXT_MODELS);
   const def = process.env.OPENROUTER_TEXT_MODEL?.trim();
-  return def && !all.includes(def) ? [def, ...all] : all;
+  return def && !RETIRED_MODELS[def] && !all.includes(def) ? [def, ...all] : all;
 }
 export const defaultTextModel = (): string => {
   const def = process.env.OPENROUTER_TEXT_MODEL?.trim();
@@ -153,6 +156,7 @@ export const MODEL_GONE = /does not exist|No endpoints found|not a valid model|m
 // Resolves a requested model against the allowed list; returns an error message when it is not allowed.
 export function pickTextModel(requested: string | undefined): { model: string } | { error: string } {
   if (!requested) return { model: defaultTextModel() };
+  if (RETIRED_MODELS[requested]) return { error: `The writing model "${requested.slice(0, 60)}" has been retired. ${RETIRED_MODELS[requested]}` };
   if (textModels().includes(requested) || isListedFree(requested) || (allowAnyModel() && MODEL_SLUG.test(requested))) return { model: requested };
   return { error: `Unknown writing model "${requested.slice(0, 60)}". Allowed: ${textModels().join(", ")}` };
 }
@@ -214,25 +218,32 @@ function textOf(content: unknown): string {
   return "";
 }
 
-async function complete(model: string, messages: unknown[], maxTokens: number, timeoutMs: number, hint: string): Promise<string> {
+// A one-word reply is a model that stopped early (some "thinking" models end the visible text after a few words when reasoning
+// shares the budget), not a line anyone wanted: it is retried like an empty one. The retries ask for less reasoning, then none.
+const REASONING_LADDER: Array<Record<string, unknown>> = [{ effort: "low" }, { effort: "minimal" }, { enabled: false }];
+const tooShort = (text: string): boolean => text.split(/\s+/).filter(Boolean).length < 2;
+
+async function complete(model: string, messages: unknown[], maxTokens: number, timeoutMs: number, hint: string, minWords = true): Promise<string> {
   let budget = maxTokens;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  let last: { text: string; cutOff: boolean; reasoning: boolean } = { text: "", cutOff: false, reasoning: false };
+  for (let attempt = 0; attempt < REASONING_LADDER.length; attempt += 1) {
     const res = await fetch(`${base()}/chat/completions`, {
       method: "POST",
       headers: headers(),
-      body: JSON.stringify({ model, max_tokens: budget, ...(attempt === 0 ? { reasoning: { effort: "low" } } : { reasoning: { effort: "minimal" } }), messages }),
+      body: JSON.stringify({ model, max_tokens: budget, reasoning: REASONING_LADDER[attempt], messages }),
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) throw new Error(await errorMessage(res));
     const choice = ((await res.json()) as { choices?: Choice[] }).choices?.[0];
     const text = textOf(choice?.message?.content);
     const cutOff = choice?.finish_reason === "length";
-    if (text && !cutOff) return text;
-    if (attempt === 0) { budget *= 2; continue; }                       // ran out of tokens (reasoning) or came back empty: once more, with room
-    if (text && cutOff) throw new Error(`${model} was cut off before it finished (it spends many tokens thinking). Try another writing model.`);
-    throw new Error(`${model} returned no text${hint}${choice?.message?.reasoning ? " (it used its whole budget thinking; try another writing model)" : ""}`);
+    last = { text, cutOff, reasoning: Boolean(choice?.message?.reasoning) };
+    if (text && !cutOff && !(minWords && tooShort(text))) return text;
+    budget = Math.min(budget * 2, 16000);                                  // ran out of tokens (reasoning), stopped early or came back empty: again, with room
   }
-  throw new Error(`${model} returned no text`);
+  if (last.text && last.cutOff) throw new Error(`${model} was cut off before it finished (it spends many tokens thinking). Try another writing model.`);
+  if (last.text) throw new Error(`${model} only returned "${last.text.slice(0, 40)}" (it stops after a few words). Try another writing model.`);
+  throw new Error(`${model} returned no text${hint}${last.reasoning ? " (it used its whole budget thinking; try another writing model)" : ""}`);
 }
 
 export async function chat(options: { model: string; system: string; prompt: string; maxTokens?: number }): Promise<string> {

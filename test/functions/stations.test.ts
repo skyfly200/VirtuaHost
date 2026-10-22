@@ -38,7 +38,7 @@ describe("station profiles", () => {
   it("cleans a profile: bounded fields, a valid zone, http links only", () => {
     const out = sanitizeStation({ name: " KRAP ", callsign: "KRAP", frequency: "97.7 FM", tz: "America/New_York", color: "#ABCDEF", genres: ["Punk", "punk", " Jazz "], website: "https://krap.test", streamUrl: "javascript:alert(1)",
       links: [{ label: "Chat", url: "https://chat.test" }, { label: "Bad", url: "ftp://x" }], connection: { kind: "radiodj", hubStationId: "krap-1" }, skipArtists: ["Spot", ""], junk: 1 });
-    expect(out).toEqual({ station: { name: "KRAP", tz: "America/New_York", callsign: "KRAP", frequency: "97.7 FM", color: "#abcdef", genres: ["punk", "jazz"], website: "https://krap.test", links: [{ label: "Chat", url: "https://chat.test" }], skipArtists: ["Spot"], connection: { kind: "radiodj", hubStationId: "krap-1" } } });
+    expect(out).toEqual({ station: { name: "KRAP", tz: "America/New_York", broadcastTz: "America/New_York", callsign: "KRAP", frequency: "97.7 FM", color: "#abcdef", genres: ["punk", "jazz"], website: "https://krap.test", links: [{ label: "Chat", url: "https://chat.test" }], skipArtists: ["Spot"], connection: { kind: "radiodj", hubStationId: "krap-1" } } });
     expect(sanitizeStation({ name: "X", tz: "Mars/Base" })).toMatchObject({ error: expect.stringContaining("time zone") });
     expect(sanitizeStation({})).toMatchObject({ error: expect.stringContaining("name") });
     expect(sanitizeStation({ name: "X", connection: { kind: "bogus" } })).toMatchObject({ station: { connection: { kind: "none" } } });
@@ -150,11 +150,11 @@ describe("a voice and model that belong to a persona or station", () => {
   };
 
   it("uses the persona's writing model, speech model and voice, and a request still wins", async () => {
-    vi.stubEnv("OPENROUTER_TEXT_MODELS", "openai/gpt-4o-mini,anthropic/claude-3.5-haiku,meta/llama");
+    vi.stubEnv("OPENROUTER_TEXT_MODELS", "openai/gpt-4o-mini,openai/gpt-4.1-nano,meta/llama");
     vi.stubEnv("OPENROUTER_SPEECH_MODELS", "a/tts|Kore,b/tts|Nova");
-    const id = await makePersona({ textModel: "anthropic/claude-3.5-haiku", speechModel: "b/tts", voice: "Puck" });
+    const id = await makePersona({ textModel: "openai/gpt-4.1-nano", speechModel: "b/tts", voice: "Puck" });
     expect((await gen({ mode: "ai", prompt: "hi", persona: id })).status).toBe(201);
-    expect(vi.mocked(chat).mock.calls[0][0].model).toBe("anthropic/claude-3.5-haiku");
+    expect(vi.mocked(chat).mock.calls[0][0].model).toBe("openai/gpt-4.1-nano");
     expect(vi.mocked(speech).mock.calls[0][0]).toMatchObject({ model: "b/tts", voice: "Puck" });
 
     expect((await gen({ mode: "ai", prompt: "hi", persona: id, textModel: "meta/llama", speechModel: "a/tts", voice: "Leda" })).status).toBe(201);
@@ -180,5 +180,20 @@ describe("a voice and model that belong to a persona or station", () => {
     const { applyHostPatch, HOST_DEFAULTS, hostDefaultsFor } = await import("../../lib/host.js");
     expect(applyHostPatch(HOST_DEFAULTS, { textModel: "meta/llama", speechModel: "b/tts", voice: "Nova" })).toMatchObject({ textModel: "meta/llama", speechModel: "b/tts", voice: "Nova" });
     expect(hostDefaultsFor({ defaultTextModel: "meta/llama", defaultSpeechModel: "b/tts", defaultVoice: "Nova" })).toMatchObject({ textModel: "meta/llama", speechModel: "b/tts", voice: "Nova" });
+  });
+});
+
+describe("station clocks", () => {
+  it("keeps broadcastTz and tz as one setting, and machineTz separate and validated", () => {
+    expect(sanitizeStation({ name: "GLR", broadcastTz: "America/Denver", machineTz: "America/Chicago" })).toMatchObject({ station: { tz: "America/Denver", broadcastTz: "America/Denver", machineTz: "America/Chicago" } });
+    expect(sanitizeStation({ name: "GLR", tz: "America/Denver" })).toMatchObject({ station: { tz: "America/Denver", broadcastTz: "America/Denver" } });
+    expect(sanitizeStation({ name: "GLR", machineTz: "Mars/Base" })).toMatchObject({ error: expect.stringContaining("machine time zone") });
+  });
+
+  it("returns warnings with the profile: differing clocks, and no place for {{weather}}", async () => {
+    const created = (await (await call("POST", undefined, { name: "GLR", broadcastTz: "America/Denver", machineTz: "America/Chicago", connection: { kind: "radiodj" } })).json()) as { station: { id: string; warnings: Array<{ code: string }> } };
+    expect(created.station.warnings.map((w) => w.code)).toEqual(expect.arrayContaining(["zones-differ", "weather-location-missing"]));
+    const located = (await (await call("PUT", created.station.id, { name: "GLR", broadcastTz: "America/Denver", machineTz: "America/Denver", city: "Denver", connection: { kind: "radiodj" } })).json()) as { station: { warnings: Array<{ code: string }> } };
+    expect(located.station.warnings).toEqual([]);
   });
 });
