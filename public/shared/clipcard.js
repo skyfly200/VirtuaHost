@@ -2,6 +2,7 @@
 // do with it: send it to the station, change its details or expiry, delete it. Shared by the Library's Clips list and the Promos page.
 import { h, clear, toast, fmtDate, audioUrl } from './kit.js';
 import { createPlayer } from './playbutton.js';
+import { popMenu } from './popmenu.js';
 import { downloadMenu } from './download.js';
 import { allStations } from './station.js';
 
@@ -35,14 +36,14 @@ export function clipCard(clip, ctx) {
       h('div', { class: 'row small muted' }, h('strong', { style: 'color:var(--ink)' }, info.title || clip.scriptText.slice(0, 60)), h('span', {}, fmtDate(Date.parse(clip.createdAt))), chips),
       h('p', { class: 'clip-script' }, clip.scriptText),
       ctx.extra ? ctx.extra(clip) : null,
+      // The main things stay in view (send, download, edit); the rest is under the menu.
       h('div', { class: 'row' },
-        ...(!expired && ctx.queueOn ? [
-          h('button', { type: 'button', onclick: send(true) }, 'Send to air'),
-          h('button', { type: 'button', onclick: send(false) }, 'Send to station library')] : []),
+        ...(!expired && ctx.queueOn ? [h('button', { type: 'button', class: 'primary', onclick: send(true) }, 'Send to air')] : []),
         downloadMenu({ load: () => api.get(`/clips/${encodeURIComponent(clip.id)}`, { blob: true }), name: info.title || clip.scriptText }),
         h('button', { type: 'button', onclick: () => editing() }, 'Edit details'),
         ...(ctx.actions ? ctx.actions(clip) : []),
-        h('button', { type: 'button', class: 'link danger', onclick: remove }, 'Delete')));
+        h('span', { class: 'grow' }),
+        popMenu({ label: 'More for this clip', items: [{ label: 'Send to station library', hidden: expired || !ctx.queueOn, onclick: () => send(false)({ currentTarget: { disabled: false } }) }, { label: 'Delete clip', danger: true, onclick: remove }] })));
   }
 
   const send = (play) => async (e) => {

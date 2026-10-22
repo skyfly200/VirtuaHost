@@ -7,6 +7,7 @@ import { createPlayer } from '../shared/playbutton.js';
 import { stationId, stationName } from '../shared/station.js';
 import { createStatus } from '../shared/status.js';
 import { modelVoiceFields } from '../shared/voicepicker.js';
+import { popMenu } from '../shared/popmenu.js';
 
 const LINES = (value) => value.split('\n').map((l) => l.trim()).filter(Boolean);
 const blank = () => ({ name: '', emoji: '', tagline: '', description: '', instructions: '', tone: '', voice: '', speechModel: '', tags: [], templates: [], stationIds: [], promos: [], signOffs: [], timeLines: {} });
@@ -25,7 +26,7 @@ export async function mountPersonas(root, api) {
   await speaker.loadLibrary();
 
   const ui = { search: '', tag: '', current: null, exploring: null };
-  const gridBox = h('div', { class: 'persona-grid', style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px' });
+  const gridBox = h('div', { class: 'persona-grid' });
   const filterBox = h('div', { class: 'row', style: 'gap:6px' });
   const editorBox = h('div');
   const explorerBox = h('div', { class: 'stack' });
@@ -53,20 +54,26 @@ export async function mountPersonas(root, api) {
     return samples.get(p.id);
   }
 
+  // A card shows what you need at a glance (who, one line about them, a few tags) and keeps three actions in view: hear, explore, edit.
+  // Everything else is in the "more" menu.
   function card(p) {
-    return h('div', { class: 'clip' },
-      h('div', { class: 'row' }, sampleFor(p).button, sampleFor(p).download(p.name), h('span', { style: 'font-size:28px;line-height:1' }, p.emoji || '🎙️'), h('div', { class: 'grow' }, h('strong', {}, p.name), p.tagline ? h('div', { class: 'small muted' }, `"${p.tagline}"`) : null),
-        p.builtin ? h('span', { class: 'chip' }, 'example') : null),
-      h('p', { class: 'clip-script small' }, p.description || p.instructions.slice(0, 140)),
-      h('div', { class: 'row small muted', style: 'gap:4px' }, (p.tags || []).map((t) => h('span', { class: 'chip' }, t)), p.voice ? h('span', { class: 'chip' }, `voice: ${p.voice}`) : null, p.speechModel ? h('span', { class: 'chip' }, `🔊 ${p.speechModel}`) : null, p.textModel ? h('span', { class: 'chip' }, `✍ ${p.textModel}`) : null),
-      h('div', { class: 'row' },
+    const sample = sampleFor(p);
+    const tags = p.tags || [];
+    return h('article', { class: 'pcard' },
+      h('div', { class: 'pcard-head' }, h('span', { class: 'pcard-emoji', 'aria-hidden': 'true' }, p.emoji || '🎙️'),
+        h('div', { class: 'grow' }, h('strong', {}, p.name), p.tagline ? h('div', { class: 'small muted clamp1' }, `\u201C${p.tagline}\u201D`) : null),
+        p.builtin ? h('span', { class: 'chip', title: 'An example: duplicate it to change it' }, 'example') : null),
+      h('p', { class: 'small clamp2', style: 'margin:0' }, p.description || p.instructions),
+      tags.length ? h('div', { class: 'row small', style: 'gap:4px' }, tags.slice(0, 3).map((t) => h('span', { class: 'chip' }, t)), tags.length > 3 ? h('span', { class: 'muted' }, `+${tags.length - 3}`) : null) : null,
+      h('div', { class: 'pcard-actions' }, sample.button,
         h('button', { type: 'button', class: 'primary', onclick: () => explore(p) }, 'Explore'),
         h('button', { type: 'button', onclick: () => edit(p) }, p.builtin ? 'View' : 'Edit'),
-        h('button', { type: 'button', onclick: () => edit({ ...p, id: undefined, builtin: false, name: `${p.name} (copy)` }) }, 'Duplicate')),
-      h('div', { class: 'row' },
-        h('button', { type: 'button', class: 'link', onclick: () => useInGenerate(p) }, 'Use in Generate'),
-        h('button', { type: 'button', class: 'link', onclick: () => makeHost(p) }, 'Make the host'),
-        h('button', { type: 'button', class: 'link', onclick: () => exportPersona(p) }, 'Export')));
+        h('span', { class: 'grow' }),
+        popMenu({ label: `More for ${p.name}`, items: [
+          { label: 'Use in the Studio', onclick: () => useInGenerate(p) },
+          { label: 'Make the virtual host', onclick: () => makeHost(p) },
+          { label: 'Duplicate', onclick: () => edit({ ...p, id: undefined, builtin: false, name: `${p.name} (copy)` }) },
+          { label: 'Export as JSON', onclick: () => exportPersona(p) }] })));
   }
 
   function useInGenerate(p, text) {
@@ -74,9 +81,10 @@ export async function mountPersonas(root, api) {
       const prefs = JSON.parse(localStorage.getItem('djPrefs') || '{}');
       Object.assign(prefs, { persona: p.id, tone: p.tone || '', mode: text ? 'say' : prefs.mode });
       localStorage.setItem('djPrefs', JSON.stringify(prefs));
+      sessionStorage.setItem('studioPersona', p.id);
       if (text) sessionStorage.setItem('prefillText', text);
     } catch { /* storage blocked */ }
-    goTo('generate');
+    goTo('studio');
   }
   async function makeHost(p) {
     try { await api.put('/host', { personaId: p.id }, { query: { station: stationId() || undefined } }); toast(`${p.name} is now the virtual host's persona for ${stationName('this station')}. Switch the host on in the Stations tab.`, 'info'); } catch (err) { toast(err.message, 'error'); }
@@ -177,22 +185,33 @@ export async function mountPersonas(root, api) {
       try { await api.del(`/personas/${encodeURIComponent(c.id)}`); ui.current = null; await reload(); paintEditor(); toast('Deleted.', 'info'); } catch (err) { toast(err.message, 'error'); }
     } }, 'Delete') : null;
 
-    clear(editorBox, h('section', { class: 'card' },
-      h('h2', {}, locked ? `${c.emoji || ''} ${c.name} (example, read only)` : c.id ? `Edit ${c.name}` : 'New persona'),
-      locked ? h('p', { class: 'muted small' }, 'Example personas cannot be changed. Use Duplicate on the card to make a copy of your own.')
-        : h('div', { class: 'grid' }, h('label', { class: 'field' }, 'Let the AI draft it from a description', describe), h('div', { class: 'row' }, draftButton, draftStatus.el)),
-      h('div', { class: 'grid' },
+    // Grouped so it can be taken in at a glance: who they are and how they talk are open; the rest opens on demand and says what is inside.
+    const count = (list) => ((list || []).length ? `${list.length} line${list.length === 1 ? '' : 's'}` : 'empty');
+    const sect = (title, hint, open, ...body) => h('details', { class: 'sect', open }, h('summary', {}, title, h('span', { class: 'sect-hint' }, hint)), h('div', { class: 'sect-body stack' }, ...body));
+    const lineCount = (c.templates || []).length + (c.stationIds || []).length + (c.promos || []).length + (c.signOffs || []).length;
+    const filledTimes = Object.keys(c.timeLines || {}).length;
+    clear(editorBox, h('section', { class: 'card stack' },
+      h('div', { class: 'row' }, h('h2', { class: 'grow', style: 'margin:0' }, locked ? `${c.emoji || ''} ${c.name}` : c.id ? `Edit ${c.name}` : 'New persona'), locked ? h('span', { class: 'chip' }, 'example, read only') : null,
+        h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Close', title: 'Close', onclick: () => { ui.current = null; paintEditor(); } }, '\u2715')),
+      locked ? h('p', { class: 'muted small' }, 'Example personas cannot be changed. Use More, then Duplicate, on the card to make a copy of your own.')
+        : sect('Start from a description', 'optional', !c.id && !c.name, h('div', { class: 'row' }, h('label', { class: 'field grow' }, 'Describe the host and let the AI draft the rest', describe), draftButton), draftStatus.el),
+      sect('Identity', c.name || 'name, emoji, tagline', true,
         h('div', { class: 'grid cols' }, input('Emoji', 'emoji', { placeholder: '🎙️' }), input('Name', 'name'), input('Tagline', 'tagline', { placeholder: 'their catchphrase' })),
         input('One-line description', 'description'),
+        input('Tags (comma separated)', 'tags', { tags: true, placeholder: 'jazz, late-night, chill' })),
+      sect('Character', c.tone || 'brief and tone', true,
         input('Character brief (who they are, how they talk; the AI writer reads this)', 'instructions', { rows: 5, max: 1500 }),
-        input('Tone', 'tone', { placeholder: 'e.g. weathered, dry, slow' }),
-        h('div', {}, h('div', { class: 'label' }, 'Voice and models for this persona (blank = the station\'s, then the site\'s default)'), voiceBox.el),
-        input('Tags (comma separated)', 'tags', { tags: true, placeholder: 'jazz, late-night, chill' }),
-        input('Song links, one per line ({artist}, {title} and {station} are filled in)', 'templates', { rows: 5, list: true }),
-        input('Station IDs, one per line', 'stationIds', { rows: 3, list: true }),
-        h('div', { class: 'grid cols' }, input('Promos, one per line', 'promos', { rows: 3, list: true }), input('Sign-offs, one per line', 'signOffs', { rows: 3, list: true })),
-        h('div', {}, h('div', { class: 'label' }, 'Time-of-day lines (added to a song link now and then)'), h('div', { class: 'grid cols' }, ['morning', 'afternoon', 'evening', 'night'].map(timeInput)))),
-      h('div', { class: 'row' }, save, c.id ? h('button', { type: 'button', onclick: () => explore(c) }, 'Explore this persona') : null, del, h('button', { type: 'button', onclick: () => { ui.current = null; paintEditor(); } }, 'Close'))));
+        input('Tone', 'tone', { placeholder: 'e.g. weathered, dry, slow' })),
+      sect('Voice and models', c.voice || c.speechModel || 'station default', false,
+        h('p', { class: 'small muted', style: 'margin:0' }, 'Blank means the station\'s choice, then the site\'s default.'), voiceBox.el),
+      sect('Lines', lineCount ? `${lineCount} lines` : 'none yet', false,
+        h('p', { class: 'small muted', style: 'margin:0' }, 'Ready-made lines for song links, station IDs, promos and sign-offs. {artist}, {title} and {station} are filled in.'),
+        input(`Song links, one per line (${count(c.templates)})`, 'templates', { rows: 4, list: true }),
+        input(`Station IDs, one per line (${count(c.stationIds)})`, 'stationIds', { rows: 3, list: true }),
+        h('div', { class: 'grid cols' }, input(`Promos, one per line (${count(c.promos)})`, 'promos', { rows: 3, list: true }), input(`Sign-offs, one per line (${count(c.signOffs)})`, 'signOffs', { rows: 3, list: true }))),
+      sect('Time of day', filledTimes ? `${filledTimes} of 4 set` : 'optional', false,
+        h('p', { class: 'small muted', style: 'margin:0' }, 'A short sentence added to a song link now and then.'), h('div', { class: 'grid cols' }, ['morning', 'afternoon', 'evening', 'night'].map(timeInput))),
+      h('div', { class: 'actionbar' }, save, c.id ? h('button', { type: 'button', onclick: () => explore(c) }, 'Explore this persona') : null, h('span', { class: 'grow' }), del)));
   }
 
   // ---------- the page ----------
@@ -203,7 +222,7 @@ export async function mountPersonas(root, api) {
       h('div', { class: 'row' }, h('h2', { class: 'grow' }, 'Personas'),
         h('button', { class: 'primary', type: 'button', onclick: () => edit(blank()) }, 'New persona'),
         h('button', { type: 'button', onclick: () => importInput.click() }, 'Import'), importInput),
-      h('p', { class: 'muted small' }, 'A persona is the host: character, tone, voice and a bank of lines. Explore one to hear it say a station ID, a song link or a promo (and compare voices), pick one in Generate, or make it the virtual host for the station you are working on (virtual host settings are per station, in the Stations tab).'),
+      h('p', { class: 'muted small' }, 'A persona is the host: character, tone, voice and a bank of lines. Explore one to hear it say a station ID, a song link or a promo (and compare voices), use one in the Studio, or make it the virtual host for the station you are working on (virtual host settings are per station, in the Stations tab).'),
       search, filterBox, gridBox),
     explorerBox, editorBox));
   paintGrid();

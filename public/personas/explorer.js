@@ -67,7 +67,7 @@ export function mountExplorer(box, persona, ctx) {
     text.value = row.text;
     return h('div', { class: 'line row', style: 'align-items:flex-start' }, player.button, h('div', { class: 'grow' },
       text,
-      h('div', { class: 'row' }, rewrite, player.download(`${kind.label}-line`), h('button', { type: 'button', class: 'link', onclick: () => ctx.onUse(fill(row.text)) }, 'Use in Generate'),
+      h('div', { class: 'row' }, rewrite, player.download(`${kind.label}-line`), h('button', { type: 'button', class: 'link', onclick: () => ctx.onUse(fill(row.text)) }, 'Use in the Studio'),
         (row.st ||= createStatus()).el)));
   }
 

@@ -11,6 +11,7 @@ import { mountStationProfiles } from './stations/stations.js';
 import { loadStations, allStations, currentStation, setStation } from './shared/station.js';
 import { mountPanel, unmountPanel } from './panel/panel.js';
 import { mountDynamic, unmountDynamic } from './dynamic/dynamic.js';
+import { brand } from './shared/brand.js';
 import { mountUsers, accountCard } from './users/users.js';
 
 const app = $('#app');
@@ -70,7 +71,7 @@ async function showLogin() {
     } }, userBox, keyBox, toggle, error, go);
 
     clear(app, h('div', { class: 'login' },
-      h('h1', {}, 'VirtuaHost DJ'),
+      h('h1', {}, brand(34)),
       h('p', { class: 'muted' }, 'Sign in to make clips and run the station.'),
       setup
         ? h('p', { class: 'bad', role: 'alert' }, 'This site has no sign-in set up yet. Set SESSION_SECRET and an admin in LOGIN_USERS (or set ACCESS_KEY) in the site settings, then redeploy. See docs/NETLIFY.md.')
@@ -115,17 +116,47 @@ function showApp(credential, options, me) {
   // Each tab has two buttons, one for the desktop bar and one for the phone menu; select() keeps both in step.
   const entries = tabs.map((t) => ({
     tab: t,
-    desk: h('button', { type: 'button', role: 'tab', hidden: Boolean(t.hidden), onclick: () => select(t.id) }, tabLabel(t)),
+    desk: h('button', { type: 'button', hidden: Boolean(t.hidden), onclick: () => { closeDrops(); select(t.id); } }, tabLabel(t)),
     drawer: h('button', { type: 'button', role: 'tab', class: 'drawer-tab', hidden: Boolean(t.hidden), onclick: () => { closeMenu(); select(t.id); } }, tabLabel(t)),
   }));
   const ofGroup = (g) => entries.filter((e) => e.tab.group === g);
   const groupHidden = (list) => list.every((e) => e.tab.hidden);
 
-  // Desktop: the groups side by side, each a small label with its tabs beside it.
-  const deskNav = h('nav', { class: 'tabs menu-desk', role: 'tablist', 'aria-label': 'Sections' },
-    groups.map((g) => h('div', { class: 'menu-group', hidden: groupHidden(ofGroup(g)) },
-      h('span', { class: 'menu-group-label' }, g),
-      ofGroup(g).map((e) => e.desk))));
+  // Desktop: one row. A group with several tabs is a dropdown button ("Create" opens Studio, Flier, Promos); a group with a single tab is just
+  // that tab, so no name is ever shown twice. Click or Enter opens a dropdown; arrows move, Escape or a click elsewhere closes it.
+  const visibleIn = (g) => ofGroup(g).filter((e) => !e.tab.hidden);
+  const drops = [];
+  const closeDrops = (except) => drops.forEach((d) => { if (d !== except) d.close(); });
+  function dropdown(g) {
+    const list = ofGroup(g);
+    list.forEach((e) => e.desk.setAttribute('role', 'menuitem'));
+    const btn = h('button', { type: 'button', class: 'menu-drop-btn', 'aria-haspopup': 'menu', 'aria-expanded': 'false' }, g, h('span', { class: 'caret', 'aria-hidden': 'true' }, '\u25BE'));
+    const menu = h('div', { class: 'menu-drop', role: 'menu', 'aria-label': g, hidden: true }, list.map((e) => e.desk));
+    const wrap = h('div', { class: 'menu-item menu-drop-wrap', hidden: groupHidden(list) }, btn, menu);
+    const d = {
+      wrap, btn, list,
+      open(focusFirst) { closeDrops(d); menu.hidden = false; btn.setAttribute('aria-expanded', 'true'); if (focusFirst) visibleIn(g)[0].desk.focus(); },
+      close(focusBtn) { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); if (focusBtn) btn.focus(); },
+    };
+    btn.addEventListener('click', () => (menu.hidden ? d.open() : d.close()));
+    btn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); d.open(true); } });
+    menu.addEventListener('keydown', (e) => {
+      const items = visibleIn(g).map((x) => x.desk);
+      const at = items.indexOf(document.activeElement);
+      const go = (i) => { e.preventDefault(); items[(i + items.length) % items.length].focus(); };
+      if (e.key === 'ArrowDown') go(at + 1);
+      else if (e.key === 'ArrowUp') go(at - 1);
+      else if (e.key === 'Home') go(0);
+      else if (e.key === 'End') go(items.length - 1);
+      else if (e.key === 'Escape') { e.preventDefault(); d.close(true); }
+    });
+    wrap.addEventListener('focusout', (e) => { if (!wrap.contains(e.relatedTarget)) d.close(); });
+    drops.push(d);
+    return wrap;
+  }
+  const deskNav = h('nav', { class: 'tabs menu-desk', 'aria-label': 'Sections' },
+    groups.map((g) => (ofGroup(g).length === 1 ? h('div', { class: 'menu-item', hidden: groupHidden(ofGroup(g)) }, ofGroup(g)[0].desk) : dropdown(g))));
+  document.addEventListener('click', (e) => { if (!deskNav.contains(e.target)) closeDrops(); });
 
   // Phone: the same groups in a full-screen menu with large tap targets.
   const closeBtn = h('button', { type: 'button', class: 'drawer-close', onclick: () => closeMenu() }, 'Close');
@@ -133,7 +164,7 @@ function showApp(credential, options, me) {
     h('div', { class: 'drawer-head' }, h('strong', {}, 'Menu'), closeBtn),
     h('div', { class: 'drawer-body', role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': 'Sections' },
       groups.map((g) => h('div', { class: 'drawer-group', hidden: groupHidden(ofGroup(g)) },
-        h('span', { class: 'drawer-label', role: 'presentation' }, g),
+        ofGroup(g).length > 1 ? h('span', { class: 'drawer-label', role: 'presentation' }, g) : null,
         ofGroup(g).map((e) => e.drawer)))));
   const menuCurrent = h('span', { class: 'menu-current', 'aria-live': 'polite' });
   const menuBtn = h('button', { type: 'button', class: 'menu-btn', 'aria-expanded': 'false', 'aria-controls': 'menu-drawer',
@@ -155,7 +186,7 @@ function showApp(credential, options, me) {
     document.body.classList.remove('menu-open');
     if (focus) menuBtn.focus();
   }
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); closeDrops(); } });
   // Turning the window wide again closes the phone menu.
   phone.addEventListener('change', () => { if (!phone.matches) closeMenu({ focus: false }); });
 
@@ -165,9 +196,10 @@ function showApp(credential, options, me) {
     const tab = tabs.find((t) => t.id === id);
     entries.forEach((e) => {
       const on = String(e.tab.id === id);
-      e.desk.setAttribute('aria-selected', on);
+      if (on === 'true') e.desk.setAttribute('aria-current', 'page'); else e.desk.removeAttribute('aria-current');
       e.drawer.setAttribute('aria-selected', on);
     });
+    drops.forEach((d) => d.btn.classList.toggle('has-active', d.list.some((e) => e.tab.id === id)));
     menuCurrent.textContent = tab.label;
     try { sessionStorage.setItem('tab', id); } catch { /* storage blocked */ }
     if (!tab.on) return clear(panel, offCard(tab));
@@ -198,7 +230,7 @@ function showApp(credential, options, me) {
 
   clear(app,
     h('header', { class: 'bar' },
-      h('h1', { class: 'brand' }, 'VirtuaHost DJ'),
+      h('h1', { class: 'brand' }, brand(28)),
       h('div', { class: 'menu-wrap' }, menuBtn, menuCurrent),
       h('span', { class: 'grow' }),
       stationSlot,

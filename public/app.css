@@ -9,14 +9,23 @@
 .tabs button .off { font-weight: 500; font-size: 11px; margin-left: 4px; opacity: .8; }
 header.bar > * { min-width: 0; }
 header.bar .brand { order: 0; }
-header.bar .grow { order: 1; }
-header.bar .station-slot { order: 2; }
-header.bar .signout { order: 3; }
-header.bar .menu-desk { order: 4; flex: 0 0 100%; align-items: center; gap: 6px 0; }
-.menu-group { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
-.menu-group + .menu-group { border-left: 1px solid var(--line); margin-left: 10px; padding-left: 10px; }
-.menu-group[hidden] { display: none; }
-.menu-group-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; margin-right: 4px; white-space: nowrap; }
+header.bar .menu-desk { order: 1; flex: 0 1 auto; align-items: center; gap: 2px; flex-wrap: nowrap; margin-left: 8px; }
+header.bar .grow { order: 2; }
+header.bar .station-slot { order: 3; }
+header.bar .signout { order: 4; }
+/* Desktop dropdowns: a group of several tabs is a button that opens a list; a group of one is just the tab. */
+.menu-item { position: relative; display: flex; align-items: center; }
+.menu-item[hidden] { display: none; }
+.menu-desk button { white-space: nowrap; }
+.menu-desk > .menu-item > button[aria-current="page"], .menu-drop-btn.has-active { background: var(--accent); color: var(--accent-ink); }
+.menu-drop-btn { display: inline-flex; align-items: center; gap: 6px; }
+.menu-drop-btn .caret { font-size: 11px; opacity: .85; }
+.menu-drop-btn[aria-expanded="true"]:not(.has-active) { background: var(--chip); color: var(--ink); }
+.menu-drop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 190px; display: flex; flex-direction: column; gap: 2px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 28px rgba(20, 24, 31, .18); }
+.menu-drop[hidden] { display: none; }
+.menu-drop button { text-align: left; width: 100%; padding: 8px 12px; }
+.menu-drop button:hover, .menu-drop button:focus-visible { background: var(--chip); color: var(--ink); }
+.menu-drop button[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
 .menu-wrap, .menu-drawer { display: none; }
 .menu-btn { display: inline-flex; align-items: center; font-weight: 650; }
 .menu-current { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

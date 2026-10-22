@@ -30,3 +30,5 @@ What exists, what is being built, and what is planned. Anything that touches a r
 - Emergency alerts: official National Weather Service text verbatim, area-filtered, human approval, kill switch, off by default. Today only a refusing hook exists.
 - A real database for the hub (it is one JSON file now, fine for one station).
 - Conversation drops that are generated per station group with different casts.
+
+Everything that is neither built nor listed here (legal station IDs, effects in scripts, monitoring, licensing, public-page abuse protection, DJ accounts, and more) is in [HANDOFF.md](HANDOFF.md).

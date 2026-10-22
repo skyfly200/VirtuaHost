@@ -7,6 +7,7 @@ import { mountHostCard } from '../shared/hostcard.js';
 import { modelVoiceFields } from '../shared/voicepicker.js';
 import { createSpeaker } from '../shared/speaker.js';
 import { keyBox } from '../shared/keybox.js';
+import { sectionize } from '../shared/sect.js';
 
 const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], place: null, coverageKm: '', transmitter: null, lat: '', lon: '', tempUnit: '', variablesText: '', autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
 const LINES = (v) => v.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -215,7 +216,7 @@ export async function mountStationProfiles(root, api) {
       try { await api.del(`/stations/${encodeURIComponent(c.id)}`); editing = null; await changed(); paintEditor(); toast('Deleted.', 'info'); } catch (err) { toast(err.message, 'error'); }
     } }, 'Delete') : null;
 
-    clear(editorBox, h('section', { class: 'card' },
+    clear(editorBox, sectionize(h('section', { class: 'card stack' },
       h('h2', {}, c.id ? `Edit ${c.name}` : 'New station'),
       h('p', { class: 'muted small' }, 'None of this needs a server. It is the station\'s profile; other tabs use it as soon as you choose "Work on this station".'),
       h('h3', {}, 'Who it is'),
@@ -258,7 +259,7 @@ export async function mountStationProfiles(root, api) {
         h('label', { class: 'field' }, 'Its id in the hub (optional)', h('input', { value: c.connection.hubStationId || '', oninput: (e) => { c.connection.hubStationId = e.target.value; } })),
         h('label', { class: 'field' }, 'Note', h('input', { value: c.connection.note || '', placeholder: 'e.g. VPS ready in May', oninput: (e) => { c.connection.note = e.target.value; } }))),
       area('Notes', 'notes', 3),
-      h('div', { class: 'row' }, save, del, h('button', { type: 'button', onclick: () => { editing = null; paintEditor(); } }, 'Close'))));
+      h('div', { class: 'actionbar' }, save, del, h('button', { type: 'button', onclick: () => { editing = null; paintEditor(); } }, 'Close'))), { open: [0, 1] }));
     // The virtual host is configured per station, so it belongs to a saved one.
     if (c.id) mountHostCard(hostBox, api, { personas, station: c });
     else clear(hostBox, h('h3', {}, 'Virtual host'), h('p', { class: 'muted small' }, 'Save the station first, then set up its virtual host here.'));

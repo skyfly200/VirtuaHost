@@ -19,6 +19,8 @@ const MAX_CAST = 4;
 
 // A line sent here from another tab (a persona's sample), used once.
 function takePrefill() { try { const t = sessionStorage.getItem('prefillText') || ''; sessionStorage.removeItem('prefillText'); return t; } catch { return ''; } }
+// A persona chosen in the Personas tab ("Use in the Studio"), used once.
+function takePersona() { try { const t = sessionStorage.getItem('studioPersona') || ''; sessionStorage.removeItem('studioPersona'); return t; } catch { return ''; } }
 // Hands something to the Schedules tab, which prefills its form from it.
 function toSchedules(draft) {
   try { sessionStorage.setItem('scheduleDraft', JSON.stringify({ from: 'the Studio', ...draft })); } catch { toast('Could not hand it to the Schedules tab in this browser.', 'error'); return; }
@@ -48,6 +50,8 @@ export async function mountStudio(root, api) {
   };
   const newSlot = (from = {}) => ({ speechModel: choosable ? options.models.defaultSpeech : '', voice: '', tone: '', fx: '', fxAmount: 1, take: null, url: '', ...from, id: Math.random().toString(36).slice(2), busy: false, st: createStatus() });
   state.slots = [newSlot()];
+  const handedPersona = personas.find((p) => p.id === takePersona());
+  if (handedPersona) state.cast = [{ name: handedPersona.name.split(' ')[0].slice(0, 24), personaId: handedPersona.id }];
   const modelEntry = (id) => models.find((m) => m.id === id);
   const castOf = (name) => state.cast.find((c) => c.name.toLowerCase() === String(name).toLowerCase());
   const kind = () => (state.mode === 'conversation' ? 'conversation' : 'single');
