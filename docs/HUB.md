@@ -194,10 +194,19 @@ New in `chips-voice/agent-radiodj/` (read key = GET only; control key = everythi
 ### Needs live verification on a real RadioDJ (do not claim any of these works until it has been)
 
 1. `/npjson` "Playlist" shape and the unit of `Elapsed`/`Remaining`/`Duration` (seconds assumed; `m:ss` also read).
-2. How a clip is inserted two ahead: set `INSERT_EXEC` (Sylvia's script, receives `<file> <position> <replace-id>`) or `RADIODJ_CMD_INSERT`/`RADIODJ_INSERT_ARG`. **No command name is guessed.** Also decide whether the JIT clip *replaces* the planned clip (`replace` is passed) or is added.
+2. How a clip is inserted two ahead **and the planned clip removed** (see "The generated clip preempts the planned one" below): set `INSERT_EXEC` (Sylvia's script, receives `<file> <position> <replace-id>`) or `RADIODJ_CMD_INSERT`/`RADIODJ_INSERT_ARG`. **No command name is guessed.** 
 3. Playlist loading (`LOAD_EXEC`; bulk REST loads have thrown "Index out of range").
 4. Skip (`RADIODJ_CMD_SKIP`), volume, and `played` confirmation by track match.
 5. The `GLR YYYY-MM-DD.json` plan file and the watchdog/loaded-playlist files (`WATCHDOG_FILE`, `LOADED_PLAYLIST_FILE`).
 6. Strong consistency on Netlify Blobs (see KEYS.md), and the new model-failure handling against real OpenRouter.
 
 **Nothing goes on the live station until the owner (Rocky) approves the shadow review and a live single-item test.**
+
+### The generated clip preempts the planned one
+
+Decided: the nightly playlist keeps a planned (evergreen) clip at every dynamic slot, and a generated clip **takes its place**; the planned clip plays only if the swap does not happen. The agent enforces it on `POST /queue/insert {clip, replace: "<planned clip id>"}` (the hub sends the slot's `fallbackClipId` as `replace`):
+
+- The planned clip must be **visible in the queue and at least 2 items ahead**. Not found (`planned-clip-not-found`) or immediately next (`planned-clip-is-next`): HTTP 409, nothing is touched, the planned clip plays.
+- The generated clip goes to the planned clip's position; your `INSERT_EXEC` is called `<file> <position> <replace-id>` and must remove the planned item as part of the same step.
+- Afterwards the agent reads the queue back: `replaced: true` (new clip there, planned clip gone), `false` (both queued: the hub marks the item as failed rather than inserted, because both would air), or `null` (could not read the queue).
+- The mechanism that removes or swaps the item is still the unverified part (it lives in `INSERT_EXEC` or a REST command you have tested).

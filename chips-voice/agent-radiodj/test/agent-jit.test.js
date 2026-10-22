@@ -25,7 +25,8 @@ async function fakeRadioDJ(state = {}) {
       const cmd = url.searchParams.get('command');
       if (cmd === 'PlayCartByNumber' && s.onCart) s.onCart(s);
       if (cmd === 'InsertFake' && s.reflectInsert) {
-        const [file, pos] = url.searchParams.get('arg').split('|');
+        const [file, pos, replace] = url.searchParams.get('arg').split('|');
+        if (replace && s.removeReplaced !== false) { const i = s.playlist.findIndex((x) => `${x.Title} ${x.Path || ''}`.includes(replace)); if (i >= 0) s.playlist.splice(i, 1); }
         s.playlist.splice(Number(pos) - 1, 0, track('', path.basename(file, path.extname(file)), { Path: file }));
       }
     }
@@ -340,13 +341,14 @@ test('/queue/insert: a later position, a queue that is too short, an unknown cli
 });
 
 test('/queue/insert through a local script runs it with arguments, no shell, and reports an unverified result when the queue cannot be read back', async () => {
-  const t = await boot({ insertCommand: '', insertExec: 'python "C:\\Green Light\\insert_clip.py"' }, { playlist: [track('A', 'B')] });
+  const t = await boot({ insertCommand: '', insertExec: 'python "C:\\Green Light\\insert_clip.py"' }, { playlist: [track('A', 'B'), track('', 'evergreen-time-1', { Path: 'evergreen-time-1.mp3' })] });
   const clip = (await ingest(t, 1)).json.clip;
   const r = await t.call('POST', '/queue/insert', { clip: clip.id, ahead: 2, replace: 'evergreen-time-1' });
   assert.strictEqual(r.status, 200);
   assert.strictEqual(t.execs.length, 1);
   assert.deepStrictEqual([t.execs[0].program, t.execs[0].args.slice(0, 1), t.execs[0].args.slice(2), t.execs[0].o.shell], ['python', ['C:\\Green Light\\insert_clip.py'], ['2', 'evergreen-time-1'], false]);
   assert.strictEqual(r.json.verified, false);                                                                   // the script ran, but the fake queue does not show the clip
+  assert.strictEqual(r.json.replaced, false);                                                                   // and the planned clip is still there: reported, not hidden
   t.close();
 });
 
@@ -443,4 +445,49 @@ test('the audit log records who, what, when and the result, is append-only on di
   t.close();
   const reopened = createAgent({ ...t.opts });
   assert.strictEqual(reopened.audit.tail(10).length, 3);                                                         // and survives a restart
+});
+
+// ---------------------------------------------------------------- the generated clip preempts the planned one
+const withPlanned = (extra = {}) => ({ playlist: [track('A', 'One'), track('', 'evergreen-time-1', { Path: 'C:\\GLR\\evergreen-time-1.mp3' }), track('C', 'Three')], ...extra });
+
+test('replace: the generated clip takes the planned clip\'s place, and the swap is verified', async () => {
+  const t = await boot({ insertArg: '{path}|{position}|{replace}' }, withPlanned());
+  const clip = (await ingest(t, 1)).json.clip;
+  const r = await t.call('POST', '/queue/insert', { clip: clip.id, replace: 'evergreen-time-1' });
+  assert.deepStrictEqual([r.status, r.json.inserted, r.json.position, r.json.replaced, r.json.verified], [200, true, 2, true, true]);   // the planned clip was 2nd in line, so the clip goes in its place
+  assert.ok(t.radiodj.commands()[0].arg.endsWith('|2|evergreen-time-1'));
+  assert.ok(!t.radiodj.playlist.some((x) => x.Title === 'evergreen-time-1'));
+  t.close();
+});
+
+test('replace: if the planned clip is not found, or is the immediately-next item, nothing is touched and the planned clip plays', async () => {
+  let t = await boot({ insertArg: '{path}|{position}|{replace}' }, withPlanned());
+  let clip = (await ingest(t, 1)).json.clip;
+  const gone = await t.call('POST', '/queue/insert', { clip: clip.id, replace: 'some-other-clip' });
+  assert.deepStrictEqual([gone.status, gone.json.reason], [409, 'planned-clip-not-found']);
+  assert.strictEqual(t.radiodj.commands().length, 0);
+  t.close();
+  t = await boot({ insertArg: '{path}|{position}|{replace}' }, { playlist: [track('', 'evergreen-time-1', { Path: 'evergreen-time-1.mp3' }), track('B', 'Two')] });
+  clip = (await ingest(t, 2)).json.clip;
+  const next = await t.call('POST', '/queue/insert', { clip: clip.id, replace: 'evergreen-time-1' });
+  assert.deepStrictEqual([next.status, next.json.reason], [409, 'planned-clip-is-next']);
+  assert.strictEqual(t.radiodj.commands().length, 0);
+  t.close();
+});
+
+test('replace: if the planned clip is still queued after the insert, that is reported as replaced:false (both would air)', async () => {
+  const t = await boot({ insertArg: '{path}|{position}|{replace}' }, withPlanned({ removeReplaced: false }));
+  const clip = (await ingest(t, 1)).json.clip;
+  const r = await t.call('POST', '/queue/insert', { clip: clip.id, replace: 'evergreen-time-1' });
+  assert.deepStrictEqual([r.status, r.json.inserted, r.json.replaced], [200, true, false]);
+  t.close();
+});
+
+test('replace in shadow mode only says what it would replace', async () => {
+  const t = await boot({ shadow: true, insertArg: '{path}|{position}|{replace}' }, withPlanned());
+  const clip = (await ingest(t, 1)).json.clip;
+  const r = await t.call('POST', '/queue/insert', { clip: clip.id, replace: 'evergreen-time-1' });
+  assert.deepStrictEqual([r.status, r.json.shadow, r.json.wouldReplace, r.json.position], [202, true, 'evergreen-time-1', 2]);
+  assert.strictEqual(t.radiodj.commands().length, 0);
+  t.close();
 });

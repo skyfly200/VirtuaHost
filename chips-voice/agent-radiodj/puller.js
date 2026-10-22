@@ -72,7 +72,9 @@ function createPuller({ hubUrl, stationId, key, localUrl, localKey, intervalMs =
       const ins = await json(local('/queue/insert'), { method: 'POST', headers: localHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ clip: ing.body.clip.id, sha256: sha, ahead: item.ahead || 2, ...(item.replace ? { replace: item.replace } : {}) }) });
       if (ins.status === 202 && ins.body && ins.body.shadow) return ack(item, { status: 'shadow', reason: 'the local agent is in shadow mode: nothing was inserted' });
       if (!ins.ok) return ack(item, { status: ins.status === 423 || ins.status === 409 ? 'skipped' : 'failed', reason: (ins.body && ins.body.error) || `insert answered ${ins.status}` });
-      return ack(item, { status: 'inserted', position: ins.body.position, verified: ins.body.verified, duplicate: !!ins.body.duplicate });
+      // Both the generated and the planned clip queued would air twice: that is reported as a failure, not a success.
+      if (ins.body.replaced === false) return ack(item, { status: 'failed', reason: 'inserted, but the planned clip was not removed: both may play. Check the queue.' });
+      return ack(item, { status: 'inserted', position: ins.body.position, verified: ins.body.verified, replaced: ins.body.replaced, duplicate: !!ins.body.duplicate });
     } catch (err) { return ack(item, { status: 'failed', reason: err.message }); }
   }
 
