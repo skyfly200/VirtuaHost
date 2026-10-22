@@ -1,6 +1,6 @@
 import type { ClipInfo } from "./clip-info.js";
 
-export type GenerateMode = "say" | "ai";
+export type GenerateMode = "say" | "ai" | "script";
 
 export interface GenerateRequest {
   mode: GenerateMode;
@@ -20,6 +20,10 @@ export interface GenerateRequest {
   voice?: string;
   /** How it should sound, for example "warm, slow, a little tired" (up to 100 characters). */
   tone?: string;
+  /** mode "script": a saved script to speak (scriptId), or an inline `cast` (up to 4 speakers) with the `text` ("Name: line" per line). Each speaker uses their persona's voice; the lines are joined into one clip. */
+  scriptId?: string;
+  cast?: unknown;
+  gapSeconds?: number;
   /** One of the script formats from GET /api/options (station-id, song-intro, ...). Shapes AI-written lines. */
   format?: string;
   /** Put the clip on air via the station server. Defaults to STATION_AUTOPLAY. */

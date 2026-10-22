@@ -20,11 +20,11 @@ export interface Principal {
   username: string;
   role: Role;
   via: "login" | "key" | "open" | "service";
-  /** For `via: "service"`: what the key may do ("generate", "stations.read", "personas.read", "options.read"). */
+  /** For `via: "service"`: what the key may do ("generate", "stations.read", "personas.read", "options.read", "scripts.read"). */
   scopes?: readonly string[];
 }
 
-export const SERVICE_SCOPES = ["generate", "stations.read", "personas.read", "options.read"] as const;
+export const SERVICE_SCOPES = ["generate", "stations.read", "personas.read", "options.read", "scripts.read"] as const;
 export type ServiceScope = (typeof SERVICE_SCOPES)[number];
 
 export interface ServiceKey { name: string; runAs?: string; scopes: ServiceScope[]; key: string }
