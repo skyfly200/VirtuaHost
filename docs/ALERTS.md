@@ -2,7 +2,7 @@
 
 VirtuaHost can listen to the **US National Weather Service (NWS)** for alerts in a station's area, put them in drops, and (in the hub) say them on air. It is built so it belongs to the **hub**: the hub is the thing that stays running next to the stations, so it is the thing that watches and acts. The site gets a read-only side (placeholders and a lookup) that uses the same data.
 
-> **What this is not.** This relays alerts the NWS publishes. It is **not the Emergency Alert System (EAS)**: it does not decode EAS/SAME messages, it does not play the EAS attention tones, and it does not meet the FCC's EAS rules that apply to licensed broadcast stations (those need a certified EAS encoder/decoder). An internet stream is not covered by those rules, but a licensed FM/AM station running this next to its transmitter still needs its real EAS equipment. Spoken alerts are plain voice, clearly an automated relay, and are labelled as National Weather Service alerts.
+> **What this is.** A relay of the alerts the National Weather Service publishes, spoken in plain voice and labelled as National Weather Service alerts. It does not decode EAS/SAME messages and does not play the EAS attention tones: it reads the NWS web service, not the EAS chain.
 
 ## Where the data comes from
 
