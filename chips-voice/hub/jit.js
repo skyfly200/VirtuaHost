@@ -454,10 +454,10 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     if (!q) throw new HubError('no such queue item', 404);
     const status = ['inserted', 'shadow', 'skipped', 'failed'].includes(body.status) ? body.status : null;
     if (!status) throw new HubError('status must be inserted, shadow, skipped or failed');
-    q.state = status === 'inserted' ? 'inserted' : status; q.ack = { status, at: now(), position: Number.isFinite(body.position) ? body.position : undefined, verified: typeof body.verified === 'boolean' ? body.verified : null, reason: text(body.reason, 300) };
+    q.state = status === 'inserted' ? 'inserted' : status; q.ack = { status, at: now(), position: Number.isFinite(body.position) ? body.position : undefined, verified: typeof body.verified === 'boolean' ? body.verified : null, replaced: typeof body.replaced === 'boolean' ? body.replaced : null, reason: text(body.reason, 300) };
     const item = J().items.find((i) => i.id === q.itemId);
     if (item) {
-      if (status === 'inserted') finish(item, 'inserted', `inserted at position ${q.ack.position}${q.ack.verified === false ? ' (could not be read back)' : ''}`);
+      if (status === 'inserted') finish(item, 'inserted', `inserted at position ${q.ack.position}${q.replace && q.ack.replaced === true ? `, replacing ${q.replace}` : ''}${q.ack.verified === false ? ' (could not be read back)' : ''}`);
       else if (status === 'shadow') finish(item, 'shadow', `the station is in shadow mode: ${q.ack.reason}`);
       else finish(item, 'fallback', `the station did not insert it (${status}): ${q.ack.reason || 'no reason given'}`);
     }

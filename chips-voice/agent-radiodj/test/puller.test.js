@@ -24,7 +24,7 @@ async function listen(handler) {
 
 async function world({ agentOpts = {}, now = Date.parse('2026-10-22T20:00:00Z') } = {}) {
   const clock = { t: now };
-  const rdj = { playlist: [track('A', 'One'), track('B', 'Two'), track('C', 'Three')], commands: [] };
+  const rdj = { playlist: [track('A', 'One'), track('', 'evergreen-time-1', { Path: 'evergreen-time-1.mp3' }), track('C', 'Three')], commands: [] };
   const radio = await listen((req, res) => {
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/npjson') { res.writeHead(200); return res.end(JSON.stringify({ CurrentTrack: track('Now', 'Playing', { Duration: 200, Elapsed: 50, Remaining: 150 }), Playlist: rdj.playlist })); }
@@ -37,7 +37,7 @@ async function world({ agentOpts = {}, now = Date.parse('2026-10-22T20:00:00Z') 
   const execs = [];
   const agent = createAgent({
     key: 'local-control', radiodjUrl: radio.url, radiodjPass: 'pw', linksDir: path.join(dir, 'clips'), dataDir: path.join(dir, 'data'), broadcastTz: DEN, machineTz: 'America/Chicago', shadow: false,
-    insertExec: 'python insert.py', scheduleDir: sched, now: () => clock.t, execImpl: (p, a, o, cb) => { execs.push(a); cb(null, 'ok', ''); }, ...agentOpts,
+    insertExec: 'python insert.py', scheduleDir: sched, now: () => clock.t, execImpl: (p, a, o, cb) => { execs.push(a); if (!agentOpts.noSwap) { const i = rdj.playlist.findIndex((x) => x.Title === 'evergreen-time-1'); if (i >= 0) rdj.playlist.splice(i, 1, track('', path.basename(a[1], path.extname(a[1])), { Path: a[1] })); } cb(null, 'ok', ''); }, ...agentOpts,
   });
   await new Promise((r) => agent.server.listen(0, '127.0.0.1', r));
   const agentUrl = `http://127.0.0.1:${agent.server.address().port}`;
@@ -74,9 +74,10 @@ test('end to end by pull: a heartbeat shows the station online, a finished clip 
   // the agent inserted it through its local script, 2 ahead, and the hub knows
   assert.strictEqual(w.execs.length, 1);
   assert.deepStrictEqual([w.execs[0][0], w.execs[0][2], w.execs[0][3]], ['insert.py', '2', 'evergreen-time-1']);      // position 2, replacing the planned clip
+  assert.ok(!w.rdj.playlist.some((x) => x.Title === 'evergreen-time-1'));                                              // the planned clip is gone: the generated one preempted it
   const item = (await w.hcall('GET', '/jit/items')).json.items[0];
   assert.strictEqual(item.state, 'inserted');
-  assert.match(item.reason, /inserted at position 2/);
+  assert.match(item.reason, /inserted at position 2, replacing evergreen-time-1/);
   assert.strictEqual(item.queue.ack.status, 'inserted');
   assert.deepStrictEqual(fs.readdirSync(path.join(w.dir, 'clips')).length, 1);                          // saved under its hash-based name
   // idempotent: another pass finds nothing to do and inserts nothing twice
@@ -174,5 +175,16 @@ test('the nightly plan reaches the hub: dynamic slots in the agent\'s schedule b
   const slots = (await w.hcall('GET', `/jit/slots?stationId=${w.st.id}`)).json.slots;
   assert.deepStrictEqual(slots.map((s) => [s.kind, s.startsAtIso, s.source, s.fallbackClipId]).sort(), [['station-id', '2026-10-22T20:00:00-06:00', 'schedule', ''], ['time-check', '2026-10-22T19:04:00-06:00', 'schedule', 'evergreen-time-1']]);
   assert.strictEqual((await w.puller.tick()).handled, 0);                         // unchanged: not sent again
+  w.close();
+});
+
+test('if the planned clip is still queued after the insert, the hub is told it failed (both would air), not that it worked', async () => {
+  const w = await world({ agentOpts: { noSwap: true } });
+  await slotAt(w, 8);
+  await w.hub.jit.tick();
+  await w.puller.tick();
+  const item = (await w.hcall('GET', '/jit/items')).json.items[0];
+  assert.strictEqual(item.state, 'fallback');
+  assert.match(item.reason, /planned clip was not removed: both may play/);
   w.close();
 });
