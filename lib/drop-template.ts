@@ -1,4 +1,6 @@
 import type { Station } from "./station-profile.js";
+import { activeAlerts, type NwsAlert } from "./alerts.js";
+import { locate } from "./geo.js";
 
 // Templates for drops: the writer (or you) puts placeholders like {{time}} or {{weather|nice out}} in a line, and the engine fills them
 // in with real values AFTER the words are written and BEFORE they are spoken. So an AI never has to guess the time or the temperature,
@@ -24,7 +26,7 @@ export interface TemplateContext {
   rng?: () => number;
 }
 
-export type VarGroup = "station" | "time" | "weather" | "dj" | "length" | "song" | "custom";
+export type VarGroup = "station" | "time" | "weather" | "alert" | "dj" | "length" | "song" | "custom";
 interface VarDef {
   name: string;
   group: VarGroup;
@@ -32,7 +34,7 @@ interface VarDef {
   example: string;
   /** Whether this context can supply it (checked without any network call). */
   available: (c: TemplateContext) => boolean;
-  value: (c: TemplateContext, w: Weather | null) => string | undefined;
+  value: (c: TemplateContext, w: Weather | null, a: NwsAlert[]) => string | undefined;
 }
 
 export interface Weather { tempC: number; code: number }
@@ -59,18 +61,6 @@ const hasLocation = (c: TemplateContext) => Boolean(c.station && ((typeof c.stat
 const weatherCache = new Map<string, { at: number; value: Weather | null }>();
 const WEATHER_TTL_MS = 10 * 60_000;
 export const resetWeatherCache = (): void => weatherCache.clear();
-
-async function locate(station: Station): Promise<{ lat: number; lon: number } | null> {
-  if (typeof station.lat === "number" && typeof station.lon === "number") return { lat: station.lat, lon: station.lon };
-  if (!station.city) return null;
-  try {
-    const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(station.city)}&count=1`, { signal: AbortSignal.timeout(4_000) });
-    const hit = ((await res.json()) as { results?: Array<{ latitude?: number; longitude?: number }> }).results?.[0];
-    return typeof hit?.latitude === "number" && typeof hit.longitude === "number" ? { lat: hit.latitude, lon: hit.longitude } : null;
-  } catch {
-    return null;
-  }
-}
 
 export async function weatherFor(station: Station | null | undefined): Promise<Weather | null> {
   if (!station) return null;
@@ -101,6 +91,8 @@ const BUILT_IN: VarDef[] = [
   { name: "callsign", group: "station", description: "the call sign (falls back to the name)", example: "KRAP", available: always, value: (c) => c.station?.callsign || c.station?.name || process.env.STATION_NAME || undefined },
   { name: "frequency", group: "station", description: "where it is on the dial", example: "97.7 FM", available: (c) => Boolean(c.station?.frequency), value: fromStation("frequency") },
   { name: "tagline", group: "station", description: "the station's tagline", example: "Houston's underground", available: (c) => Boolean(c.station?.tagline), value: fromStation("tagline") },
+  { name: "place", group: "station", description: "the station's place, as found by name (town, state)", example: "Houston, Texas", available: (c) => Boolean(c.station?.place), value: (c) => [c.station?.place?.name, c.station?.place?.admin1].filter(Boolean).join(", ") || undefined },
+  { name: "state", group: "station", description: "the station's state", example: "Texas", available: (c) => Boolean(c.station?.place?.admin1), value: (c) => c.station?.place?.admin1 },
   { name: "city", group: "station", description: "the station's city", example: "Houston", available: (c) => Boolean(c.station?.city), value: fromStation("city") },
   { name: "website", group: "station", description: "the station's website", example: "krap.fm", available: (c) => Boolean(c.station?.website), value: (c) => c.station?.website?.replace(/^https?:\/\//, "").replace(/\/$/, "") },
 
@@ -118,6 +110,11 @@ const BUILT_IN: VarDef[] = [
   { name: "weather", group: "weather", description: "temperature and sky together", example: "62 degrees and cloudy", available: hasLocation, value: (c, w) => (w ? `${tempIn(w, unitOf(c))} degrees and ${conditionsFor(w.code)}` : undefined) },
   { name: "temp", group: "weather", description: "the temperature", example: "62 degrees", available: hasLocation, value: (c, w) => (w ? `${tempIn(w, unitOf(c))} degrees` : undefined) },
   { name: "conditions", group: "weather", description: "the sky right now", example: "cloudy", available: hasLocation, value: (_c, w) => (w ? conditionsFor(w.code) : undefined) },
+
+  { name: "alert", group: "alert", description: "the most serious active National Weather Service alert for the station's area (empty when there is none: always give a fallback)", example: "Tornado Warning", available: hasLocation, value: (_c, _w, a) => a[0]?.event },
+  { name: "alert_headline", group: "alert", description: "that alert's full NWS headline", example: "Tornado Warning issued October 21 at 4:00PM CDT until 5:00PM CDT", available: hasLocation, value: (_c, _w, a) => a[0]?.headline },
+  { name: "alert_area", group: "alert", description: "the places that alert covers", example: "Harris, TX", available: hasLocation, value: (_c, _w, a) => a[0]?.area },
+  { name: "alert_count", group: "alert", description: "how many alerts are active (only when there is at least one)", example: "2", available: hasLocation, value: (_c, _w, a) => (a.length ? String(a.length) : undefined) },
 
   { name: "dj", group: "dj", description: "the name of the DJ (persona) speaking", example: "DJ Midnight", available: (c) => Boolean(c.persona), value: (c) => c.persona?.name },
   { name: "dj_tagline", group: "dj", description: "the DJ's own tagline", example: "Your late-night friend", available: (c) => Boolean(c.persona?.tagline), value: (c) => c.persona?.tagline },
@@ -146,7 +143,8 @@ export function availableVariables(c: TemplateContext): Array<Pick<VarDef, "name
 export async function variableValues(c: TemplateContext): Promise<Array<{ name: string; group: VarGroup; description: string; example: string; value: string | null }>> {
   const list = allVars(c).filter((v) => v.available(c));
   const w = list.some((v) => v.group === "weather") ? await weatherFor(c.station) : null;
-  return list.map((v) => ({ name: v.name, group: v.group, description: v.description, example: v.example, value: v.value(c, w) ?? null }));
+  const a = list.some((v) => v.group === "alert") ? await activeAlerts(c.station) : [];
+  return list.map((v) => ({ name: v.name, group: v.group, description: v.description, example: v.example, value: v.value(c, w, a) ?? null }));
 }
 
 /** Instructions for the writing model: what placeholders exist, and not to invent what they stand for. Empty when there are none to offer. */
@@ -172,7 +170,9 @@ export async function renderTemplate(input: string, c: TemplateContext = {}): Pr
   const rng = c.rng ?? Math.random;
   const defs = new Map(allVars(c).map((v) => [v.name, v]));
   const wantsWeather = [...input.matchAll(TOKEN)].some((m) => { const n = norm(m[1].split("|")[0]); return defs.get(n)?.group === "weather"; });
+  const wantsAlerts = [...input.matchAll(TOKEN)].some((m) => { const n = norm(m[1].split("|")[0]); return defs.get(n)?.group === "alert"; });
   const w = wantsWeather ? await weatherFor(c.station) : null;
+  const alerts = wantsAlerts ? await activeAlerts(c.station) : [];
   const used = new Set<string>();
   const missing = new Set<string>();
 
@@ -187,7 +187,7 @@ export async function renderTemplate(input: string, c: TemplateContext = {}): Pr
     const name = norm(bar < 0 ? body : body.slice(0, bar));
     const fallback = bar < 0 ? undefined : body.slice(bar + 1).trim();
     const def = defs.get(name);
-    const value = def && def.available(c) ? def.value(c, w) : undefined;
+    const value = def && def.available(c) ? def.value(c, w, alerts) : undefined;
     if (value) { used.add(name); return value; }
     if (fallback) { used.add(name); return fallback; }
     missing.add(name);

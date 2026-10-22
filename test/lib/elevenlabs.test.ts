@@ -82,8 +82,9 @@ describe("ElevenLabs in the model list", () => {
     expect(speechModels().some((m) => m.id.startsWith("elevenlabs/"))).toBe(false);
   });
 
-  it("ignores tone and strips tags for ElevenLabs models", () => {
+  it("ignores tone and strips tags for ElevenLabs models, except v3 which performs tags", () => {
     expect(cuesFor("elevenlabs/eleven_flash_v2_5")).toMatchObject({ tone: "none", tags: false });
+    expect(cuesFor("elevenlabs/eleven_v3")).toMatchObject({ tone: "none", tags: true });
   });
 });
 

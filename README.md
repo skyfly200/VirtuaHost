@@ -22,7 +22,11 @@ generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTE
 | [docs/USERS.md](docs/USERS.md) | Users, roles, who sees what, and per-person limits |
 | [docs/KEYS.md](docs/KEYS.md) | Your own AI keys (per person or station), ElevenLabs voice clones, model lists, costs and warnings, free models, content filtering |
 | [docs/DROPS.md](docs/DROPS.md) | Placeholders for drops (`{{time}}`, `{{weather}}`, `{{dj}}`...) and the templating engine |
-| [docs/STATIONS.md](docs/STATIONS.md) | Station profiles, their defaults, location, own placeholders and allowed models |
+| [docs/STATIONS.md](docs/STATIONS.md) | Station profiles, their defaults, finding the place by name, own placeholders and allowed models |
+| [docs/ALERTS.md](docs/ALERTS.md) | US weather alerts from the National Weather Service: placeholders, and watches in the hub (not the Emergency Alert System) |
+| [docs/COVERAGE.md](docs/COVERAGE.md) | Coverage areas: which stations an event or alert is relevant to, and the plan for population modelling |
+| [docs/MCP.md](docs/MCP.md) | The MCP endpoint: let an AI agent manage stations, with confirm-before-air safety |
+| [docs/GREENLIGHT-AND-IONOS.md](docs/GREENLIGHT-AND-IONOS.md) | The hub on the IONOS server, RadioDJ at Way High and Greenlight, and the questions for Sylvia |
 | [docs/CUES.md](docs/CUES.md) | What each speech model does with tone and tags |
 | [docs/HUB.md](docs/HUB.md) | The hub, the RadioDJ agent, and the Voice Lab and Stations tabs |
 | [docs/PERSONA-CHIP.md](docs/PERSONA-CHIP.md) | CHIP, the computer DJ persona of Way High Radio |
@@ -104,7 +108,7 @@ Response:
 
 The provider in use, selectable models (with `models.info`: price tier, USD per million tokens when known, and a content-filter label for each), tones, and the script formats with structure hints and examples (what the test console shows).
 
-### `POST /api/estimate`, `GET|POST /api/template`, `/api/users`, `/api/keys`
+### `POST /api/estimate`, `GET|POST /api/template`, `GET /api/places`, `GET /api/alerts`, `POST /api/mcp`, `/api/users`, `/api/keys`
 
 Before-you-spend estimates for `write`, `speak`, `flier-read` and `flier-promo` (nothing is sent to an AI); the list of `{{placeholders}}` with today's values, and a way to render a text; user management (admins) and your own account; and saving or removing your own AI keys (write-only). Details in the docs above.
 

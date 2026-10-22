@@ -98,7 +98,7 @@ describe("chat", () => {
     expect(init.headers.authorization).toBe("Bearer or-key");
     expect(init.headers["x-title"]).toBe("Way High Radio");
     expect(init.headers["http-referer"]).toBe("https://site.example");
-    expect(JSON.parse(init.body)).toEqual({ model: "a/one", max_tokens: 300, messages: [{ role: "system", content: "be brief" }, { role: "user", content: "say hi" }] });
+    expect(JSON.parse(init.body)).toEqual({ model: "a/one", max_tokens: 3000, reasoning: { effort: "low" }, messages: [{ role: "system", content: "be brief" }, { role: "user", content: "say hi" }] });
   });
 
   it("passes OpenRouter's error message through", async () => {
@@ -107,7 +107,7 @@ describe("chat", () => {
   });
 
   it("fails clearly on an empty answer or a missing key", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ choices: [{ message: { content: "" } }] }));
+    fetchMock.mockImplementation(async () => jsonResponse({ choices: [{ message: { content: "" } }] }));
     await expect(chat({ model: "a/one", system: "s", prompt: "p" })).rejects.toThrow("a/one returned no text");
     vi.stubEnv("OPENROUTER_API_KEY", "");
     await expect(chat({ model: "a/one", system: "s", prompt: "p" })).rejects.toThrow("OPENROUTER_API_KEY is not set");
@@ -218,5 +218,36 @@ describe("models that do not exist", () => {
     await expect(speech({ model: "openai/gpt-4o-mini-tts-2025-12-15", text: "hi" })).rejects.toThrow(/does not exist.*pick another in the Speech model list/s);
     fetchMock.mockResolvedValue(jsonResponse({ error: { message: "Invalid voice" } }, 400));
     await expect(speech({ model: "x/tts", text: "hi" })).rejects.not.toThrow(/pick another/);
+  });
+});
+
+describe("thinking models (empty or cut-off replies)", () => {
+  const reply = (content: unknown, finish = "stop", reasoning?: string) => new Response(JSON.stringify({ choices: [{ finish_reason: finish, message: { content, ...(reasoning ? { reasoning } : {}) } }] }), { status: 200 });
+  beforeEach(() => vi.stubEnv("OPENROUTER_API_KEY", "or-key"));
+
+  it("retries once with a bigger budget when the first reply is empty because the model spent it thinking", async () => {
+    fetchMock.mockResolvedValueOnce(reply(null, "length", "hmm, let me think...")).mockResolvedValueOnce(reply("Hello crew."));
+    expect(await chat({ model: "anthropic/claude-haiku-5.5", system: "s", prompt: "p" })).toBe("Hello crew.");
+    const [first, second] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect([first.max_tokens, second.max_tokens]).toEqual([3000, 6000]);
+    expect(second.reasoning).toEqual({ effort: "minimal" });
+  });
+
+  it("retries when the reply is cut off mid-sentence, rather than returning half a line", async () => {
+    fetchMock.mockResolvedValueOnce(reply("I was staring into the microwave wondering if", "length")).mockResolvedValueOnce(reply("I was staring into the microwave, and it stared back."));
+    expect(await chat({ model: "google/gemini-3.6-flash", system: "s", prompt: "p" })).toBe("I was staring into the microwave, and it stared back.");
+  });
+
+  it("says so, in plain words, when it still fails, and does not return a cut-off line", async () => {
+    fetchMock.mockImplementation(async () => reply("I was staring into the", "length"));
+    await expect(chat({ model: "google/gemini-3.6-flash", system: "s", prompt: "p" })).rejects.toThrow(/cut off before it finished.*another writing model/);
+    fetchMock.mockReset().mockImplementation(async () => reply("", "length", "thinking forever"));
+    await expect(chat({ model: "anthropic/claude-haiku-5.5", system: "s", prompt: "p" })).rejects.toThrow(/no text.*thinking/);
+  });
+
+  it("reads replies given as a list of parts", async () => {
+    fetchMock.mockResolvedValue(reply([{ type: "text", text: "Hello " }, { type: "text", text: "there." }]));
+    expect(await chat({ model: "a/one", system: "s", prompt: "p" })).toBe("Hello there.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,4 +1,5 @@
 import { authorize } from "../auth.js";
+import { stationsNear } from "../coverage.js";
 import { getHostStatus } from "../host-store.js";
 import { listQueue } from "../queue-store.js";
 import { listSchedules } from "../schedule-store.js";
@@ -17,7 +18,18 @@ export async function handleStations(req: Request, id: string | undefined, actio
   const json = async () => { try { return await req.json(); } catch { return undefined; } };
 
   if (!id) {
-    if (req.method === "GET") return Response.json({ stations: await listStations() });
+    if (req.method === "GET") {
+      const stations = await listStations();
+      // ?near=lat,lon (or ?place=Houston, TX is looked up first by the caller via /api/places): also rank the stations by distance from that point
+      // and say whether each one's coverage circle contains it. For choosing which stations an event drop is relevant to (docs/COVERAGE.md).
+      const near = new URL(req.url).searchParams.get("near");
+      if (near) {
+        const [lat, lon] = near.split(",").map(Number);
+        if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return Response.json({ error: "near is lat,lon, for example 29.76,-95.37" }, { status: 400 });
+        return Response.json({ stations, near: stationsNear(stations, { lat, lon }) });
+      }
+      return Response.json({ stations });
+    }
     if (req.method === "POST") {
       const clean = sanitizeStation(await json());
       if ("error" in clean) return Response.json({ error: clean.error }, { status: 400 });

@@ -41,12 +41,13 @@ describe("templates in /api/generate", () => {
     expect(body.templateMissing).toEqual(["secret_thing"]);
   });
 
-  it("keeps the placeholders in the written line (so it can be edited) and shows what it would say now", async () => {
+  it("fills placeholders in the text-only line too, and keeps the writer's version as `template`", async () => {
     vi.mocked(writeDjLine).mockResolvedValue("It's {{time}} on {{station}}.");
     const res = await handleGenerate(post("/api/generate", { mode: "ai", prompt: "time check", station: "krap", textOnly: true }));
-    const body = (await res.json()) as { scriptText: string; filledIn: string };
-    expect(body.scriptText).toBe("It's {{time}} on {{station}}.");
-    expect(body.filledIn).toMatch(/^It's \d{1,2}:\d{2} (AM|PM) on KRAP\.$/);
+    const body = (await res.json()) as { scriptText: string; template: string };
+    expect(body.scriptText).toMatch(/^It's \d{1,2}:\d{2} (AM|PM) on KRAP\.$/);
+    expect(body.scriptText).not.toContain("{{");
+    expect(body.template).toBe("It's {{time}} on {{station}}.");
     expect(vi.mocked(synthesizeSpeech)).not.toHaveBeenCalled();
   });
 });

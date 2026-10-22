@@ -13,7 +13,7 @@ export const ELEVEN_PREFIX = "elevenlabs/";
 export const isElevenModel = (id: string | undefined): boolean => Boolean(id && id.startsWith(ELEVEN_PREFIX));
 export const elevenConfigured = (): boolean => Boolean(apiKey("elevenlabs"));
 
-export const ELEVEN_MODELS = ["eleven_flash_v2_5", "eleven_turbo_v2_5", "eleven_multilingual_v2"];
+export const ELEVEN_MODELS = ["eleven_flash_v2_5", "eleven_turbo_v2_5", "eleven_multilingual_v2", "eleven_v3"];
 const BASE = () => (process.env.ELEVENLABS_BASE_URL || "https://api.elevenlabs.io").replace(/\/+$/, "");
 const VOICE_ID = /^[A-Za-z0-9]{16,40}$/;
 

@@ -199,25 +199,44 @@ async function errorMessage(res: Response): Promise<string> {
   return `OpenRouter returned ${res.status}`;
 }
 
+// Token budgets. "Thinking" models (Gemini 3.x, Claude with reasoning, DeepSeek R1...) spend part of max_tokens on reasoning BEFORE the
+// answer, so a small cap gives empty or cut-off text even for a one-line drop. The budget is generous (you only pay for what is
+// generated), reasoning effort is asked to be low, and an empty or cut-off reply is retried once with a bigger budget.
+export const WRITE_MAX_TOKENS = 3000;
+export const IMAGE_MAX_TOKENS = 2000;
+
+interface Choice { message?: { content?: unknown; reasoning?: unknown }; finish_reason?: string }
+
+// A reply's text: a string, or (some models) an array of parts.
+function textOf(content: unknown): string {
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) return content.map((p) => (p && typeof p === "object" && typeof (p as { text?: unknown }).text === "string" ? (p as { text: string }).text : "")).join("").trim();
+  return "";
+}
+
+async function complete(model: string, messages: unknown[], maxTokens: number, timeoutMs: number, hint: string): Promise<string> {
+  let budget = maxTokens;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const res = await fetch(`${base()}/chat/completions`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ model, max_tokens: budget, ...(attempt === 0 ? { reasoning: { effort: "low" } } : { reasoning: { effort: "minimal" } }), messages }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) throw new Error(await errorMessage(res));
+    const choice = ((await res.json()) as { choices?: Choice[] }).choices?.[0];
+    const text = textOf(choice?.message?.content);
+    const cutOff = choice?.finish_reason === "length";
+    if (text && !cutOff) return text;
+    if (attempt === 0) { budget *= 2; continue; }                       // ran out of tokens (reasoning) or came back empty: once more, with room
+    if (text && cutOff) throw new Error(`${model} was cut off before it finished (it spends many tokens thinking). Try another writing model.`);
+    throw new Error(`${model} returned no text${hint}${choice?.message?.reasoning ? " (it used its whole budget thinking; try another writing model)" : ""}`);
+  }
+  throw new Error(`${model} returned no text`);
+}
+
 export async function chat(options: { model: string; system: string; prompt: string; maxTokens?: number }): Promise<string> {
-  const res = await fetch(`${base()}/chat/completions`, {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify({
-      model: options.model,
-      max_tokens: options.maxTokens ?? 300,
-      messages: [
-        { role: "system", content: options.system },
-        { role: "user", content: options.prompt },
-      ],
-    }),
-    signal: AbortSignal.timeout(25_000),
-  });
-  if (!res.ok) throw new Error(await errorMessage(res));
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const text = body.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error(`${options.model} returned no text`);
-  return text;
+  return complete(options.model, [{ role: "system", content: options.system }, { role: "user", content: options.prompt }], options.maxTokens ?? WRITE_MAX_TOKENS, 40_000, "");
 }
 
 // A chat completion that also looks at one image (a data: URL). The model must accept images; OPENROUTER_VISION_MODEL picks it
@@ -228,24 +247,10 @@ export const visionModel = (): string => {
 };
 
 export async function chatWithImage(options: { model: string; system: string; prompt: string; image: string; maxTokens?: number }): Promise<string> {
-  const res = await fetch(`${base()}/chat/completions`, {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify({
-      model: options.model,
-      max_tokens: options.maxTokens ?? 900,
-      messages: [
-        { role: "system", content: options.system },
-        { role: "user", content: [{ type: "text", text: options.prompt }, { type: "image_url", image_url: { url: options.image } }] },
-      ],
-    }),
-    signal: AbortSignal.timeout(40_000),
-  });
-  if (!res.ok) throw new Error(await errorMessage(res));
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const text = body.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error(`${options.model} returned no text (does it accept images?)`);
-  return text;
+  return complete(options.model, [
+    { role: "system", content: options.system },
+    { role: "user", content: [{ type: "text", text: options.prompt }, { type: "image_url", image_url: { url: options.image } }] },
+  ], options.maxTokens ?? IMAGE_MAX_TOKENS, 50_000, " (does it accept images?)");
 }
 
 export interface OpenRouterSpeech {

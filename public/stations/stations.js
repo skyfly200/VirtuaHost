@@ -8,7 +8,7 @@ import { modelVoiceFields } from '../shared/voicepicker.js';
 import { createSpeaker } from '../shared/speaker.js';
 import { keyBox } from '../shared/keybox.js';
 
-const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], lat: '', lon: '', tempUnit: '', variablesText: '', autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
+const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], place: null, coverageKm: '', transmitter: null, lat: '', lon: '', tempUnit: '', variablesText: '', autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
 const LINES = (v) => v.split('\n').map((l) => l.trim()).filter(Boolean);
 const clock = (tz) => { try { return new Intl.DateTimeFormat([], { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date()); } catch { return ''; } };
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
@@ -103,6 +103,87 @@ export async function mountStationProfiles(root, api) {
     });
     const select = (label, key, pairs, blankLabel) => h('label', { class: 'field' }, label, h('select', { onchange: (e) => { c[key] = e.target.value; } }, h('option', { value: '' }, blankLabel), pairs.map(([v, t]) => h('option', { value: v, selected: v === c[key] }, t))));
 
+    // Find the station's place by name (town, "Houston, TX"): fills in the city, coordinates and time zone, so nobody types latitude and longitude.
+    const placeInput = h('input', { value: (c.place && c.place.label) || c.city || '', placeholder: 'Town or city, for example Houston, TX', 'aria-label': 'Find the station\'s place' });
+    const placeResults = h('div', { class: 'stack' });
+    const placeNote = h('p', { class: 'small muted' });
+    const paintPlaceNote = () => clear(placeNote, c.place
+      ? `📍 ${c.place.label}${c.lat !== '' && c.lat !== undefined ? ` (${c.lat}, ${c.lon})` : ''}${c.tz ? ` · ${c.tz}` : ''}. Used for weather, alerts, {{place}} and {{state}}, and to tell which stations are near an event.`
+      : 'No place chosen yet. Search for the town or city; the coordinates and time zone are filled in for you.');
+    paintPlaceNote();
+    async function findPlace() {
+      const q = placeInput.value.trim();
+      if (q.length < 2) { toast('Type at least two letters of a town or city.', 'error'); return; }
+      clear(placeResults, h('span', { class: 'muted small' }, 'Searching...'));
+      try {
+        const { places } = await api.get('/places', { query: { q } });
+        clear(placeResults, places.length ? places.map((p) => h('button', { type: 'button', class: 'chip', title: `${p.lat}, ${p.lon}${p.tz ? ` · ${p.tz}` : ''}`, onclick: () => {
+          c.place = { label: p.label, name: p.name, admin1: p.admin1, countryCode: p.countryCode };
+          c.city = p.name; c.lat = p.lat; c.lon = p.lon; if (p.tz) c.tz = p.tz;
+          paintEditor();
+        } }, `${p.label}${p.population ? ` (${p.population.toLocaleString()})` : ''}`)) : h('span', { class: 'bad small' }, 'No match. Try the town name alone, or add the state ("Springfield, IL").'));
+      } catch (err) { clear(placeResults, h('span', { class: 'bad small' }, err.message)); }
+    }
+    placeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); findPlace(); } });
+    const placeBlock = h('div', { class: 'stack' },
+      h('label', { class: 'field' }, 'Where is it? (find by name)', h('div', { class: 'row' }, placeInput, h('button', { type: 'button', onclick: findPlace }, 'Find'),
+        c.place ? h('button', { type: 'button', class: 'link danger', onclick: () => { c.place = null; c.lat = ''; c.lon = ''; paintEditor(); } }, 'Clear') : null)),
+      placeResults, placeNote,
+      h('label', { class: 'field' }, 'Or just type how far it can be heard (km): used when there is no transmitter above', h('input', { type: 'number', min: 1, max: 3000, value: c.coverageKm || '', placeholder: 'e.g. 60', oninput: (e) => { c.coverageKm = e.target.value; } })));
+    // The transmitter and antenna: a quick power-based estimate of where the station is heard (a circle, or a rough ellipse for a directional
+    // antenna). It ignores terrain, so it is for decisions like "is this alert or event in range", not a coverage study (docs/COVERAGE.md).
+    const tx = c.transmitter ||= { antenna: 'ground-plane', environment: 'suburban' };
+    const txResult = h('div', { class: 'stack' });
+    let txTimer = null; let txSeq = 0;
+    const txNum = (label, key, props = {}) => h('label', { class: 'field' }, label, h('input', { type: 'number', step: 'any', min: 0, value: tx[key] ?? '', ...props, oninput: (e) => { tx[key] = e.target.value; refreshTx(); } }));
+    const txDirectional = () => (tx.directional ||= { azimuthDeg: '', beamwidthDeg: '60', frontToBackDb: '20' });
+    const diagram = (geo) => {
+      const rings = geo.features; const [lon0, lat0] = [Number(c.lon), Number(c.lat)]; const k = Math.cos((lat0 * Math.PI) / 180);
+      const pts = (f) => f.geometry.coordinates[0].map(([lo, la]) => [(lo - lon0) * k, -(la - lat0)]);
+      const span = Math.max(...pts(rings[2]).flat().map(Math.abs)) || 1;
+      const path = (f) => `M${pts(f).map(([x, y]) => `${(x / span) * 90 + 100},${(y / span) * 90 + 100}`).join('L')}Z`;
+      const ns = 'http://www.w3.org/2000/svg';
+      const el = (tag, attrs, text) => { const n = document.createElementNS(ns, tag); for (const [a, v] of Object.entries(attrs)) n.setAttribute(a, v); if (text) n.textContent = text; return n; };
+      const svg = el('svg', { viewBox: '0 0 200 200', width: '200', height: '200', role: 'img', 'aria-label': 'Estimated coverage: strong, good and fringe rings around the transmitter' });
+      [['fringe', .12], ['good', .22], ['strong', .4]].forEach(([name, op]) => svg.append(el('path', { d: path(rings.find((r) => r.properties.level === name)), fill: 'var(--accent, #5b3df5)', 'fill-opacity': op, stroke: 'var(--accent, #5b3df5)', 'stroke-width': '1' })));
+      svg.append(el('circle', { cx: 100, cy: 100, r: 3, fill: 'currentColor' }), el('text', { x: 100, y: 10, 'text-anchor': 'middle', 'font-size': 10, fill: 'currentColor' }, 'N'));
+      return svg;
+    };
+    async function refreshTx() {
+      clearTimeout(txTimer);
+      const mine = ++txSeq;
+      txTimer = setTimeout(async () => {
+        if (c.lat === '' || c.lat === undefined || c.lon === '' || c.lon === undefined) { clear(txResult, h('p', { class: 'small muted' }, 'Find the station\'s place first: the estimate needs its location.')); return; }
+        if (!tx.heightFt || (!tx.powerWatts && !tx.erpWatts)) { clear(txResult, h('p', { class: 'small muted' }, 'Enter the transmitter power and the antenna height to see the estimate.')); return; }
+        try {
+          const { coverage } = await api.post('/coverage', { lat: c.lat, lon: c.lon, transmitter: tx });
+          if (mine !== txSeq) return;
+          if (!coverage) { clear(txResult, h('p', { class: 'small muted' }, 'Not enough to estimate yet.')); return; }
+          const km = (n) => `${n.toFixed(n < 10 ? 1 : 0)} km (${(n * 0.621371).toFixed(n < 10 ? 1 : 0)} mi)`;
+          clear(txResult, h('div', { class: 'row', style: 'align-items:flex-start' }, diagram(coverage.geojson),
+            h('div', { class: 'stack small' }, h('strong', {}, `About ${coverage.erpWatts < 10 ? coverage.erpWatts.toFixed(2) : Math.round(coverage.erpWatts)} W effective radiated power`),
+              coverage.levels.map((l) => h('div', {}, `${l.label} (${l.dbu} dBµV/m): `, h('strong', {}, km(l.km)))),
+              h('details', {}, h('summary', {}, 'What this assumes'), h('ul', {}, coverage.assumptions.map((a) => h('li', {}, a)))))));
+        } catch (err) { clear(txResult, h('p', { class: 'bad small' }, err.message)); }
+      }, 350);
+    }
+    const antennaSelect = h('label', { class: 'field' }, 'Antenna', h('select', { onchange: (e) => { tx.antenna = e.target.value; paintEditor(); } },
+      [['ground-plane', 'Quarter-wave ground plane (omni)'], ['dipole', 'Half-wave dipole (omni)'], ['collinear', 'Collinear / multi-bay (omni, about 3 dB gain)'], ['directional', 'Directional (yagi, panel)'], ['other', 'Other (enter the gain)']].map(([v, t]) => h('option', { value: v, selected: v === tx.antenna }, t))));
+    const txBlock = h('div', { class: 'stack' },
+      h('h3', {}, 'Transmitter and antenna (coverage estimate)'),
+      h('p', { class: 'small muted' }, 'A quick estimate from power, antenna and height: a circle for an omni antenna, a rough ellipse for a directional one. It ignores hills and mountains, so use it to decide whether an alert or an event is in range, not as a coverage study. Used for which alerts to follow and which stations an event is near.'),
+      h('div', { class: 'grid cols' }, txNum('Transmitter power (watts)', 'powerWatts', { placeholder: 'e.g. 5' }), antennaSelect, txNum('Antenna height above ground (feet)', 'heightFt', { placeholder: 'e.g. 50' })),
+      h('div', { class: 'grid cols' },
+        txNum('Antenna gain over a dipole (dB, optional)', 'gainDbd', { step: 'any', min: -20, placeholder: 'default for the antenna' }), txNum('Cable and connector loss (dB)', 'lossDb', { placeholder: '0' }),
+        h('label', { class: 'field' }, 'Surroundings', h('select', { onchange: (e) => { tx.environment = e.target.value; refreshTx(); } }, [['open', 'Open country (no extra loss)'], ['suburban', 'Suburban / light trees (8 dB)'], ['urban', 'Dense city (16 dB)']].map(([v, t]) => h('option', { value: v, selected: v === tx.environment }, t))))),
+      h('div', { class: 'grid cols' },
+        txNum('Height above average terrain, HAAT (feet, optional)', 'haatFt', { placeholder: 'better than height above ground, esp. on a hill' }), txNum('Effective radiated power (watts, if you know it)', 'erpWatts', { placeholder: 'overrides power x gain' }), txNum('Frequency (MHz, optional)', 'frequencyMHz', { placeholder: 'e.g. 98.1' })),
+      tx.antenna === 'directional' ? h('div', { class: 'grid cols' },
+        h('label', { class: 'field' }, 'Points toward (degrees from north)', h('input', { type: 'number', min: 0, max: 360, value: txDirectional().azimuthDeg, oninput: (e) => { txDirectional().azimuthDeg = e.target.value; refreshTx(); } })),
+        h('label', { class: 'field' }, 'Beamwidth (degrees)', h('input', { type: 'number', min: 10, max: 360, value: txDirectional().beamwidthDeg, oninput: (e) => { txDirectional().beamwidthDeg = e.target.value; refreshTx(); } })),
+        h('label', { class: 'field' }, 'Weaker behind it by (dB)', h('input', { type: 'number', min: 0, max: 60, value: txDirectional().frontToBackDb, oninput: (e) => { txDirectional().frontToBackDb = e.target.value; refreshTx(); } }))) : null,
+      txResult);
+    refreshTx();
     const save = h('button', { class: 'primary', type: 'button', onclick: async () => {
       save.disabled = true;
       try {
@@ -127,6 +208,8 @@ export async function mountStationProfiles(root, api) {
       area('About it', 'description', 3),
       listField('Genres and vibes (one per line)', 'genres', 3, 'punk\ntalk\nlate night'),
       h('h3', {}, 'Where it is'),
+      placeBlock,
+      txBlock,
       h('div', { class: 'grid cols' }, text('City', 'city'), h('label', { class: 'field' }, 'Time zone (its wall clock: schedules and promos use it)', h('input', { value: c.tz, list: 'st-zones', oninput: (e) => { c.tz = e.target.value; } }), zones), text('Contact', 'contact', { placeholder: 'studio line or email' })),
       h('div', { class: 'grid cols' }, text('Website', 'website', { placeholder: 'https://' }), text('Stream address', 'streamUrl', { placeholder: 'https://.../stream' })),
       h('div', {}, h('div', { class: 'label' }, 'Links (chat, socials, schedule page)'), links),
@@ -140,7 +223,7 @@ export async function mountStationProfiles(root, api) {
       h('div', { class: 'grid cols' }, listField('Writing models', 'textModels', 4, 'openai/gpt-4o-mini'), listField('Speech models', 'speechModels', 4, 'hexgrad/kokoro-82m|af_heart')),
       c.id ? keyBox(api, { station: c.id }) : null,
       h('h3', {}, 'Placeholders for drops'),
-      h('p', { class: 'small muted' }, 'Drops can say {{time}}, {{weather}}, {{station}}, {{dj}} and more, filled in when the audio is made. Weather needs a location: give the coordinates, or leave them empty and the city above is looked up (Open-Meteo, free).'),
+      h('p', { class: 'small muted' }, 'Drops can say {{time}}, {{weather}}, {{station}}, {{dj}} and more, filled in when the audio is made. Weather and alerts need a location: find the place above, or enter the coordinates here by hand.'),
       h('div', { class: 'grid cols' }, text('Latitude', 'lat', { placeholder: '29.76' }), text('Longitude', 'lon', { placeholder: '-95.37' }),
         h('label', { class: 'field' }, 'Temperature unit', h('select', { onchange: (e) => { c.tempUnit = e.target.value; } }, [['', 'Automatic (F in the Americas)'], ['F', 'Fahrenheit'], ['C', 'Celsius']].map(([v, t]) => h('option', { value: v, selected: v === (c.tempUnit || '') }, t))))),
       area('Your own placeholders, one per line as name=text (for example sponsor=Joe\'s Pizza, then {{sponsor}} in a drop)', 'variablesText', 3, { placeholder: 'sponsor=Joe\'s Pizza\nhotline=555 0100' }),

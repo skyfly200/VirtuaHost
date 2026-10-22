@@ -60,7 +60,7 @@ export async function writeScript(options: WriteOptions): Promise<{ text: string
 // A free-form completion (used to draft personas): the same two providers as writeScript, with a larger reply budget.
 export async function complete(options: { system: string; prompt: string; provider: ProviderName; textModel?: string }): Promise<string> {
   if (options.provider === "openrouter") {
-    return openrouter.chat({ model: options.textModel ?? openrouter.defaultTextModel(), system: options.system, prompt: options.prompt, maxTokens: 1200 });
+    return openrouter.chat({ model: options.textModel ?? openrouter.defaultTextModel(), system: options.system, prompt: options.prompt, maxTokens: openrouter.WRITE_MAX_TOKENS });
   }
   return writeDjLine(options.prompt, options.system);
 }

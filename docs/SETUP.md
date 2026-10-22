@@ -87,6 +87,7 @@ and say_on_air/play_clip/schedule/skip/volume/host_say (on air; their descriptio
 - stdio (local): `{"mcpServers":{"station":{"command":"node","args":["/path/chips-voice/googleTextToSpeech1/mcp/stdio.js"],"env":{"CHIPS_VOICE_URL":"https://your-host","CHIPS_VOICE_KEY":"<API_KEY>"}}}}`
 - HTTP: connect a client to `$URL/mcp` with header `x-api-key`. Stateless; JSON responses.
 - Safe mode: `MCP_READ_ONLY=true` (server env, applies to both) registers only read tools.
+- **The Netlify site has its own MCP endpoint** (`/api/mcp`) for managing stations, clips, schedules, weather alerts and, through the hub, several live stations: see [MCP.md](MCP.md). This section is the Chips Voice server's MCP (the stream itself).
 
 ## Deploying on Netlify
 

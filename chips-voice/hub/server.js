@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Starts the hub. Env: HUB_KEY (required, 12+ chars), HUB_PORT=3200, HUB_DATA=./data/hub.json, VOICE_URL, VOICE_KEY,
+// ALERTS_CONTACT (an email or URL for the National Weather Service User-Agent), ALERTS_POLL_SECONDS=120 (0 turns the poller off),
 // HUB_CORS_ORIGIN (only needed if a browser calls the hub directly; the web UI reaches it through the site's /api/hub proxy).
 const http = require('http');
 const path = require('path');
@@ -10,6 +11,7 @@ function main() {
   const store = createStore(process.env.HUB_DATA || path.join(__dirname, 'data', 'hub.json'));
   const hub = createHub({
     store, key: process.env.HUB_KEY || '', voiceUrl: process.env.VOICE_URL || '', voiceKey: process.env.VOICE_KEY || '', corsOrigin: process.env.HUB_CORS_ORIGIN || '*',
+    alertsContact: process.env.ALERTS_CONTACT || '', alertPollMs: parseInt(process.env.ALERTS_POLL_SECONDS || '120', 10) * 1000,
   });
   const server = http.createServer((req, res) => hub.handle(req, res));
   hub.start();
