@@ -47,7 +47,7 @@ const month = (now = new Date()) => now.toISOString().slice(0, 7);
 const keyFor = (username: string, period: string) => `ai/${username}/${period}`;
 
 async function limitsFor(who: Principal): Promise<Quota | null> {
-  if (who.role === "admin") return null;                        // unlimited
+  if (who.role === "admin" || who.via === "service") return null;   // unlimited: a service key's spend is capped by the hub (its daily cap), not per-user quotas
   return effectiveQuota((await getUser(who.username))?.quota);
 }
 

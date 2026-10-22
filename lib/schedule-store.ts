@@ -1,7 +1,8 @@
 import { getStore } from "@netlify/blobs";
 import type { Schedule } from "./schedule.js";
 
-const store = () => getStore("dj-schedules");
+// Strong consistency: a read right after a save returns the saved version, not the one from before (Blobs is otherwise eventually consistent).
+const store = () => getStore({ name: "dj-schedules", consistency: "strong" });
 const key = (id: string) => `schedules/${id}.json`;
 
 export async function listSchedules(): Promise<Schedule[]> {

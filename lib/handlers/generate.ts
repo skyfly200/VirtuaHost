@@ -5,6 +5,8 @@ import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "../cues.js";
 import { cleanTone, findFormat } from "../formats.js";
 import { getPersona } from "../persona-store.js";
 import { getStation } from "../station-profile-store.js";
+import type { Station } from "../station-profile.js";
+import type { Persona } from "../personas.js";
 import { listClips, saveClip } from "../store.js";
 import { embedTags, sanitizeInfo } from "../clip-info.js";
 import { sendToStation, stationConfigured } from "../station-send.js";
@@ -14,6 +16,8 @@ import { chargeAi, checkCount } from "../quota.js";
 import { createLogger } from "../log.js";
 import { contextFor, promptHelp, renderTemplate } from "../drop-template.js";
 import { elevenConfigured, isElevenModel } from "../elevenlabs.js";
+import { copiedExample, exampleLines } from "../copy-guard.js";
+import { recordModelResult } from "../model-health.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
 
 const log = createLogger("generate");
@@ -27,7 +31,7 @@ export function stripSfxTags(text: string): { text: string; removed: boolean } {
 }
 
 export async function handleGenerate(req: Request): Promise<Response> {
-  const { who, denied } = await authorize(req);
+  const { who, denied } = await authorize(req, { scope: "generate" });
   if (denied) return denied;
 
   if (req.method !== "POST") {
@@ -65,13 +69,13 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   if (over) return over;
 
   // The station this is for: its name and tagline shape AI-written lines, and its defaults fill in what the request leaves out.
-  let station;
+  let station: Station | null | undefined;
   if (body.station !== undefined) {
     if (typeof body.station !== "string") return Response.json({ error: "station must be an id" }, { status: 400 });
     station = await getStation(body.station);
     if (!station) return Response.json({ error: `Unknown station "${body.station.slice(0, 50)}"` }, { status: 400 });
   }
-  let persona;
+  let persona: Persona | null | undefined;
   const personaId = body.persona !== undefined ? body.persona : station?.defaultPersonaId || undefined;
   if (personaId !== undefined) {
     if (typeof personaId !== "string") return Response.json({ error: "persona must be an id" }, { status: 400 });
@@ -112,12 +116,30 @@ async function generate(req: Request, who: Principal): Promise<Response> {
 
   // Placeholders like {{time}} or {{weather}} are filled in by the engine after the words are written and before they are spoken.
   const targetSeconds = typeof body.seconds === "number" && body.seconds >= 3 && body.seconds <= 90 ? Math.round(body.seconds) : undefined;
-  const tctx = contextFor({ station, persona, targetSeconds });
+  // `at`: the moment the line will be heard, for lines written a few minutes before they air (just-in-time drops). Ignored when it is not within
+  // the next 3 hours (or the last 5 minutes), so a wrong value can never put the wrong time on air.
+  const atMs = typeof body.at === "string" ? Date.parse(body.at) : NaN;
+  const hearAt = Number.isFinite(atMs) && atMs - Date.now() <= 3 * 3600e3 && atMs - Date.now() >= -5 * 60e3 ? new Date(atMs) : undefined;
+  const tctx = contextFor({ station, persona, targetSeconds, ...(hearAt ? { now: hearAt } : {}) });
 
   let scriptText: string;
+  // Models sometimes copy an example line from the persona's brief; one retry asks for something new, and if it is still a copy it is reported.
+  const examples = persona ? exampleLines(persona.instructions, persona.templates) : [];
+  let copied: string | undefined;
   try {
-    scriptText = mode === "ai" ? (await writeScript({ prompt: input, provider, textModel, tone, format, persona: persona?.instructions, explicit: body.explicit === true, placeholders: promptHelp(tctx), targetSeconds, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text : input;
+    const write = (prompt: string) => writeScript({ prompt, provider, textModel, tone, format, persona: persona?.instructions, explicit: body.explicit === true, placeholders: promptHelp(tctx), targetSeconds, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) });
+    if (mode === "ai") {
+      let out = await write(input);
+      copied = copiedExample(out.text, examples);
+      if (copied) {
+        out = await write(`${input}\n\n(Your last attempt repeated one of the example lines from your character brief. Write a completely different line in the same voice.)`);
+        copied = copiedExample(out.text, examples);
+      }
+      scriptText = out.text;
+      if (textModel) recordModelResult(textModel, true);
+    } else scriptText = input;
   } catch (err) {
+    if (textModel) recordModelResult(textModel, false, (err as Error).message);
     log.error("script generation failed", { provider, textModel, err });
     return Response.json({ error: `Script generation failed: ${(err as Error).message}` }, { status: 502 });
   }
@@ -130,7 +152,12 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   // writer wrote, with its {{placeholders}}, for anyone who wants to keep them (a schedule).
   if (body.textOnly === true) {
     if (mode !== "ai") return Response.json({ error: 'textOnly needs mode "ai"' }, { status: 400 });
-    return Response.json({ textOnly: true, scriptText: filled.text, ...(template !== filled.text ? { template } : {}), ...(filled.missing.length ? { templateMissing: filled.missing } : {}), provider, ...(textModel ? { textModel } : {}) });
+    // `filledIn` is the line as it would be spoken now ({{time}} and friends filled in) and is the field to use. `raw` is the writer's version with its
+    // {{placeholders}}. `scriptText` equals `filledIn` (kept for older callers); `template` is `raw`, only when it differs.
+    return Response.json({
+      textOnly: true, filledIn: filled.text, raw: template, scriptText: filled.text, ...(template !== filled.text ? { template } : {}), ...(filled.missing.length ? { templateMissing: filled.missing } : {}),
+      ...(/\{\{[^}]*\}\}/.test(filled.text) ? { unresolvedPlaceholders: true } : {}), ...(copied ? { copiedExample: copied } : {}), provider, ...(textModel ? { textModel } : {}),
+    });
   }
 
   scriptText = filled.text;
@@ -164,7 +191,7 @@ async function generate(req: Request, who: Principal): Promise<Response> {
 
   if (body.preview === true) {
     return Response.json({
-      preview: true, scriptText, audio: spoken.audio.toString("base64"), mimeType: spoken.mimeType, voice: spoken.voice, provider, speechModel: spoken.model,
+      preview: true, filledIn: scriptText, scriptText, audio: spoken.audio.toString("base64"), mimeType: spoken.mimeType, voice: spoken.voice, provider, speechModel: spoken.model,
       ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}), ...(filled.missing.length ? { templateMissing: filled.missing } : {}),
     });
   }

@@ -107,6 +107,27 @@ describe("generate with OpenRouter", () => {
     expect((await handleGenerate(post({ mode: "ai", prompt: "x", persona: "nobody" }))).status).toBe(400);
   });
 
+  it("retries once when the writer copies one of the persona's example lines, and reports it if it still does", async () => {
+    const { BUILTIN_PERSONAS } = await import("../../lib/personas.js");
+    const example = BUILTIN_PERSONAS.find((p) => p.id === "chip")!.templates[0].replace(/\{artist\}/g, "Boards of Canada").replace(/\{title\}/g, "Roygbiv");
+    mockedChat.mockResolvedValueOnce(example).mockResolvedValueOnce("A completely fresh thing to say about the night shift.");
+    const fresh = (await (await handleGenerate(post({ mode: "ai", prompt: "link", persona: "chip", textOnly: true }))).json()) as Record<string, unknown>;
+    expect(mockedChat).toHaveBeenCalledTimes(2);
+    expect(mockedChat.mock.calls[1][0].prompt).toContain("repeated one of the example lines");
+    expect(fresh.filledIn).toBe("A completely fresh thing to say about the night shift.");
+    expect(fresh.copiedExample).toBeUndefined();
+    mockedChat.mockReset().mockResolvedValue(example);
+    const stuck = (await (await handleGenerate(post({ mode: "ai", prompt: "link", persona: "chip", textOnly: true }))).json()) as Record<string, unknown>;
+    expect(stuck.copiedExample).toEqual(expect.any(String));
+  });
+
+  it("refuses a retired writing model with a clear message", async () => {
+    vi.stubEnv("OPENROUTER_ALLOW_ANY_MODEL", "true");
+    const res = await handleGenerate(post({ mode: "ai", prompt: "x", textModel: "anthropic/claude-3.5-haiku" }));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as Body).error).toMatch(/retired/);
+  });
+
   it("writes the line without calling the speech service when asked for text only", async () => {
     const res = await handleGenerate(post({ mode: "ai", prompt: "hype friday", textOnly: true }));
     expect(res.status).toBe(200);

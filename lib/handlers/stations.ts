@@ -4,6 +4,7 @@ import { getHostStatus } from "../host-store.js";
 import { listQueue } from "../queue-store.js";
 import { listSchedules } from "../schedule-store.js";
 import { sanitizeStation, STATION_ID, type Station } from "../station-profile.js";
+import { stationWarnings } from "../station-warnings.js";
 import { deleteStation, getStation, listStations, newStationId, saveStation } from "../station-profile-store.js";
 import { listClips } from "../store.js";
 
@@ -12,14 +13,17 @@ import { listClips } from "../store.js";
 //   POST /api/stations             create
 //   GET|PUT|DELETE /api/stations/:id
 //   GET /api/stations/:id/summary  what the site holds for it: clips, schedules, queued items, host status
+// A station as the UI gets it: the saved profile plus `warnings` (clocks that disagree, no location for {{weather}}); never saved.
+const shown = (s: Station) => ({ ...s, warnings: stationWarnings(s) });
+
 export async function handleStations(req: Request, id: string | undefined, action: string | undefined): Promise<Response> {
-  const { denied } = await authorize(req, { admin: req.method !== "GET" });
+  const { denied } = await authorize(req, { admin: req.method !== "GET", scope: "stations.read" });
   if (denied) return denied;
   const json = async () => { try { return await req.json(); } catch { return undefined; } };
 
   if (!id) {
     if (req.method === "GET") {
-      const stations = await listStations();
+      const stations = (await listStations()).map(shown);
       // ?near=lat,lon (or ?place=Houston, TX is looked up first by the caller via /api/places): also rank the stations by distance from that point
       // and say whether each one's coverage circle contains it. For choosing which stations an event drop is relevant to (docs/COVERAGE.md).
       const near = new URL(req.url).searchParams.get("near");
@@ -35,7 +39,7 @@ export async function handleStations(req: Request, id: string | undefined, actio
       if ("error" in clean) return Response.json({ error: clean.error }, { status: 400 });
       const station: Station = { id: newStationId(clean.station.name), ...clean.station };
       await saveStation(station);
-      return Response.json({ station }, { status: 201 });
+      return Response.json({ station: shown(station) }, { status: 201 });
     }
     return new Response("Method Not Allowed", { status: 405 });
   }
@@ -60,7 +64,7 @@ export async function handleStations(req: Request, id: string | undefined, actio
   }
   if (action) return new Response("Not Found", { status: 404 });
 
-  if (req.method === "GET") return Response.json({ station: existing });
+  if (req.method === "GET") return Response.json({ station: shown(existing) });
   if (existing.builtin) return Response.json({ error: "This is the placeholder station named by STATION_NAME. Create your own station to change details." }, { status: 403 });
 
   if (req.method === "PUT") {
@@ -68,7 +72,7 @@ export async function handleStations(req: Request, id: string | undefined, actio
     if ("error" in clean) return Response.json({ error: clean.error }, { status: 400 });
     const station: Station = { id, ...clean.station };
     await saveStation(station);
-    return Response.json({ station });
+    return Response.json({ station: shown(station) });
   }
   if (req.method === "DELETE") {
     await deleteStation(id);

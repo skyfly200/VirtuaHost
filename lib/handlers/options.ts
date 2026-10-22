@@ -9,12 +9,13 @@ import { libraryFeatures } from "../library/index.js";
 import { getStation } from "../station-profile-store.js";
 import { priceOf, speechTier, textTier } from "../pricing.js";
 import { contentFilter } from "../content.js";
+import { modelFlag } from "../model-health.js";
 import { modelPrices } from "../openrouter.js";
 import { TONES, FORMATS, MAX_TONE_LENGTH, fillStation } from "../formats.js";
 
 // What the test console offers: the provider in use, the models that can be chosen, tones, and script formats with examples.
 export async function handleOptions(req: Request): Promise<Response> {
-  const { who, denied } = await authorize(req);
+  const { who, denied } = await authorize(req, { scope: "options.read" });
   if (denied) return denied;
   if (req.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405 });
@@ -38,7 +39,7 @@ async function options(req: Request): Promise<Response> {
   // Price tier and (when known) USD per million tokens for each model, so the pickers can mark the dear ones.
   const listed = openrouter ? await modelPrices().catch(() => new Map()) : new Map();
   const info = openrouter ? Object.fromEntries(await Promise.all([
-    ...(await allTextModels()).map(async (m) => { const p = await priceOf(m); return [m, { tier: textTier(p), content: contentFilter(m, listed.get(m)), ...(p ? { inPerM: p.inPerM, outPerM: p.outPerM } : {}) }] as const; }),
+    ...(await allTextModels()).map(async (m) => { const p = await priceOf(m); return [m, { tier: textTier(p), content: contentFilter(m, listed.get(m)), ...(modelFlag(m) ? { flag: modelFlag(m) } : {}), ...(p ? { inPerM: p.inPerM, outPerM: p.outPerM } : {}) }] as const; }),
     ...speech.map(async (m) => { const p = await priceOf(m.id); return [m.id, { tier: speechTier(m.id, p), content: contentFilter(m.id, listed.get(m.id)), ...(p ? { inPerM: p.inPerM, outPerM: p.outPerM } : {}) }] as const; }),
   ])) : {};
 

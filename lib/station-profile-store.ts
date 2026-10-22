@@ -2,7 +2,8 @@ import { getStore } from "@netlify/blobs";
 import { randomBytes } from "node:crypto";
 import { defaultStation, slugifyStation, STATION_ID, type Station } from "./station-profile.js";
 
-const store = () => getStore("dj-stations");
+// Strong consistency: a read right after a save returns the saved version, not the one from before (Blobs is otherwise eventually consistent).
+const store = () => getStore({ name: "dj-stations", consistency: "strong" });
 const key = (id: string) => `stations/${id}.json`;
 
 // The stations you made; or the one default station (named from STATION_NAME) when there are none yet.
