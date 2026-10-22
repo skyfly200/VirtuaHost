@@ -1,0 +1,13 @@
+/* Layout for the cast and script editors (casteditor.js, lineeditor.js). Colours and form controls come from kit.css. */
+.cast-editor, .script-editor { display: grid; gap: 12px; min-width: 0; }
+.cast-rows, .line-list { display: grid; gap: 10px; }
+.cast-row, .line-row { display: grid; gap: 6px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-width: 0; }
+.cast-row-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cast-row-foot .small { flex: 1 1 180px; }
+.cast-add, .line-add { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.line-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.line-top select { flex: 1 1 140px; min-width: 0; max-width: 100%; }
+.line-actions { display: flex; gap: 4px; margin-left: auto; }
+.line-row textarea { min-height: 0; }
+.seg-row { display: flex; gap: 6px; }
+.seg-row .seg { flex: 0 0 auto; }

@@ -27,7 +27,7 @@ function inventedThings(text, ctx) {
   // "Song Title" in quotes: must be one of the given names.
   for (const m of text.matchAll(/["“]([^"”]{2,80})["”]/g)) if (!has(m[1])) problems.push({ code: 'invented-title', message: `The line quotes "${m[1]}", which was not given in the request.` });
   // "by Artist Name", "from Artist Name", "called X", "titled X", "featuring X": the capitalised run after it must be a given name.
-  for (const m of text.matchAll(/\b(?:by|called|titled|featuring|feat\.)\s+((?:[A-Z][\w'&.-]*)(?:\s+(?:of|the|and|&|[A-Z][\w'&.-]*)){0,5})/g)) {
+  for (const m of text.matchAll(/\b(?:by|called|titled|featuring|feat\.)\s+((?:[A-Z][\w'&-]*)(?:\s+(?:of|the|and|&|[A-Z][\w'&-]*)){0,5})/g)) {
     const name = m[1].replace(/\s+(of|the|and|&)$/i, '').trim();
     if (name.length > 1 && !has(name)) problems.push({ code: 'invented-name', message: `The line names "${name}", which was not given in the request.` });
   }

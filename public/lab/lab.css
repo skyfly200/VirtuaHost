@@ -6,3 +6,9 @@
 .line .text { font-size: 14px; }
 .persona-text { white-space: pre-wrap; font-size: 13px; color: var(--muted); }
 .speakers { display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+@media (max-width: 600px) {
+  .line { grid-template-columns: minmax(0, 1fr) auto; padding: 8px; }
+  .line .text { overflow-wrap: anywhere; }
+  .speakers { grid-template-columns: minmax(0, 1fr); }
+  .persona-text { overflow-wrap: anywhere; }
+}

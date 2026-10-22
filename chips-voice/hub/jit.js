@@ -88,11 +88,14 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     const startsAt = input.startsAt !== undefined ? parseWhen(input.startsAt, zoneOf(station)) : existing.startsAt;
     const constraints = cleanConstraints(input.constraints !== undefined ? input.constraints : existing && existing.constraints);
     if (constraints.event && constraints.event.startsAt !== undefined) constraints.event.startsAt = parseWhen(constraints.event.startsAt, zoneOf(station));
+    const rawScript = input.script !== undefined ? input.script : existing && existing.script;
+    const script = rawScript && rawScript.id ? { id: text(rawScript.id, 60), mode: rawScript.mode === 'draft' ? 'draft' : 'fixed' } : undefined;
+    if (script && !/^[a-z0-9][a-z0-9-]{0,59}$/.test(script.id)) throw new HubError('script.id is a saved script id from the site (lowercase letters, numbers, dashes)');
     if (kind === 'event-reminder' && !constraints.event) throw new HubError('an event-reminder slot needs constraints.event { name, startsAt }');
     return {
       id: existing ? existing.id : id(5), stationId: station.id, kind, startsAt, leadSeconds: Math.round(lead),
       personaId: text(input.personaId !== undefined ? input.personaId : existing && existing.personaId, 80), fallbackClipId: text(input.fallbackClipId !== undefined ? input.fallbackClipId : existing && existing.fallbackClipId, 120),
-      constraints, enabled: input.enabled !== undefined ? input.enabled !== false : existing ? existing.enabled !== false : true,
+      ...(script ? { script } : {}), constraints, enabled: input.enabled !== undefined ? input.enabled !== false : existing ? existing.enabled !== false : true,
       source: existing ? existing.source : text(input.source, 20) === 'schedule' ? 'schedule' : 'manual', ref: existing ? existing.ref : text(input.ref, 80), createdAt: existing ? existing.createdAt : now(),
     };
   }
@@ -169,24 +172,24 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     if (b.fails >= settings().breakerThreshold) { b.openUntil = now() + settings().breakerCooldownSeconds * 1000; audit({ who: 'jit', action: 'breaker.open', target: name, result: 'open', detail: b.lastError }); }
   }
   const transient = (r) => r.status === 0 || r.status >= 500 || r.status === 429 || r.status === 408;
-  async function siteCall(body, timeoutMs = 45000) {
-    if (generate) return generate(body);
+  async function siteCall(body, timeoutMs = 45000, apiPath = '/api/generate') {
+    if (generate) return generate(body, apiPath);
     if (!siteUrl || !siteKey) throw new HubError('set SITE_URL and SITE_KEY (a scoped service key) so the hub can write and speak lines', 503);
     try {
-      const res = await fetchImpl(new URL('/api/generate', siteUrl), { method: 'POST', headers: { 'x-api-key': siteKey, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+      const res = await fetchImpl(new URL(apiPath, siteUrl), { method: 'POST', headers: { 'x-api-key': siteKey, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
       const raw = await res.text(); let json = null;
       try { json = raw ? JSON.parse(raw) : null; } catch (err) { /* not JSON */ }
       return { status: res.status, json };
     } catch (err) { return { status: 0, json: { error: err.name === 'TimeoutError' ? 'timed out' : err.message } }; }
   }
   // Calls the site with retry + backoff for transient errors, inside the time left before `deadline`.
-  async function provider(name, body, deadline) {
+  async function provider(name, body, deadline, apiPath) {
     breakerCheck(name);
     let last;
     const tries = settings().tries;
     for (let attempt = 0; attempt < tries; attempt += 1) {
       if (now() >= deadline) { last = { status: 0, json: { error: 'ran out of time before the slot' } }; break; }
-      last = await siteCall(body);
+      last = await siteCall(body, 45000, apiPath);
       if (last.status >= 200 && last.status < 300) { breakerResult(name, true); return last; }
       if (!transient(last)) break;
       if (attempt < tries - 1) await sleep(Math.min(2000 * 2 ** attempt, Math.max(0, deadline - now() - 1000)));
@@ -235,7 +238,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     if (buf.length > 4 && buf.slice(0, 4).toString('latin1') === 'OggS') return 'audio/ogg';
     return '';
   }
-  const contentKey = (txt, slotLike) => sha256(JSON.stringify([txt, slotLike.personaId || '', (slotLike.constraints && slotLike.constraints.voice) || '', (slotLike.constraints && slotLike.constraints.speechModel) || '']));
+  const contentKey = (txt, slotLike) => sha256(JSON.stringify([txt, slotLike.script ? slotLike.script.id : '', slotLike.personaId || '', (slotLike.constraints && slotLike.constraints.voice) || '', (slotLike.constraints && slotLike.constraints.speechModel) || '']));
 
   // ---------- items ----------
   const itemView = (i, withLog = true) => (i ? {
@@ -267,6 +270,10 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     return q;
   }
 
+  const namesList = (c) => (c.names || []).map((n) => (typeof n === 'string' ? n : [n.artist, n.title].filter(Boolean).join(' - '))).filter(Boolean);
+  // A conversation is "Name: line" per line: what is checked (and counted) is the words, not the speaker labels.
+  const spokenOf = (txt, isScript) => (isScript ? String(txt).split('\n').map((l) => l.replace(/^\s*[A-Za-z0-9][A-Za-z0-9 _.'-]{0,23}:\s*/, '')).join(' ') : txt);
+
   // ---------- the pipeline ----------
   async function runPipeline(slotLike, station, item, opts) {
     const s = settings(); const sj = jitOf(station);
@@ -284,21 +291,30 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
       kind: slotLike.kind, maxChars: slotLike.constraints && slotLike.constraints.maxChars, maxSeconds: slotLike.constraints && slotLike.constraints.maxSeconds, languagePolicy: policy,
       blocklist: [...(s.blocklist || []), ...((slotLike.constraints && slotLike.constraints.blocklist) || [])], names: slotLike.constraints && slotLike.constraints.names, facts: slotLike.constraints && slotLike.constraints.facts,
       allow: slotLike.constraints && slotLike.constraints.allow, stationName: station.name, callsign: station.callsign, city: station.city, personaName: station.djName, whenPhrase: when,
-      numbersMustBeGiven: ['host-break', 'promo', 'event-reminder'].includes(slotLike.kind), site: w.site,
+      numbersMustBeGiven: ['host-break', 'promo', 'event-reminder'].includes(slotLike.kind), humanText: !!(slotLike.script && slotLike.script.mode === 'fixed'), site: w.site,
     });
     for (; attempt < 2; attempt += 1) {
       if (!written || attempt > 0) {
         const nudge = attempt > 0 ? ` (Your previous attempt was refused: ${verdict.problems.map((p) => p.code).join(', ')}. Write a different line that avoids this.)` : '';
         const t0 = now();
-        const r = await provider('text', { mode: 'ai', prompt: prompt + nudge, textOnly: true, seconds, ...(slotLike.personaId ? { persona: slotLike.personaId } : {}), ...(station.siteStationId ? { station: station.siteStationId } : {}), at: new Date(atMs).toISOString(), ...(policy === 'explicit-ok' ? { explicit: true } : {}) }, deadline);
+        let r;
+        if (slotLike.script && slotLike.script.mode === 'draft') {
+          // A saved script, written fresh by the AI from its cast and topic (every speaker in their own persona's voice).
+          const c = slotLike.constraints || {};
+          r = await provider('text', { scriptId: slotLike.script.id, ...(c.prompt || nudge ? { topic: `${c.prompt || ''}${nudge}`.trim() } : {}), seconds, ...(station.siteStationId ? { station: station.siteStationId } : {}), at: new Date(atMs).toISOString(), names: namesList(c), facts: c.facts || [], ...(policy === 'explicit-ok' ? { explicit: true } : {}) }, deadline, '/api/scripts/draft');
+        } else if (slotLike.script) {
+          r = await provider('text', { scriptId: slotLike.script.id, ...(station.siteStationId ? { station: station.siteStationId } : {}), at: new Date(atMs).toISOString() }, deadline, '/api/scripts/filled');
+        } else {
+          r = await provider('text', { mode: 'ai', prompt: prompt + nudge, textOnly: true, seconds, ...(slotLike.personaId ? { persona: slotLike.personaId } : {}), ...(station.siteStationId ? { station: station.siteStationId } : {}), at: new Date(atMs).toISOString(), ...(policy === 'explicit-ok' ? { explicit: true } : {}) }, deadline);
+        }
         usageFor(station).texts += 1;
         const body = r.json || {};
         const filledIn = typeof body.filledIn === 'string' ? body.filledIn : '';                  // never scriptText: that may still carry {{placeholders}}
-        written = { filledIn, raw: typeof body.raw === 'string' ? body.raw : '', textModel: body.textModel || '', site: { unresolvedPlaceholders: !!body.unresolvedPlaceholders, copiedExample: !!body.copiedExample, templateMissing: body.templateMissing || [] }, at: now() };
+        written = { filledIn, raw: typeof body.raw === 'string' ? body.raw : '', textModel: body.textModel || '', site: { unresolvedPlaceholders: !!body.unresolvedPlaceholders, copiedExample: Array.isArray(body.copiedExample) ? body.copiedExample.length > 0 : !!body.copiedExample, templateMissing: body.templateMissing || [] }, at: now() };
         log(item, 'write', true, `${filledIn.length} chars in ${now() - t0} ms${body.textModel ? ` (${body.textModel})` : ''}`);
         if (!attempt) j.texts[textKey] = written;
       }
-      verdict = validateText(written.filledIn, ctxFor(written));
+      verdict = validateText(spokenOf(written.filledIn, !!slotLike.script), ctxFor(written));
       item.text = { filledIn: written.filledIn, raw: written.raw }; item.textModel = written.textModel; item.chars = written.filledIn.length; item.validation = verdict;
       item.estimate = estimate({ stationId: station.id, chars: item.chars, slot: slotLike });
       log(item, 'validate', verdict.ok, verdict.ok ? '' : verdict.problems.map((p) => p.code).join(', '));
@@ -315,7 +331,8 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     if (!clip) {
       const over = capCheck(station, item.chars);
       if (over) return finish(item, 'fallback', over);
-      const r = await provider('speech', { mode: 'say', text: written.filledIn, preview: true, ...(slotLike.personaId ? { persona: slotLike.personaId } : {}), ...(station.siteStationId ? { station: station.siteStationId } : {}), ...(slotLike.constraints && slotLike.constraints.speechModel ? { speechModel: slotLike.constraints.speechModel } : {}), ...(slotLike.constraints && slotLike.constraints.voice ? { voice: slotLike.constraints.voice } : {}) }, deadline);
+      const speechBody = slotLike.script ? { mode: 'script', scriptId: slotLike.script.id, text: written.filledIn, preview: true, ...(station.siteStationId ? { station: station.siteStationId } : {}), at: new Date(atMs).toISOString() } : null;
+      const r = await provider('speech', speechBody || { mode: 'say', text: written.filledIn, preview: true, ...(slotLike.personaId ? { persona: slotLike.personaId } : {}), ...(station.siteStationId ? { station: station.siteStationId } : {}), ...(slotLike.constraints && slotLike.constraints.speechModel ? { speechModel: slotLike.constraints.speechModel } : {}), ...(slotLike.constraints && slotLike.constraints.voice ? { voice: slotLike.constraints.voice } : {}) }, deadline);
       const b64 = r.json && r.json.audio;
       const buf = typeof b64 === 'string' && b64 ? Buffer.from(b64, 'base64') : Buffer.alloc(0);
       const mime = sniff(buf);

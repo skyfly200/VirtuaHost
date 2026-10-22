@@ -15,6 +15,10 @@ import { chargeAi } from "./quota.js";
 import { findAccount } from "./session.js";
 import { withKeys } from "./with-keys.js";
 import { contextFor, promptHelp } from "./drop-template.js";
+import { getScript } from "./script-store.js";
+import { draftScript } from "./script-draft.js";
+import { makeScriptClip } from "./script-clip.js";
+import type { Persona } from "./personas.js";
 
 const log = createLogger("scheduler");
 
@@ -47,6 +51,26 @@ async function runScheduleScoped(s: Schedule): Promise<string> {
     if (!clip) throw new Error("the saved clip was deleted");
     if (isExpired(clip.metadata.info)) throw new Error("the clip has expired (its event is over)");
     clipId = s.content.clipId; title = clip.metadata.scriptText; mimeType = clip.metadata.mimeType; audio = Buffer.from(clip.data);
+  } else if (s.content.kind === "script") {
+    // A saved script (one voice or a conversation of up to four): its saved text, or a fresh AI draft from its topic and cast, spoken line by line.
+    const script = await getScript(s.content.scriptId);
+    if (!script) throw new Error("the saved script was deleted");
+    const personas = new Map<string, Persona>();
+    for (const c of script.cast) if (c.personaId && !personas.has(c.personaId)) { const p = await getPersona(c.personaId); if (p) personas.set(c.personaId, p); }
+    let text = script.text;
+    if (s.content.fresh) {
+      const provider = activeProvider();
+      if (!provider) throw new Error("no AI provider is configured");
+      if (!script.topic) throw new Error("this script has no topic to draft from; save text or add a topic");
+      const first = script.cast.map((c) => (c.personaId ? personas.get(c.personaId)?.textModel : undefined)).find(Boolean);
+      const textModel = provider === "openrouter" ? (resolveTextModel(undefined, [first, station?.defaultTextModel]) as { model: string }).model : undefined;
+      text = (await draftScript({ kind: script.kind, cast: script.cast, topic: script.topic, format: script.format, seconds: script.seconds }, { provider, textModel, station, personas, template: tctx })).raw;
+    }
+    if (!text.trim()) throw new Error("the script has no text yet");
+    const info = { source: "schedule", ...stationInfo, ...(s.info ?? {}), ...(s.until ? { expiresAt: s.until } : {}) };
+    const made = await makeScriptClip({ script, text, personas, station, templateContext: tctx, input: `schedule: ${s.name}`, info, ...(s.ownerId ? { ownerId: s.ownerId } : {}) });
+    if (!made.ok) throw new Error(made.error);
+    clipId = made.id; title = made.scriptText; mimeType = made.mimeType;
   } else {
     let text: string;
     let mode: "say" | "ai" = "say";
