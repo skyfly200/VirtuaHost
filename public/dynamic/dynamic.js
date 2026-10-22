@@ -29,17 +29,17 @@ export function unmountDynamic() { if (timer) clearInterval(timer); timer = null
 export async function mountDynamic(root, site, hub) {
   unmountDynamic();
   clear(root, h('p', { class: 'muted' }, 'Loading...'));
-  const S = { stations: [], jit: null, slots: [], items: [], personas: [], siteStations: [], audit: [], filter: 'review', rawShown: new Set() };
+  const S = { stations: [], jit: null, slots: [], items: [], personas: [], siteStations: [], scripts: [], audit: [], filter: 'review', rawShown: new Set() };
   const boxes = { banner: h('section', { class: 'card dyn-banner' }), stations: h('div', { class: 'dyn-stations' }), slots: h('section', { class: 'card' }), review: h('section', { class: 'card' }), spend: h('section', { class: 'card' }), audit: h('section', { class: 'card' }), alerts: h('section', { class: 'card dyn-off' }) };
   const by = (id) => S.stations.find((s) => s.id === id);
   const tzOf = (id) => (by(id) && by(id).broadcastTz) || 'UTC';
 
   async function load() {
-    const [stations, jit, slots, items, personas, siteStations] = await Promise.all([
+    const [stations, jit, slots, items, personas, siteStations, scripts] = await Promise.all([
       hub.get('/stations'), hub.get('/jit/status'), hub.get('/jit/slots'), hub.get('/jit/items', { query: { limit: 200 } }),
-      site.get('/personas').catch(() => ({ personas: [] })), site.get('/stations').catch(() => ({ stations: [] })),
+      site.get('/personas').catch(() => ({ personas: [] })), site.get('/stations').catch(() => ({ stations: [] })), site.get('/scripts').catch(() => ({ scripts: [] })),
     ]);
-    Object.assign(S, { stations: stations.stations, jit, slots: slots.slots, items: items.items, personas: personas.personas, siteStations: siteStations.stations });
+    Object.assign(S, { stations: stations.stations, jit, slots: slots.slots, items: items.items, personas: personas.personas, siteStations: siteStations.stations, scripts: scripts.scripts || [] });
   }
   const act = async (fn, ok) => { try { const r = await fn(); if (ok) toast(ok, 'info'); await refresh(); return r; } catch (err) { toast(err.message, 'error'); return null; } };
 
@@ -119,12 +119,12 @@ export async function mountDynamic(root, site, hub) {
   function slotForm(existing) {
     const c = existing ? existing.constraints || {} : {};
     const f = { stationId: existing ? existing.stationId : (S.stations[0] && S.stations[0].id) || '', kind: existing ? existing.kind : 'time-check', startsAt: existing ? existing.startsAtIso.slice(0, 16) : '', leadSeconds: existing ? existing.leadSeconds : 600,
-      personaId: existing ? existing.personaId : '', fallbackClipId: existing ? existing.fallbackClipId : '', maxChars: c.maxChars || '', maxSeconds: c.maxSeconds || '', languagePolicy: c.languagePolicy || '', blocklist: (c.blocklist || []).join(', '),
+      personaId: existing ? existing.personaId : '', scriptId: existing && existing.script ? existing.script.id : '', scriptMode: existing && existing.script ? existing.script.mode : 'fixed', fallbackClipId: existing ? existing.fallbackClipId : '', maxChars: c.maxChars || '', maxSeconds: c.maxSeconds || '', languagePolicy: c.languagePolicy || '', blocklist: (c.blocklist || []).join(', '),
       names: (c.names || []).map((n) => (typeof n === 'string' ? n : [n.artist, n.title].filter(Boolean).join(' - '))).join('\n'), facts: (c.facts || []).join('\n'), eventName: (c.event && c.event.name) || '', eventStarts: '', eventVenue: (c.event && c.event.venue) || '' };
     const zoneHint = h('span', { class: 'small muted' });
     const hint = () => { zoneHint.textContent = `Local time at the station: ${tzOf(f.stationId)}`; };
     const body = () => ({
-      stationId: f.stationId, kind: f.kind, startsAt: f.startsAt, leadSeconds: Number(f.leadSeconds) || 600, personaId: f.personaId, fallbackClipId: f.fallbackClipId,
+      stationId: f.stationId, kind: f.kind, startsAt: f.startsAt, leadSeconds: Number(f.leadSeconds) || 600, personaId: f.personaId, fallbackClipId: f.fallbackClipId, script: f.scriptId ? { id: f.scriptId, mode: f.scriptMode } : null,
       constraints: { ...(f.maxChars ? { maxChars: Number(f.maxChars) } : {}), ...(f.maxSeconds ? { maxSeconds: Number(f.maxSeconds) } : {}), ...(f.languagePolicy ? { languagePolicy: f.languagePolicy } : {}), blocklist: f.blocklist.split(',').map((x) => x.trim()).filter(Boolean),
         names: lines(f.names).map((l) => { const [artist, ...t] = l.split(' - '); return t.length ? { artist: artist.trim(), title: t.join(' - ').trim() } : l; }), facts: lines(f.facts),
         ...(f.kind === 'event-reminder' ? { event: { name: f.eventName, startsAt: f.eventStarts, venue: f.eventVenue } } : {}) },
@@ -141,6 +141,8 @@ export async function mountDynamic(root, site, hub) {
         h('label', { class: 'field' }, 'Starts at', h('input', { type: 'datetime-local', value: f.startsAt, oninput: (e) => { f.startsAt = e.target.value; } }), zoneHint),
         text('Write it this many seconds ahead', 'leadSeconds', { type: 'number', min: 60, max: 3600 }),
         h('label', { class: 'field' }, 'Persona', h('select', { onchange: (e) => { f.personaId = e.target.value; } }, h('option', { value: '' }, '(station default)'), S.personas.map((p) => h('option', { value: p.id, selected: p.id === f.personaId }, `${p.emoji || ''} ${p.name}`.trim())))),
+        h('label', { class: 'field' }, 'Saved script (one voice or a conversation)', h('select', { onchange: (e) => { f.scriptId = e.target.value; } }, h('option', { value: '' }, '(none: the persona writes one line)'), S.scripts.map((x) => h('option', { value: x.id, selected: x.id === f.scriptId }, `${x.name}${x.kind === 'conversation' ? ` (${x.cast.length} speakers)` : ''}`)))),
+        h('label', { class: 'field' }, 'How the script is used', h('select', { onchange: (e) => { f.scriptMode = e.target.value; } }, [['fixed', 'Say its saved text (placeholders filled for the air time)'], ['draft', 'Have the AI write a new version from its topic and cast']].map(([v, t]) => h('option', { value: v, selected: v === f.scriptMode }, t)))),
         text('Planned clip that plays if anything fails', 'fallbackClipId', { placeholder: 'the id the playlist builder put there' })),
       eventBox,
       h('details', {}, h('summary', {}, 'Limits and what the line may mention'),

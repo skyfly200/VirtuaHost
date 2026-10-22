@@ -43,7 +43,7 @@ A clip with `expiresAt` in the past is **not sent, not queued, not scheduled and
 - the site refuses to queue or send it, and the queue skips an item that expires while it waits;
 - the station daemon rechecks at the moment it would play it and reports the item `skipped: expired`;
 - a schedule has an `until` date: it makes clips that expire then, and stops running after it;
-- the Generate tab and the Flier tab show an "expires" chip, and "expired" once it has passed.
+- the Studio and the Flier tab show an "expires" chip, and "expired" once it has passed.
 
 The daemon uses its own clock for the last check, so keep the station's time correct (NTP).
 

@@ -12,10 +12,10 @@ Why it matters: an AI never has to guess the time or the temperature (it is told
 
 ## Where it runs
 
-- **Generate tab** (`POST /api/generate`): text you type in *Say verbatim*, and lines the AI writes. With *Ask the AI to write it*, the line you review is already filled in (what you see is what will be said); type `{{placeholders}}` into it yourself if you want them filled in again when the audio is made. For a line that should stay a template (a schedule), save the AI's `template` field or write the text with placeholders.
+- **Studio** (`POST /api/generate`): text you type in *Say verbatim*, and lines the AI writes. With *Ask the AI to write it*, the line you review is already filled in (what you see is what will be said); type `{{placeholders}}` into it yourself if you want them filled in again when the audio is made. For a line that should stay a template (a schedule), save the AI's `template` field or write the text with placeholders.
 - **Schedules**: every run fills in fresh values (a daily "time check" is correct each day).
 - **Virtual host links** (`lib/host-link.ts`): `{{artist}}` and `{{title}}` of the song, plus everything else.
-- Not applied to: the Voice Lab, the older persona line banks' `{artist}` / `{title}` / `{station}` (single braces; those still work as before), or flier promos.
+- Not applied to: the Studio, the older persona line banks' `{artist}` / `{title}` / `{station}` (single braces; those still work as before), or flier promos.
 
 ## Syntax
 
@@ -50,7 +50,7 @@ When the AI writes a line it is given instructions listing only the placeholders
 
 ## Length
 
-The Generate tab's **Length** choice (about 5 to 60 seconds) is sent as `seconds`. The writer is told to aim for that many seconds and roughly `seconds x 2.5` words (about 150 words a minute), and `{{target_seconds}}` / `{{target_words}}` are filled in. It is a target: measure the real clip after speaking. Without it the writer keeps to two or three sentences.
+The Studio's **Length** choice (about 5 to 60 seconds) is sent as `seconds`. The writer is told to aim for that many seconds and roughly `seconds x 2.5` words (about 150 words a minute), and `{{target_seconds}}` / `{{target_words}}` are filled in. It is a target: measure the real clip after speaking. Without it the writer keeps to two or three sentences.
 
 ## Setting up a station for it
 
@@ -72,3 +72,7 @@ Weather comes from [Open-Meteo](https://open-meteo.com/) (free, no key), is cach
 | Station profile | `lat`, `lon`, `tempUnit` (`F`/`C`), `variables` (`{name: text}` or `name=text` lines) |
 
 Code: `lib/drop-template.ts` (engine, variable list, writer instructions), `lib/handlers/template.ts`, `test/lib/drop-template.test.ts`.
+
+## Weather in drops, schedules and scripts
+
+`{{weather}}` ("62 degrees and cloudy"), `{{temp}}`, `{{conditions}}` and `{{city}}` come from Open-Meteo for the station's location (not verified live). The **Weather report** format in the Studio writes a short report that uses only those placeholders, never a temperature of its own. In **Schedules**, the text and AI-brief forms have weather buttons, a **Weather report preset** (an hourly drop) and a preview with today's values; a station with no city or coordinates shows its `weather-location-missing` warning there, in the Studio and in the Stations tab. `{{time}}` and friends can be filled for a different moment with `at` on `/api/generate` (used for lines written before they air). Scripts (one voice or a conversation) use the same placeholders in every line: docs/SCRIPTS.md.

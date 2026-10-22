@@ -10,7 +10,7 @@ googleTextToSpeech1/        the server (Express): API, providers, library, host,
 googleTextToSpeech1/tts-ui/ the original Vue 2 UI
 hub/                        controls several stations (zero dependencies)       docs/HUB.md
 agent-radiodj/              lets the hub control RadioDJ on Windows              docs/HUB.md
-(the web UI for all of this is the site's public/ folder: Voice Lab and Stations tabs)   docs/HUB.md
+(the web UI for all of this is the site's public/ folder: Studio and Stations tabs)   docs/HUB.md
 ```
 
 A small text-to-speech announcement tool. A Vue UI lets you type text (or SSML),

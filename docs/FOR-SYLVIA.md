@@ -123,11 +123,11 @@ Playing the link exactly as the track ends (needs remaining time from Liquidsoap
 - **Chat and MCP**: the station can be run from WhatsApp/Telegram/MCP assistants. On-air actions ask for a YES first.
 - Setup for all use cases: [SETUP.md](SETUP.md). Not verified live: OpenRouter native dialogue field names, real Twilio/Telegram delivery.
 
-## Added later: the hub, the RadioDJ agent and the Voice Lab and Stations tabs
+## Added later: the hub, the RadioDJ agent and the Studio and Stations tabs
 
 - `chips-voice/agent-radiodj/agent.js` lets a hub put clips on RadioDJ the way your `virtual_host.py` does: write `current_link.mp3`, fire a cart with `PlayCartByNumber` (same REST commands as `radiodj_api.sh`). It does not touch your scripts.
 - Skip and volume for RadioDJ are off until the REST plugin's command names are set (`RADIODJ_CMD_SKIP`, `RADIODJ_CMD_VOLUME`); I could not confirm them. If you know them, that is the most useful thing to add.
-- Everything else (hub, the site's Voice Lab and Stations tabs, playlist sync): [HUB.md](HUB.md).
+- Everything else (hub, the site's Studio and Stations tabs, playlist sync): [HUB.md](HUB.md).
 
 ## Added later: the VirtuaHost site (Netlify)
 
@@ -159,5 +159,13 @@ Nothing in `krap-station/` changed. These are all on the web site (`public/`, `l
 
 Mine (server side): hub scheduler, validation, shadow mode, approval queue, the agent API (`/agent/status`, `/schedule`, `/queue/insert`, hash-named `/ingest`, kill switch, audit log) and the pull loop, all tested against a fake RadioDJ and fake providers. **None of it has touched a live RadioDJ.** Read [HUB.md](HUB.md#10-just-in-time-jit-drops-shadow-mode-and-the-pull-model), especially the "needs live verification" list.
 
-Yours (please keep these stable): a shared `now()` using `broadcastTz` (America/Denver), never the PC's clock; `tts_line(speaker, text, file)` with a backend switch (ElevenLabs direct, or `POST /api/generate {mode:"say", preview:true}` on this site); the dynamic-slot markers in the nightly plan (`GLR YYYY-MM-DD.json`, shape in `chips-voice/agent-radiodj/schedule.js`) with an evergreen clip at each; local processing (loudness, same-room EQ) before insertion, which fits in `INSERT_EXEC` (called as `script <file> <position> <replace-id>`; it is run with no shell); and the queue-insert live test. Open question for you: should the JIT clip replace the evergreen item (the agent passes its id as `<replace-id>`) or be added next to it?
+Yours (please keep these stable): a shared `now()` using `broadcastTz` (America/Denver), never the PC's clock; `tts_line(speaker, text, file)` with a backend switch (ElevenLabs direct, or `POST /api/generate {mode:"say", preview:true}` on this site); the dynamic-slot markers in the nightly plan (`GLR YYYY-MM-DD.json`, shape in `chips-voice/agent-radiodj/schedule.js`) with an evergreen clip at each; local processing (loudness, same-room EQ) before insertion, which fits in `INSERT_EXEC` (called as `script <file> <position> <replace-id>`; it is run with no shell); and the queue-insert live test. Decided: the JIT clip **replaces** the evergreen item. The agent only calls your script when the evergreen is at least 2 ahead in the queue, passes its id as `<replace-id>`, and reads the queue back; your script must swap (insert the new clip at that position and remove the evergreen) as one step. If you cannot make that atomic, tell me: a leftover evergreen would air twice, which the hub reports as a failure.
 The agent now defaults to `127.0.0.1`, `C:\GreenLightRadio\clips` (not `C:\KRAP`), a unique file per clip (the fixed `current_link.mp3` is only written when a cart is configured), and Windows-safe retries.
+
+## Added later: scripts, requests and what I need from you
+
+- **Conversations** (docs/SCRIPTS.md): the site can now speak a conversation of up to four speakers (each in their own persona's voice) as one clip, in the Studio, in schedules and in dynamic slots. Nothing changes in your scripts: the clip is just audio.
+- **Evergreen drops should not name songs.** Once requests exist, a song can be inserted anywhere, so a baked "that was X" or "up next, Y" may be wrong. Planned clips at dynamic slots should be station IDs, time checks, generic breaks, promos or weather. Please tell me which of your current baked drops name songs.
+- **For song requests (docs/ROADMAP.md)** I need: how to find a song in RadioDJ's library by artist and title (a table, or a folder to search); whether a requested song can be inserted with the same script (file, position); the real `/npjson` output with a few items queued.
+- **Relay shows** (a DJ broadcasting onto a relay): how does the stream switch between RadioDJ and a relay today (RadioDJ, Liquidsoap, Icecast fallback mounts)? The agent will watch the relay source and call a script (on/off) you provide; it never touches RadioDJ's commands itself.
+- **Google Calendar** is planned for the audience-facing schedule; nothing is needed from you yet.

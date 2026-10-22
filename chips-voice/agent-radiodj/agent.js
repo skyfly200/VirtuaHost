@@ -260,18 +260,31 @@ function createAgent(options = {}) {
     if (!o.insertCommand && !o.insertExec) throw fail(501, 'insert is not configured (set INSERT_EXEC, or RADIODJ_CMD_INSERT to the REST plugin command that does it)');
     const upcoming = await radiodj.upcoming();
     if (upcoming.length < ahead - 1) throw fail(409, `not enough items are queued ahead (${upcoming.length} visible, ${ahead - 1} needed): the clip was not inserted and the planned content plays`, { reason: 'queue-too-short', visible: upcoming.length });
-    if (o.shadow) return { status: 202, body: { shadow: true, executed: false, position: ahead, clip: { id: clip.id, sha256: clip.sha256 } } };
-    const values = { path: clip.path, position: ahead, replace: b.replace || '', title: clip.title || '', sha256: clip.sha256 };
+    // The generated clip PREEMPTS the planned (evergreen) clip: it takes that clip's place. So the planned clip must be visible in the queue and at
+    // least 2 ahead (index 0 is the immediately-next item, which RadioDJ may already have loaded). Otherwise nothing is touched and the planned clip plays.
+    const replace = typeof b.replace === 'string' ? b.replace.trim() : '';
+    const matches = (x, key) => `${x.title} ${x.artist} ${x.path || ''}`.toLowerCase().includes(key.toLowerCase());
+    let position = ahead;
+    if (replace) {
+      const at = upcoming.findIndex((x) => matches(x, replace));
+      if (at < 0) throw fail(409, `the planned clip "${replace.slice(0, 60)}" is not in the visible queue (already played, loaded, or not found): nothing was changed and the planned clip plays`, { reason: 'planned-clip-not-found', visible: upcoming.length });
+      if (at < 1) throw fail(409, `the planned clip "${replace.slice(0, 60)}" is the immediately-next item, which RadioDJ may already have loaded: too late to swap, the planned clip plays`, { reason: 'planned-clip-is-next' });
+      position = Math.max(ahead, at + 1);
+    }
+    if (o.shadow) return { status: 202, body: { shadow: true, executed: false, position, ...(replace ? { wouldReplace: replace } : {}), clip: { id: clip.id, sha256: clip.sha256 } } };
+    const values = { path: clip.path, position, replace, title: clip.title || '', sha256: clip.sha256 };
     let reply;
-    if (o.insertExec) reply = await run(o.insertExec, [clip.path, String(ahead), String(b.replace || '')]);
+    if (o.insertExec) reply = await run(o.insertExec, [clip.path, String(position), replace]);
     else reply = (await radiodj.command(o.insertCommand, fill(o.insertArg, values))).slice(0, 200);
     const after = await radiodj.upcoming();
-    const names = [clip.title, path.basename(clip.path)].filter(Boolean).map((s) => s.toLowerCase());
+    const names = [clip.title, path.basename(clip.path)].filter(Boolean).map((s2) => s2.toLowerCase());
     const where = after.findIndex((x) => names.some((n) => `${x.title} ${x.path || ''}`.toLowerCase().includes(n)));
     const verified = after.length ? where >= 0 : null;                                      // null: the queue could not be read back
-    state.inserted[clip.sha256] = { sha256: clip.sha256, position: ahead, at: o.now(), verified };
+    // replaced: true = the clip is there and the planned one is gone; false = BOTH are queued (the planned clip was not removed); null = could not tell
+    const replaced = !replace ? undefined : after.length ? (where >= 0 && !after.some((x) => matches(x, replace))) : null;
+    state.inserted[clip.sha256] = { sha256: clip.sha256, position, at: o.now(), verified, replaced };
     saveState();
-    return { status: 200, body: { inserted: true, position: ahead, verified, ...(where >= 0 ? { seenAt: where + 1 } : {}), reply, unverified: ['queueInsert'] } };
+    return { status: 200, body: { inserted: true, position, verified, ...(replace ? { replaced, replace } : {}), ...(where >= 0 ? { seenAt: where + 1 } : {}), reply, unverified: ['queueInsert'] } };
   }
 
   async function doLoadPlaylist(req) {

@@ -11,7 +11,9 @@ export type When =
 export type Content =
   | { kind: "text"; text: string }
   | { kind: "ai"; prompt: string; format?: string }
-  | { kind: "clip"; clipId: string };
+  | { kind: "clip"; clipId: string }
+  /** A saved script (lib/scripts.ts). `fresh`: the AI writes a new version from its topic and cast on every run; otherwise its saved text is said, placeholders filled in fresh. */
+  | { kind: "script"; scriptId: string; fresh?: boolean };
 
 export interface Schedule {
   id: string;
@@ -143,7 +145,12 @@ export function sanitizeContent(raw: unknown): Content {
     if (!/^[A-Za-z0-9-]{1,64}$/.test(clipId)) throw new Error("Pick a saved clip");
     return { kind: "clip", clipId };
   }
-  throw new Error('"content" must be text, ai or clip');
+  if (c.kind === "script") {
+    const scriptId = str(c.scriptId, 60);
+    if (!/^[a-z0-9][a-z0-9-]{0,59}$/.test(scriptId)) throw new Error("Pick a saved script");
+    return { kind: "script", scriptId, ...(c.fresh === true ? { fresh: true } : {}) };
+  }
+  throw new Error('"content" must be text, ai, clip or script');
 }
 
 export function buildSchedule(raw: unknown, now = Date.now()): Schedule {
@@ -155,7 +162,7 @@ export function buildSchedule(raw: unknown, now = Date.now()): Schedule {
   const first = nextRun(when, now - 1);   // a time right now still counts
   if (first === null) throw new Error("That time has already passed");
   if (Number.isFinite(untilMs) && first > untilMs) throw new Error("The first run would be after the end date");
-  const label = content.kind === "text" ? content.text : content.kind === "ai" ? content.prompt : "saved clip";
+  const label = content.kind === "text" ? content.text : content.kind === "ai" ? content.prompt : content.kind === "script" ? "saved script" : "saved clip";
   return {
     id: randomBytes(6).toString("hex"),
     name: str(r.name, 80) || label.slice(0, 60),

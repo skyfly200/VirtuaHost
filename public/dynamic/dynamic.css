@@ -21,3 +21,12 @@
 .dyn-table th, .dyn-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border, #ddd); vertical-align: top; }
 .dyn-off { opacity: .6; }
 .dyn-key { font-family: ui-monospace, monospace; word-break: break-all; padding: 6px; border: 1px dashed currentColor; }
+@media (max-width: 600px) {
+  .dyn-stations { grid-template-columns: minmax(0, 1fr); }
+  .dyn-banner > * { min-width: 0; }
+  .dyn-banner { gap: 8px; padding: 10px 12px; }
+  .dyn-line { font-size: 1rem; }
+  .dyn-table { display: block; overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
+  .dyn-table th, .dyn-table td { overflow-wrap: anywhere; }
+  .dyn-key { font-size: 12px; }
+}

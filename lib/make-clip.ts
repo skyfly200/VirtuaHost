@@ -3,7 +3,7 @@
 // removed for models that would read them aloud, and tone is sent the way the model takes it.
 import { randomUUID } from "node:crypto";
 import { embedTags, sanitizeInfo, type ClipInfo } from "./clip-info.js";
-import { activeProvider, speak, NO_PROVIDER_MESSAGE } from "./ai.js";
+import { activeProvider, speak, NO_PROVIDER_MESSAGE, type Spoken } from "./ai.js";
 import { cuesFor, stripDeliveryTags, GEMINI_DIRECT_CUES } from "./cues.js";
 import { cleanTone } from "./formats.js";
 import { defaultSpeechModel, discoverSpeechModels, pickSpeechModel, speechModels, type SpeechModel } from "./openrouter.js";
@@ -37,7 +37,10 @@ export interface MakeClipOptions {
 
 export type MadeClip = { ok: true; id: string; scriptText: string; mimeType: string; speechModel: string; voice: string } | { ok: false; status: number; error: string };
 
-export async function makeClip(options: MakeClipOptions): Promise<MadeClip> {
+export type Spoke = { ok: true; spoken: Spoken; scriptText: string; provider: string; tone: string } | { ok: false; status: number; error: string };
+
+/** The speaking half of makeClip: placeholders filled, tags removed as the model needs, then spoken. Nothing is saved. Used for each line of a script too. */
+export async function speakText(options: Pick<MakeClipOptions, "text" | "tone" | "voice" | "speechModel" | "templateContext">): Promise<Spoke> {
   const provider = activeProvider();
   if (!provider) return { ok: false, status: 503, error: NO_PROVIDER_MESSAGE };
 
@@ -60,14 +63,18 @@ export async function makeClip(options: MakeClipOptions): Promise<MadeClip> {
   if (!scriptText) return { ok: false, status: 400, error: "There is nothing to say once tags are removed" };
 
   const tone = cleanTone(options.tone);
-  let spoken;
   try {
-    spoken = await speak({ text: scriptText, provider, speechModel, voice: options.voice || undefined, tone });
+    return { ok: true, spoken: await speak({ text: scriptText, provider, speechModel, voice: options.voice || undefined, tone }), scriptText, provider, tone };
   } catch (err) {
     log.error("speech synthesis failed", { err });
     return { ok: false, status: 502, error: `Speech synthesis failed: ${(err as Error).message}` };
   }
+}
 
+export async function makeClip(options: MakeClipOptions): Promise<MadeClip> {
+  const said = await speakText(options);
+  if (!said.ok) return said;
+  const { spoken, scriptText, provider, tone } = said;
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   const info = sanitizeInfo({ title: scriptText.slice(0, 60), source: "make-clip", ...(options.info ?? {}) });

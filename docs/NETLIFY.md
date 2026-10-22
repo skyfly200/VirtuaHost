@@ -1,8 +1,8 @@
 # Deploying on Netlify
 
-One Netlify site does everything the web side needs: it makes the clips (the AI), shows the UI (Generate, Flier, Personas, Schedules, Library, Voice Lab, Stations and Users tabs), and signs people in.
+One Netlify site does everything the web side needs: it makes the clips (the AI), shows the UI (Generate, Flier, Personas, Schedules, Library, Studio, Stations and Users tabs), and signs people in.
 The radio side (the Chips Voice server, the hub, the RadioDJ agent) runs on your own machines, because Netlify cannot run long-lived processes or reach a local RadioDJ.
-You can ignore the radio side until you have it: the Voice Lab and Stations tabs simply show "not connected yet" until you add its address and key.
+You can ignore the radio side until you have it: the Studio and Stations tabs simply show "not connected yet" until you add its address and key.
 
 Menu names below are as Netlify usually labels them; if a screen differs, the setting names are what matter.
 
@@ -66,20 +66,20 @@ Mark `LOGIN_USERS`, `SESSION_SECRET`, `SECRETS_KEY`, `ACCESS_KEY`, `OPENROUTER_A
 
 ## 4. Deploy and check
 
-1. Deploy. Open the site and sign in. The Generate tab should load with the model lists.
+1. Deploy. Open the site and sign in. The Studio should load with the model lists.
 2. If a clip fails with "GEMINI_API_KEY is not set" or "No AI provider is configured", no AI key reached the function: add `OPENROUTER_API_KEY` (or `GEMINI_API_KEY`), make sure its scope includes Functions, and trigger a new deploy (variables apply on the next deploy).
 3. Make a clip and play it. From a terminal (needs `ACCESS_KEY`): `curl -X POST https://<site>/api/generate -H "x-api-key: $ACCESS_KEY" -H 'content-type: application/json' -d '{"mode":"say","text":"Hello"}'`. The same call without the header should return 401.
 4. Models: the lists come from `OPENROUTER_TEXT_MODELS` / `OPENROUTER_SPEECH_MODELS` (defaults are built in; speech models OpenRouter itself lists, with their voices, are added to the dropdown automatically). The speech request format could not be tested against OpenRouter itself, so if a model or voice is rejected the UI shows OpenRouter's own message: adjust the model, voice or list and try again.
 5. With `STATION_URL` set, the response includes a `handoff` field. A station error is reported there but the request still succeeds (the clip is stored).
-6. Scripts sent here may contain `[sfx:name]` tags; they are stripped (these voices do not mix effects). To get sound effects mixed in, speak through the Chips Voice server (Voice Lab).
+6. Scripts sent here may contain `[sfx:name]` tags; they are stripped (these voices do not mix effects). To get sound effects mixed in, speak through the Chips Voice server (Studio).
 
 ## 5. Later: connect the radio side
 
-Voice Lab, Personas, Flier, Schedules and Library need no extra server. To run several stations from one screen, run the hub (see `docs/HUB.md`), add these and redeploy; the Stations tab turns on by itself:
+Studio, Personas, Flier, Schedules and Library need no extra server. To run several stations from one screen, run the hub (see `docs/HUB.md`), add these and redeploy; the Stations tab turns on by itself:
 
 | Variable | Value | Turns on |
 |----------|-------|----------|
-| `VOICE_URL`, `VOICE_KEY` | a Chips Voice server's https address and its `API_KEY` | nothing in the UI any more: **Voice Lab runs on the site itself**. Only the hub (broadcast a clip by id) can still use it. |
+| `VOICE_URL`, `VOICE_KEY` | a Chips Voice server's https address and its `API_KEY` | nothing in the UI any more: **Studio runs on the site itself**. Only the hub (broadcast a clip by id) can still use it. |
 | `HUB_URL`, `HUB_KEY` | the hub's https address and its `HUB_KEY` | Stations |
 
 Who calls whom:

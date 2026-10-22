@@ -52,6 +52,13 @@ export const FORMATS: DjFormat[] = [
     prompt: "a late-night time check: it is 11:30pm and raining; keep it cosy",
   },
   {
+    id: "weather",
+    label: "Weather report",
+    structure: "A short greeting for the time of day, the weather exactly as the placeholders give it ({{weather}}, {{temp}}, {{conditions}}), then back to the music. Never state a temperature or conditions that are not given by a placeholder.",
+    example: "{{greeting}} from {{station}}. It's {{weather}} out there in {{city|town}}. Stay tuned.",
+    prompt: "a quick weather report for the listeners: say the current weather using the weather placeholders and keep it friendly",
+  },
+  {
     id: "shoutout",
     label: "Shout-out",
     structure: "Name the person or group, say why, add the next song or sign-off. Warm and brief.",

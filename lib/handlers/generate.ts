@@ -17,6 +17,9 @@ import { createLogger } from "../log.js";
 import { contextFor, promptHelp, renderTemplate } from "../drop-template.js";
 import { elevenConfigured, isElevenModel } from "../elevenlabs.js";
 import { copiedExample, exampleLines } from "../copy-guard.js";
+import { renderScript, saveRendered } from "../script-clip.js";
+import { getScript } from "../script-store.js";
+import { linesOf, sanitizeCast, type Script } from "../scripts.js";
 import { recordModelResult } from "../model-health.js";
 import type { GenerateRequest, ClipMetadata } from "../types.js";
 
@@ -51,8 +54,9 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   }
 
   const { mode } = body;
+  if (mode === "script") return generateScript(who, body);
   if (mode !== "say" && mode !== "ai") {
-    return Response.json({ error: 'mode must be "say" or "ai"' }, { status: 400 });
+    return Response.json({ error: 'mode must be "say", "ai" or "script"' }, { status: 400 });
   }
 
   const input = mode === "say" ? body.text : body.prompt;
@@ -233,4 +237,46 @@ async function generate(req: Request, who: Principal): Promise<Response> {
     { id, scriptText, audioUrl: `/api/clips/${id}`, provider, speechModel: spoken.model, ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}), ...(handoff ? { handoff } : {}) },
     { status: 201 },
   );
+}
+
+// mode "script": a saved script (scriptId) or an inline cast + text, spoken line by line in each speaker's voice and joined into one clip.
+async function generateScript(who: Principal, body: GenerateRequest): Promise<Response> {
+  let script: Pick<Script, "kind" | "cast" | "text" | "gapSeconds">;
+  let name = "script";
+  if (typeof body.scriptId === "string") {
+    const saved = await getScript(body.scriptId);
+    if (!saved || !canView(who, saved.ownerId)) return Response.json({ error: "Script not found" }, { status: 404 });
+    script = typeof body.text === "string" && body.text.trim() ? { ...saved, text: body.text } : saved; name = saved.name;
+  } else {
+    const cast = sanitizeCast(body.cast);
+    if ("error" in cast) return Response.json({ error: cast.error }, { status: 400 });
+    if (typeof body.text !== "string" || !body.text.trim()) return Response.json({ error: "text is required for mode \"script\"" }, { status: 400 });
+    script = { kind: cast.cast.length > 1 ? "conversation" : "single", cast: cast.cast, text: body.text, gapSeconds: Number.isFinite(Number(body.gapSeconds)) ? Math.min(3, Math.max(0, Number(body.gapSeconds))) : 0.3 };
+  }
+  if (!linesOf(script).length) return Response.json({ error: "The script has nothing to say" }, { status: 400 });
+  if (!activeProvider()) return Response.json({ error: NO_PROVIDER_MESSAGE }, { status: 503 });
+  let station = null;
+  if (typeof body.station === "string") {
+    station = await getStation(body.station);
+    if (!station) return Response.json({ error: `Unknown station "${body.station.slice(0, 50)}"` }, { status: 400 });
+  }
+  const personas = new Map<string, Persona>();
+  for (const c of script.cast) {
+    if (!c.personaId || personas.has(c.personaId)) continue;
+    const p = await getPersona(c.personaId);
+    if (!p || !canView(who, p.ownerId)) return Response.json({ error: `Unknown persona "${c.personaId.slice(0, 50)}"` }, { status: 400 });
+    personas.set(c.personaId, p);
+  }
+  const over = await chargeAi(who);
+  if (over) return over;
+  const atMs = typeof body.at === "string" ? Date.parse(body.at) : NaN;
+  const hearAt = Number.isFinite(atMs) && atMs - Date.now() <= 3 * 3600e3 && atMs - Date.now() >= -5 * 60e3 ? new Date(atMs) : undefined;
+  const rendered = await renderScript({ script, personas, station, templateContext: contextFor({ station, now: hearAt }) });
+  if (!rendered.ok) return Response.json({ error: rendered.error }, { status: rendered.status });
+  if (body.preview === true) {
+    return Response.json({ preview: true, filledIn: rendered.scriptText, scriptText: rendered.scriptText, audio: rendered.audio.toString("base64"), mimeType: rendered.mimeType, lines: rendered.lines, gapApplied: rendered.gapApplied, speechModel: rendered.speechModels.join(", ") });
+  }
+  const info = sanitizeInfo({ ...(station && station.id !== "default" ? { station: station.id } : {}), ...(body.info && typeof body.info === "object" ? body.info : {}) });
+  const saved = await saveRendered(rendered, { input: `script: ${name}`, info, ...(ownerFor(who) ? { ownerId: ownerFor(who) } : {}) });
+  return Response.json({ id: saved.id, scriptText: saved.scriptText, audioUrl: `/api/clips/${saved.id}`, lines: rendered.lines }, { status: 201 });
 }

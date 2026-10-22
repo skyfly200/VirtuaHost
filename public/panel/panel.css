@@ -6,3 +6,9 @@
 .site { margin: 4px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; }
 .pick { display: flex; align-items: center; gap: 8px; }
 .two { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); align-items: start; }
+@media (max-width: 600px) {
+  .station .tools > * { max-width: 100%; }
+  .station .tools button { flex: 1 1 auto; }
+  .pick { flex-wrap: wrap; }
+  .two { grid-template-columns: minmax(0, 1fr); }
+}

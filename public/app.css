@@ -1,10 +1,51 @@
 .login { max-width: 380px; margin: 12vh auto 0; padding: 0 16px; }
 .login h1 { font-size: 22px; margin: 0 0 4px; }
 .login form { display: grid; gap: 12px; }
+
+/* ----- the menu: groups on the desktop bar (>= 800px), a full-screen menu on the phone (< 800px) ----- */
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .tabs button { border: 0; background: none; color: var(--muted); padding: 6px 12px; border-radius: 8px; font-weight: 600; }
-.tabs button[aria-selected="true"] { background: var(--chip); color: var(--ink); }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
 .tabs button .off { font-weight: 500; font-size: 11px; margin-left: 4px; opacity: .8; }
+header.bar > * { min-width: 0; }
+header.bar .brand { order: 0; }
+header.bar .grow { order: 1; }
+header.bar .station-slot { order: 2; }
+header.bar .signout { order: 3; }
+header.bar .menu-desk { order: 4; flex: 0 0 100%; align-items: center; gap: 6px 0; }
+.menu-group { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.menu-group + .menu-group { border-left: 1px solid var(--line); margin-left: 10px; padding-left: 10px; }
+.menu-group[hidden] { display: none; }
+.menu-group-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; margin-right: 4px; white-space: nowrap; }
+.menu-wrap, .menu-drawer { display: none; }
+.menu-btn { display: inline-flex; align-items: center; font-weight: 650; }
+.menu-current { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-drawer { position: fixed; inset: 0; z-index: 30; background: var(--bg); color: var(--ink); overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px 28px; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.drawer-head strong { font-size: 18px; }
+.drawer-body { display: grid; gap: 18px; }
+.drawer-group { display: grid; gap: 8px; }
+.drawer-group[hidden] { display: none; }
+.drawer-label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; padding: 0 4px; }
+.drawer-tab { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 52px; padding: 12px 16px; font-size: 17px; font-weight: 600; text-align: left; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; }
+.drawer-tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.drawer-tab .off { font-weight: 500; font-size: 12px; opacity: .8; }
+.drawer-tab[hidden] { display: none; }
+body.menu-open { overflow: hidden; }
+
+/* Phone: one row for the title and sign out, one for the menu button, the current tab and the station. */
+@media (max-width: 799px) {
+  header.bar { gap: 8px; padding: 10px 12px; }
+  header.bar .grow, header.bar .menu-desk { display: none; }
+  header.bar .brand { flex: 1 1 auto; }
+  header.bar .signout { order: 1; }
+  .menu-wrap { display: flex; align-items: center; gap: 8px; order: 2; flex: 1 1 auto; min-width: 0; }
+  .menu-btn { min-height: 44px; padding: 0 14px; }
+  header.bar .station-slot { order: 3; flex: 1 1 150px; min-width: 0; }
+  .station-slot > label.row { flex-wrap: nowrap; width: 100%; }
+  .station-slot select { flex: 1 1 auto; width: auto; min-width: 0; max-width: 100%; }
+  .menu-drawer { display: block; }
+}
 .hint { font-size: 13px; color: var(--muted); background: var(--bg); border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; }
 .hint b { color: var(--ink); }
 .note.warn { color: var(--bad); }

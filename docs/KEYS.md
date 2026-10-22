@@ -21,7 +21,7 @@ A schedule runs with its owner's key (then the station's, then the site's). Host
 
 ## Downloading audio
 
-Every generated clip, sample and preview has a **Download** menu: *As saved* (the file as stored: WAV from Google/Kokoro-style PCM models, MP3 from most others), *WAV*, or *MP3*. Conversion happens in your browser (the audio is decoded with Web Audio; MP3 uses the lamejs encoder, loaded from cdnjs the first time you pick MP3). It works for the Generate preview and saved clips, the Library and Promos cards, Voice Lab takes, the Flier audio, and the persona and voice samples.
+Every generated clip, sample and preview has a **Download** menu: *As saved* (the file as stored: WAV from Google/Kokoro-style PCM models, MP3 from most others), *WAV*, or *MP3*. Conversion happens in your browser (the audio is decoded with Web Audio; MP3 uses the lamejs encoder, loaded from cdnjs the first time you pick MP3). It works for the Generate preview and saved clips, the Library and Promos cards, Studio takes, the Flier audio, and the persona and voice samples.
 
 ## ElevenLabs (voice clones)
 
@@ -40,7 +40,7 @@ Before each AI step the app shows an estimate (tokens, and dollars when OpenRout
 - **Free models:** OpenRouter's models whose names end in `:free` (up to 40) are added to the writing picker, marked `[free]`. They can be chosen even without `OPENROUTER_ALLOW_ANY_MODEL`, because they cost nothing. They are rate limited and the provider may log what you send, so they are never the default.
 - **Other routers:** any OpenAI-compatible router can stand in for OpenRouter by setting `OPENROUTER_BASE_URL` (and `OPENROUTER_API_KEY`); price and free-model discovery only work if it serves OpenRouter's `/models` shape.
 - **Content filtering:** every model in the pickers is labelled `filtered`, `light filter` or `unfiltered` (nothing shown means nobody has checked it). OpenRouter's own `is_moderated` flag is used when it reports one; otherwise the label is a hint from the model's name and what is publicly known (hosted OpenAI, Anthropic and Google models are treated as filtered; Kokoro and community "uncensored" fine-tunes as unfiltered; Llama, Mistral, DeepSeek, Qwen as light). **A hint is not a test:** models change and providers differ, so generate a line with the language you need before relying on one.
-- **Strong language:** the Generate tab has an *Allow strong language* switch. It tells the writer not to censor, bleep or soften, hides models marked `filtered`, and the estimate warns if a filtered model is still selected. Speech models read what they are given, but a few (notably some hosted ones) may refuse or alter it too; Kokoro is unfiltered.
+- **Strong language:** the Studio has an *Allow strong language* switch. It tells the writer not to censor, bleep or soften, hides models marked `filtered`, and the estimate warns if a filtered model is still selected. Speech models read what they are given, but a few (notably some hosted ones) may refuse or alter it too; Kokoro is unfiltered.
 
 ## Scoped service keys for unattended jobs
 
@@ -50,7 +50,7 @@ Session tokens last 12 hours, so a station job should not use one. Set `SERVICE_
 SERVICE_KEYS="glr-hub@rocky:generate+stations.read+personas.read:<random 24+ chars>"
 ```
 
-`name[@user]:scope+scope:key`, comma separated. Scopes: `generate`, `stations.read`, `personas.read`, `options.read`. A service key is **not an admin** and only opens the routes that name its scope (anything else answers 403), so a leaked one cannot change stations or users, and it is exempt from per-user AI quotas (the hub's daily character cap is its limit). With `@user` it acts as that user: their saved AI keys (for example Rocky's ElevenLabs key from the Account card) and personas are used; without it, only shared personas and the station's/site's keys. Use it as `SITE_KEY` on the hub.
+`name[@user]:scope+scope:key`, comma separated. Scopes: `generate` (also opens `POST /api/scripts/draft`), `stations.read`, `personas.read`, `options.read`, `scripts.read` (read saved scripts and `POST /api/scripts/filled`). A service key is **not an admin** and only opens the routes that name its scope (anything else answers 403), so a leaked one cannot change stations or users, and it is exempt from per-user AI quotas (the hub's daily character cap is its limit). With `@user` it acts as that user: their saved AI keys (for example Rocky's ElevenLabs key from the Account card) and personas are used; without it, only shared personas and the station's/site's keys. Use it as `SITE_KEY` on the hub.
 
 ## Model failures
 

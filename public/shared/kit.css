@@ -57,7 +57,31 @@ dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .toast { background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; text-align: center; box-shadow: 0 4px 20px rgba(0, 0, 0, .35); pointer-events: auto; cursor: pointer; }
 .toast.error { background: var(--bad); color: #fff; }
 .slot-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-@media (max-width: 600px) { main { padding: 10px; } .card { padding: 12px; } }
+/* A grid item may shrink below its content, so a wide table scrolls inside its card instead of pushing the page sideways. */
+main > *, .grid > *, .card { min-width: 0; }
+@media (max-width: 600px) {
+  main { padding: 12px; gap: 12px; }
+  .card { padding: 12px; overflow-wrap: anywhere; }
+  .grid.cols, .slot-grid, .dyn-stations, .two { grid-template-columns: minmax(0, 1fr); }
+  /* Some modules set their grid columns inline (minmax(260px|300px, 1fr)); one column on a phone. */
+  [style*="minmax"] { grid-template-columns: minmax(0, 1fr) !important; }
+  .row > input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), .row > select, .row > textarea { flex: 1 1 100%; width: auto; }
+  .card > button.primary, .card > form > button.primary { width: 100%; }
+  table { display: block; overflow-x: auto; max-width: 100%; }
+  td, th { overflow-wrap: anywhere; }
+  code { overflow-wrap: anywhere; }
+  audio { width: 100%; max-width: 100%; }
+  img, video, canvas, svg { max-width: 100%; height: auto; }
+  input, select, textarea { font-size: 16px; }   /* 16px stops iOS zooming in on focus */
+  #toasts { left: 12px; right: 12px; width: auto; max-width: none; transform: none; justify-items: stretch; }
+  .toast { max-width: 100%; overflow-wrap: anywhere; }
+}
+/* Touch screens: tap targets at least 44px tall. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { min-height: 44px; }
+  input[type="checkbox"], input[type="radio"] { width: 22px; height: 22px; }
+  button:not(.play):not(.link):not(.drawer-tab):not(.drawer-close) { min-height: 44px; }
+}
 [hidden] { display: none !important; }
 
 /* round play/pause button for samples (shared/playbutton.js) */

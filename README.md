@@ -28,7 +28,9 @@ generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTE
 | [docs/MCP.md](docs/MCP.md) | The MCP endpoint: let an AI agent manage stations, with confirm-before-air safety |
 | [docs/GREENLIGHT-AND-IONOS.md](docs/GREENLIGHT-AND-IONOS.md) | The hub on the IONOS server, RadioDJ at Way High and Greenlight, and the questions for Sylvia |
 | [docs/CUES.md](docs/CUES.md) | What each speech model does with tone and tags |
-| [docs/HUB.md](docs/HUB.md) | The hub, the RadioDJ agent, and the Voice Lab and Stations tabs |
+| [docs/SCRIPTS.md](docs/SCRIPTS.md) | Scripts, conversations (up to 4 speakers) and the Studio |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | What is built, what is next (requests, relay shows, Google Calendar) |
+| [docs/HUB.md](docs/HUB.md) | The hub, the RadioDJ agent, and the Studio and Stations tabs |
 | [docs/PERSONA-CHIP.md](docs/PERSONA-CHIP.md) | CHIP, the computer DJ persona of Way High Radio |
 | [chips-voice/README.md](chips-voice/README.md) | The Chips Voice server: API, playback backends, Icecast and Liquidsoap |
 
@@ -62,7 +64,7 @@ curl -X POST https://your-site.netlify.app/api/generate \
 
 `public/` is a single page with these tabs, all running on the site itself (no other server):
 **Generate** (write or have the AI write a line, hear it with effects and music mixed in, then save it),
-**Voice Lab** (compare voices, models, tone and effects side by side; conversations),
+**Studio** (compare voices, models, tone and effects side by side; conversations),
 **Personas** (host characters with ten examples, a sample explorer, and the virtual host settings),
 **Flier** (turn an event flier into a promo clip that stops airing when the event is over), **Promos** (every promo, whether it can still play, and what repeats it),
 **Schedules** (things that happen on a timetable), and **Library** (your saved clips, plus sound effects and music from OwnCloud or Google Drive). **Users** (admins) manages people and their limits.
