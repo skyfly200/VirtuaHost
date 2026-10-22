@@ -140,3 +140,23 @@ test('the hub serves the alerts routes and needs the key', async () => {
     assert.strictEqual((await call('DELETE', '/alerts/watches/nope')).status, 404);
   } finally { server.close(); hub.stop(); }
 });
+
+test('a watch with a radius also listens around its edge, and counts a shared alert once', async () => {
+  const { ringPoints } = require('../alerts');
+  const ring = ringPoints({ lat: 40.0225, lon: -105.285 }, 10);
+  assert.strictEqual(ring.length, 9);
+  assert.ok(ring.slice(1).every((p) => Math.abs(p.lat - 40.0225) < 0.12));
+  const asked = [];
+  const f = async (url) => {
+    asked.push(String(url));
+    const lat = Number(decodeURIComponent(String(url).split('point=')[1]).split(',')[0]);
+    return { ok: true, json: async () => ({ features: [feature(), ...(lat > 40.08 ? [feature({ id: 'north-edge', event: 'Flash Flood Warning' })] : [])] }) };
+  };
+  const found = await fetchActive(sanitizeWatch({ lat: 40.0225, lon: -105.285, radiusKm: 10 }), { fetchImpl: f });
+  assert.strictEqual(asked.length, 9);
+  assert.deepStrictEqual(found.map((a) => a.id).sort(), ['north-edge', 'urn:nws:1']);
+  asked.length = 0;
+  await fetchActive(sanitizeWatch({ lat: 40.0225, lon: -105.285 }), { fetchImpl: f });
+  assert.strictEqual(asked.length, 1);
+  assert.throws(() => sanitizeWatch({ lat: 1, lon: 1, radiusKm: 999 }), /radiusKm/);
+});

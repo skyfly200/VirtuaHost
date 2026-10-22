@@ -23,7 +23,7 @@ A **watch** says where to listen and what to do. The hub keeps its watches in it
 | Field | Meaning |
 |---|---|
 | `name` | a label |
-| `lat`, `lon` **or** `zone` (like `TXZ213`) **or** `area` (a state like `TX`) | where to listen |
+| `lat`, `lon` (+ optional `radiusKm`, 0 to 300: also listen around the edge) **or** `zone` (like `TXZ213`) **or** `area` (a state like `TX`) | where to listen |
 | `minSeverity` | `Unknown`, `Minor`, `Moderate`, `Severe` (default) or `Extreme` |
 | `events` | optional list ("Tornado Warning", "Flash Flood Warning"); empty = any |
 | `action` | `notify` (default): only record it. `broadcast`: speak it and play it |
@@ -43,6 +43,10 @@ Hub API (same key as the rest of the hub; also reachable through the site's `/ap
 | `GET /alerts/active?lat=&lon=` (or `zone=`, `area=`) | what is active at a place, no state kept |
 
 Start with `notify`, look at the log for a few days (`POST /alerts/check?dry=1` any time), then switch one watch to `broadcast`. Keep `minSeverity` at Severe or above and list the events you really want on air.
+
+## Listening across the whole coverage area
+
+A point only catches alerts over that exact spot. If the station has a transmitter (or a coverage radius), the site asks the NWS about its own spot **and eight points around the edge of where it is heard** (the "good" coverage reach, [COVERAGE.md](COVERAGE.md)), keeps each alert once, and uses the most serious. A hub watch does the same when you give it `radiusKm`: use the station's good reach from `GET /api/coverage?station=` (about 6 km for the reference 5 W setup). The probes are cached for a minute, so a station with coverage costs nine small NWS requests per minute at most.
 
 ## Making a watch from a station
 

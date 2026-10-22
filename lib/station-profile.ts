@@ -5,6 +5,7 @@
 import { isReservedVariable, VARIABLE_NAME } from "./drop-template.js";
 import { validTimeZone } from "./schedule.js";
 import { stateCode } from "./places.js";
+import { ANTENNAS, ENVIRONMENTS, type Transmitter } from "./propagation.js";
 
 export type ConnectionKind = "none" | "chips-voice" | "radiodj" | "icecast";
 export const CONNECTION_KINDS: readonly ConnectionKind[] = ["none", "chips-voice", "radiodj", "icecast"];
@@ -47,6 +48,8 @@ export interface Station {
   place?: { label: string; name: string; admin1?: string; state?: string; countryCode?: string };
   /** How far the station can be heard, in km (a circle around its location). A first coverage model; see docs/COVERAGE.md. */
   coverageKm?: number;
+  /** The transmitter and antenna, for the quick coverage estimate (lib/propagation.ts). Without a coverageKm of your own, the estimate is used. */
+  transmitter?: Transmitter;
   /** Temperature unit for {{temp}}: F for the Americas by default, else C. */
   tempUnit?: "F" | "C";
   /** Station-specific placeholders, {{sponsor}} and so on: name -> text. */
@@ -102,6 +105,26 @@ const placeOf = (raw: unknown): { place?: NonNullable<Station["place"]> } => {
   return { place: { label, name, ...(admin1 ? { admin1 } : {}), ...(state ? { state } : {}), ...(code ? { countryCode: code } : {}) } };
 };
 
+export function transmitterOf(raw: unknown): { transmitter?: Transmitter } {
+  if (!raw || typeof raw !== "object") return {};
+  const r = raw as Record<string, unknown>;
+  const heightFt = num(r.heightFt, 1, 3000);
+  const powerWatts = num(r.powerWatts, 0.001, 1_000_000);
+  const erp = num(r.erpWatts, 0.001, 10_000_000);
+  if (heightFt === undefined || (powerWatts === undefined && erp === undefined)) return {};     // needs a height and some power to mean anything
+  const antenna = typeof r.antenna === "string" && r.antenna in ANTENNAS ? (r.antenna as keyof typeof ANTENNAS) : "ground-plane";
+  const environment = typeof r.environment === "string" && r.environment in ENVIRONMENTS ? (r.environment as keyof typeof ENVIRONMENTS) : "suburban";
+  const d = r.directional && typeof r.directional === "object" ? (r.directional as Record<string, unknown>) : null;
+  const az = d ? num(d.azimuthDeg, 0, 360) : undefined; const bw = d ? num(d.beamwidthDeg, 10, 360) : undefined; const fb = d ? num(d.frontToBackDb, 0, 60) : undefined;
+  const opt = <K extends string>(key: K, v: number | undefined): Partial<Record<K, number>> => (v === undefined ? {} : ({ [key]: v } as Record<K, number>));
+  return { transmitter: {
+    antenna, environment, heightFt,
+    ...opt("powerWatts", powerWatts), ...opt("erpWatts", erp), ...opt("gainDbd", num(r.gainDbd, -20, 30)), ...opt("lossDb", num(r.lossDb, 0, 40)),
+    ...opt("haatFt", num(r.haatFt, 1, 10000)), ...opt("groundElevationFt", num(r.groundElevationFt, -1000, 30000)), ...opt("frequencyMHz", num(r.frequencyMHz, 0.1, 3000)), ...opt("extraLossDb", num(r.extraLossDb, 0, 60)),
+    ...(antenna === "directional" && az !== undefined && bw !== undefined ? { directional: { azimuthDeg: az, beamwidthDeg: bw, frontToBackDb: fb ?? 20 } } : {}),
+  } };
+}
+
 const MODEL_ENTRY = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}(\|[A-Za-z0-9_. -]{1,60})?$/;
 const modelList = <K extends "textModels" | "speechModels">(key: K, raw: unknown): Partial<Record<K, string[]>> => {
   const items = (Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[\n,]/) : []).map((v) => String(v).trim()).filter((v) => MODEL_ENTRY.test(v));
@@ -135,7 +158,7 @@ export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } 
       links,
       ...opt("defaultPersonaId", text(r.defaultPersonaId, 60)), ...opt("defaultFx", text(r.defaultFx, 40)), ...opt("defaultSpeechModel", text(r.defaultSpeechModel, 100)), ...opt("defaultTextModel", text(r.defaultTextModel, 100)), ...opt("defaultVoice", text(r.defaultVoice, 60)),
       skipArtists: list(r.skipArtists, 100, 100),
-      ...geo(r), ...placeOf(r.place), ...(num(r.coverageKm, 1, 3000) !== undefined ? { coverageKm: num(r.coverageKm, 1, 3000) } : {}), ...(r.tempUnit === "F" || r.tempUnit === "C" ? { tempUnit: r.tempUnit } : {}), ...customVariables(r.variables),
+      ...geo(r), ...transmitterOf(r.transmitter), ...placeOf(r.place), ...(num(r.coverageKm, 1, 3000) !== undefined ? { coverageKm: num(r.coverageKm, 1, 3000) } : {}), ...(r.tempUnit === "F" || r.tempUnit === "C" ? { tempUnit: r.tempUnit } : {}), ...customVariables(r.variables),
       ...modelList("textModels", r.textModels), ...modelList("speechModels", r.speechModels),
       ...(typeof r.autoplay === "boolean" ? { autoplay: r.autoplay } : {}), ...(typeof r.preempt === "boolean" ? { preempt: r.preempt } : {}),
       ...opt("notes", text(r.notes, 1000)),

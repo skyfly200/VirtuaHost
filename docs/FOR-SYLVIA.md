@@ -145,6 +145,8 @@ Nothing in `krap-station/` changed. These are all on the web site (`public/`, `l
 
 **Where is the station?** In the Stations tab, type a town ("Houston, TX") and press Find: coordinates and time zone are filled in. That location drives weather, US weather alerts ([ALERTS.md](ALERTS.md)), `{{place}}`, and ranking which stations an event is near ([COVERAGE.md](COVERAGE.md)).
 
+**Coverage estimate.** Enter a station's power, antenna and height in the Stations tab and it draws a rough circle or ellipse for where it is heard (it ignores terrain). The reference setup is a quarter-wave ground plane 50 ft up on Mapleton Hill in Boulder. It decides which stations an event is near and which alerts to follow: [COVERAGE.md](COVERAGE.md).
+
 **Weather alerts (US).** `{{alert}}` placeholders on the site, and in the hub (`chips-voice/hub/alerts.js`) watches that record or broadcast National Weather Service alerts. It is not the Emergency Alert System; read [ALERTS.md](ALERTS.md) first.
 
 **An AI agent can run it.** The site has an MCP endpoint (`/api/mcp`) so an assistant, yours or ours, can manage stations; anything that reaches the public stream or deletes needs a person's yes: [MCP.md](MCP.md).

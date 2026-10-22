@@ -1,5 +1,6 @@
 import { handleAlerts } from "./handlers/alerts.js";
 import { handleClips } from "./handlers/clips.js";
+import { handleCoverage } from "./handlers/coverage.js";
 import { handleEstimate } from "./handlers/estimate.js";
 import { handleGenerate } from "./handlers/generate.js";
 import { handleOptions } from "./handlers/options.js";
@@ -18,6 +19,7 @@ type Route = (req: Request, rest: string[]) => Promise<Response>;
 const ROUTES: Record<string, Route> = {
   alerts: (req) => handleAlerts(req),
   clips: (req, r) => handleClips(req, r[0]),
+  coverage: (req) => handleCoverage(req),
   estimate: (req) => handleEstimate(req),
   generate: (req) => handleGenerate(req),
   hub: (req) => handleProxy(req),

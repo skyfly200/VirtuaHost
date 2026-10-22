@@ -42,7 +42,31 @@ function normalize(feature) {
   };
 }
 
-async function fetchActive(watch, { fetchImpl = globalThis.fetch, contact = '', timeoutMs = 10000 } = {}) {
+// A point watch with a radius also listens around the edge of that circle (eight points), so an alert for the edge of where the station
+// is heard counts, not only one over the antenna. (The radius is the station's "good" coverage reach from the site: docs/COVERAGE.md.)
+function ringPoints(point, km) {
+  const R = 6371; const rad = (d) => (d * Math.PI) / 180; const deg = (r) => (r * 180) / Math.PI;
+  const out = [point];
+  for (let b = 0; b < 360; b += 45) {
+    const d = km / R; const t = rad(b); const p1 = rad(point.lat); const l1 = rad(point.lon);
+    const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(t));
+    const l2 = l1 + Math.atan2(Math.sin(t) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+    out.push({ lat: Math.round(deg(p2) * 1e4) / 1e4, lon: Math.round((((deg(l2) + 540) % 360) - 180) * 1e4) / 1e4 });
+  }
+  return out;
+}
+
+async function fetchActive(watch, opts = {}) {
+  if (watch.point && watch.radiusKm > 0.5) {
+    const lists = await Promise.all(ringPoints(watch.point, watch.radiusKm).map((p) => fetchOne({ point: p }, opts)));
+    const seen = new Map();
+    for (const a of lists.flat()) if (!seen.has(a.id)) seen.set(a.id, a);
+    return [...seen.values()];
+  }
+  return fetchOne(watch, opts);
+}
+
+async function fetchOne(watch, { fetchImpl = globalThis.fetch, contact = '', timeoutMs = 10000 } = {}) {
   const q = watch.point ? `point=${encodeURIComponent(`${watch.point.lat},${watch.point.lon}`)}` : watch.zone ? `zone=${encodeURIComponent(watch.zone)}` : `area=${encodeURIComponent(watch.area)}`;
   let res;
   try {
@@ -101,6 +125,7 @@ function sanitizeWatch(raw, existing) {
     }
   }
   if (!w.point && !w.zone && !w.area) throw new AlertError('say where to watch: lat and lon, a zone, or a state');
+  if (r.radiusKm !== undefined) { const km = Number(r.radiusKm); if (!(km >= 0 && km <= 300)) throw new AlertError('radiusKm is 0 to 300 (how far around the point to listen)'); w.radiusKm = km; }
   if (r.minSeverity !== undefined) { if (!SEVERITY.includes(r.minSeverity)) throw new AlertError(`minSeverity is one of ${SEVERITY.join(', ')}`); w.minSeverity = r.minSeverity; }
   if (r.events !== undefined) w.events = (Array.isArray(r.events) ? r.events : String(r.events).split(',')).map((e) => clean(e, 80)).filter(Boolean).slice(0, 40);
   if (r.action !== undefined) { if (r.action !== 'notify' && r.action !== 'broadcast') throw new AlertError('action is "notify" or "broadcast"'); w.action = r.action; }
@@ -178,4 +203,4 @@ function createAlerts({ store, fetchImpl = globalThis.fetch, now = Date.now, con
   };
 }
 
-module.exports = { createAlerts, AlertError, normalize, matters, speakable, sanitizeWatch, fetchActive, SEVERITY };
+module.exports = { createAlerts, AlertError, normalize, matters, speakable, sanitizeWatch, fetchActive, ringPoints, SEVERITY };

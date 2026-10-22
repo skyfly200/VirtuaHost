@@ -28,6 +28,7 @@ Three kinds, shown in each tool's annotations (`readOnlyHint`, `destructiveHint`
 | `whoami` | read | your role, limits and usage |
 | `list_stations` | read | station profiles; with `lat`/`lon`, ranked by distance with whether each covers the point |
 | `station_summary` | read | what the site holds for a station |
+| `station_coverage` | read | the quick coverage estimate for a station (reach to the strong, good and fringe levels, GeoJSON rings, assumptions) |
 | `find_place` | read | town or city by name -> coordinates, state, time zone |
 | `active_alerts` | read | US NWS alerts at a station's location |
 | `list_personas`, `list_models`, `list_clips`, `clip_info`, `list_schedules`, `list_queue` | read | the obvious lookups (models carry price tier and filter label) |

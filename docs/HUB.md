@@ -121,7 +121,7 @@ Stations grouped by site with now playing, skip, volume and playlist; select sev
 
 ## 8. Weather alerts (US)
 
-The hub can watch the US National Weather Service for alerts in an area and either record them (`notify`, the default) or have the voice server speak them and broadcast the clip to chosen stations (`broadcast`). It polls every `ALERTS_POLL_SECONDS` (default 120; `0` = off) and sets the NWS-required `User-Agent` from `ALERTS_CONTACT`. Routes: `GET /alerts`, `POST|PUT|DELETE /alerts/watches`, `POST /alerts/check[?dry=1]`, `GET /alerts/active`. This is a relay of NWS alerts, **not** the Emergency Alert System. Everything about it, including what is said, the safety defaults and what is planned (coverage-aware relevance): [ALERTS.md](ALERTS.md).
+The hub can watch the US National Weather Service for alerts in an area and either record them (`notify`, the default) or have the voice server speak them and broadcast the clip to chosen stations (`broadcast`). It polls every `ALERTS_POLL_SECONDS` (default 120; `0` = off) and sets the NWS-required `User-Agent` from `ALERTS_CONTACT`. A watch can include `radiusKm` to also listen around the edge of that circle (the station's good coverage reach from `GET /api/coverage` on the site). Routes: `GET /alerts`, `POST|PUT|DELETE /alerts/watches`, `POST /alerts/check[?dry=1]`, `GET /alerts/active`. This is a relay of NWS alerts, **not** the Emergency Alert System. Everything about it, including what is said, the safety defaults and what is planned (coverage-aware relevance): [ALERTS.md](ALERTS.md).
 
 ## 9. Putting the hub on the server, and RadioDJ at Greenlight
 

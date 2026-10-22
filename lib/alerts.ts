@@ -1,3 +1,4 @@
+import { alertProbePoints } from "./coverage.js";
 import { locate } from "./geo.js";
 import type { Station } from "./station-profile.js";
 
@@ -31,27 +32,33 @@ const cache = new Map<string, { at: number; alerts: NwsAlert[] }>();
 const TTL_MS = 60_000;
 export const resetAlertCache = (): void => cache.clear();
 
+async function alertsAt(key: string): Promise<NwsAlert[]> {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.alerts;
+  let found: NwsAlert[] = [];
+  try {
+    const res = await fetch(`https://api.weather.gov/alerts/active?point=${encodeURIComponent(key)}`, {
+      headers: { accept: "application/geo+json", "user-agent": `(${process.env.STATION_NAME || "VirtuaHost"}, ${process.env.ALERTS_CONTACT || "set ALERTS_CONTACT"})` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    const body = (await res.json()) as { features?: Array<{ properties?: Record<string, unknown> }> };
+    found = (body.features ?? []).flatMap((f) => { const a = normalizeAlert(f); return a ? [a] : []; });
+  } catch {
+    found = [];                                                          // no alerts known: placeholders use their fallback
+  }
+  cache.set(key, { at: Date.now(), alerts: found });
+  return found;
+}
+
 /** Active alerts at the station's location, most serious first, at least `minSeverity` (default Moderate). Never throws: no location or an outage gives []. */
 export async function activeAlerts(station: Station | null | undefined, minSeverity: Severity = (process.env.ALERT_MIN_SEVERITY as Severity) || "Moderate"): Promise<NwsAlert[]> {
   if (!station) return [];
-  const where = await locate(station);
-  if (!where) return [];
-  const key = `${where.lat},${where.lon}`;
-  let alerts = cache.get(key);
-  if (!alerts || Date.now() - alerts.at > TTL_MS) {
-    let found: NwsAlert[] = [];
-    try {
-      const res = await fetch(`https://api.weather.gov/alerts/active?point=${encodeURIComponent(key)}`, {
-        headers: { accept: "application/geo+json", "user-agent": `(${process.env.STATION_NAME || "VirtuaHost"}, ${process.env.ALERTS_CONTACT || "set ALERTS_CONTACT"})` },
-        signal: AbortSignal.timeout(5_000),
-      });
-      const body = (await res.json()) as { features?: Array<{ properties?: Record<string, unknown> }> };
-      found = (body.features ?? []).flatMap((f) => { const a = normalizeAlert(f); return a ? [a] : []; });
-    } catch {
-      found = [];                                                          // no alerts known: placeholders use their fallback
-    }
-    alerts = { at: Date.now(), alerts: found };
-    cache.set(key, alerts);
-  }
-  return alerts.alerts.filter((a) => rank(a.severity) >= rank(minSeverity)).sort((a, b) => rank(b.severity) - rank(a.severity) || (a.expires ?? 0) - (b.expires ?? 0));
+  // The station's own spot, plus (when its coverage is known) the edge of where it is heard, so an alert for the edge of the area counts too.
+  const center = await locate(station);
+  if (!center) return [];
+  const probes = station.lat !== undefined && station.lon !== undefined ? alertProbePoints(station) : [center];
+  const lists = await Promise.all(probes.map((p) => alertsAt(`${p.lat},${p.lon}`)));
+  const byId = new Map<string, NwsAlert>();
+  for (const a of lists.flat()) if (!byId.has(a.id)) byId.set(a.id, a);
+  return [...byId.values()].filter((a) => rank(a.severity) >= rank(minSeverity)).sort((a, b) => rank(b.severity) - rank(a.severity) || (a.expires ?? 0) - (b.expires ?? 0));
 }
