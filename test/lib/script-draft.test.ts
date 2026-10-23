@@ -6,7 +6,7 @@ import type { Station } from "../../lib/station-profile.js";
 vi.mock("../../lib/ai.js", () => ({ complete: vi.fn() }));
 
 import { complete } from "../../lib/ai.js";
-import { buildDraft, draftScript, parseDraft, type DraftContext } from "../../lib/script-draft.js";
+import { buildDraft, draftScript, parseDraft, personaAliases, type DraftContext } from "../../lib/script-draft.js";
 import { contextFor } from "../../lib/drop-template.js";
 
 const EXAMPLE = "Nothing like a cold one after a long shift, folks.";
@@ -138,5 +138,45 @@ describe("draftScript", () => {
     const out = await draftScript({ kind: "single", topic: "welcome", cast: [{ name: "Rocky" }] }, ctx());
     expect(out.text).toBe("Welcome to KRAP, the loudest voice on the coast.");
     expect(out.raw).toContain("{{station}}");
+  });
+});
+
+describe("a writer that labels lines with the characters' own names", () => {
+  const cast = [{ name: "Host", personaId: "chip" }, { name: "Guest", personaId: "rocky-flats-7fb0ca" }];
+  const personas = new Map([
+    ["chip", { id: "chip", name: "CHIP (Way High Radio)" }],
+    ["rocky-flats-7fb0ca", { id: "rocky-flats-7fb0ca", name: "Rocky Flats" }],
+  ]) as never;
+  const reply = "Chip: Ahoy there Rocky Flats. The old transmitter's humming today.\nRocky Flats: You ever notice how the fog never lifts?\nChip: Only when the signal holds.";
+
+  it("builds the names a persona goes by, leaving out one two speakers share", () => {
+    expect([...personaAliases(cast, personas)]).toEqual([["chip (way high radio)", "Host"], ["chip", "Host"], ["rocky flats", "Guest"], ["rocky", "Guest"]]);
+    const twins = new Map([["a", { id: "a", name: "Owl" }], ["b", { id: "b", name: "Owl" }]]) as never;
+    expect(personaAliases([{ name: "One", personaId: "a" }, { name: "Two", personaId: "b" }], twins).size).toBe(0);
+  });
+
+  it("maps those names back to the cast", () => {
+    const out = parseDraft(reply, cast, 10, personaAliases(cast, personas));
+    expect(out.lines.map((l) => l.speaker)).toEqual(["Host", "Guest", "Host"]);
+    expect(out.dropped).toBe(0);
+  });
+
+  it("takes unknown labels in order when there are no names to go by", () => {
+    const out = parseDraft("Captain: Hello.\nStranger: Hi.\nCaptain: Bye.", [{ name: "Host" }, { name: "Guest" }], 10);
+    expect(out.lines.map((l) => l.speaker)).toEqual(["Host", "Guest", "Host"]);
+    // ...but not when there are more labels than speakers.
+    expect(parseDraft("A: 1.\nB: 2.\nC: 3.", [{ name: "Host" }, { name: "Guest" }], 10).lines).toEqual([]);
+  });
+
+  it("tells the writer which labels to use", () => {
+    const { system } = buildDraft({ kind: "conversation", topic: "x", cast }, { station: null, personas, template: {} as never });
+    expect(system).toContain("as the label of each line: Host, Guest");
+    expect(system).toContain("never with the character's own name");
+  });
+
+  it("drafts the conversation end to end", async () => {
+    vi.mocked(complete).mockResolvedValue(reply);
+    const out = await draftScript({ kind: "conversation", topic: "fog", cast }, { ...ctx(), personas });
+    expect(out.lines.map((l) => l.speaker)).toEqual(["Host", "Guest", "Host"]);
   });
 });
