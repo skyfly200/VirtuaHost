@@ -8,6 +8,7 @@ import { stationId, stationName } from '../shared/station.js';
 import { createStatus } from '../shared/status.js';
 import { modelVoiceFields } from '../shared/voicepicker.js';
 import { popMenu } from '../shared/popmenu.js';
+import { emojiField } from '../shared/emojipicker.js';
 
 const LINES = (value) => value.split('\n').map((l) => l.trim()).filter(Boolean);
 const blank = () => ({ name: '', emoji: '', tagline: '', description: '', instructions: '', tone: '', voice: '', speechModel: '', tags: [], templates: [], stationIds: [], promos: [], signOffs: [], timeLines: {} });
@@ -196,7 +197,7 @@ export async function mountPersonas(root, api) {
       locked ? h('p', { class: 'muted small' }, 'Example personas cannot be changed. Use More, then Duplicate, on the card to make a copy of your own.')
         : sect('Start from a description', 'optional', !c.id && !c.name, h('div', { class: 'row' }, h('label', { class: 'field grow' }, 'Describe the host and let the AI draft the rest', describe), draftButton), draftStatus.el),
       sect('Identity', c.name || 'name, emoji, tagline', true,
-        h('div', { class: 'grid cols' }, input('Emoji', 'emoji', { placeholder: '🎙️' }), input('Name', 'name'), input('Tagline', 'tagline', { placeholder: 'their catchphrase' })),
+        h('div', { class: 'grid cols' }, emojiField({ value: c.emoji, disabled: locked, onchange: (e) => { c.emoji = e; } }), input('Name', 'name'), input('Tagline', 'tagline', { placeholder: 'their catchphrase' })),
         input('One-line description', 'description'),
         input('Tags (comma separated)', 'tags', { tags: true, placeholder: 'jazz, late-night, chill' })),
       sect('Character', c.tone || 'brief and tone', true,

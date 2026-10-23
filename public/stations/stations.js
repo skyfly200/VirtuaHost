@@ -7,6 +7,7 @@ import { mountHostCard } from '../shared/hostcard.js';
 import { modelVoiceFields } from '../shared/voicepicker.js';
 import { createSpeaker } from '../shared/speaker.js';
 import { keyBox } from '../shared/keybox.js';
+import { emojiField } from '../shared/emojipicker.js';
 import { sectionize } from '../shared/sect.js';
 
 const blank = () => ({ name: '', callsign: '', frequency: '', tagline: '', description: '', emoji: '📻', color: '#5b3df5', genres: [], city: '', tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', website: '', streamUrl: '', contact: '', links: [], defaultPersonaId: '', defaultFx: '', defaultSpeechModel: '', defaultTextModel: '', defaultVoice: '', skipArtists: [], place: null, coverageKm: '', transmitter: null, lat: '', lon: '', tempUnit: '', variablesText: '', autoplay: false, preempt: false, notes: '', connection: { kind: 'none', hubStationId: '', note: '' } });
@@ -220,7 +221,7 @@ export async function mountStationProfiles(root, api) {
       h('h2', {}, c.id ? `Edit ${c.name}` : 'New station'),
       h('p', { class: 'muted small' }, 'None of this needs a server. It is the station\'s profile; other tabs use it as soon as you choose "Work on this station".'),
       h('h3', {}, 'Who it is'),
-      h('div', { class: 'grid cols' }, text('Emoji', 'emoji', { placeholder: '📻' }), text('Name', 'name'), text('Call sign', 'callsign', { placeholder: 'e.g. KRAP' }), text('On the dial', 'frequency', { placeholder: '97.7 FM' })),
+      h('div', { class: 'grid cols' }, emojiField({ value: c.emoji, placeholder: '📻', onchange: (e) => { c.emoji = e; } }), text('Name', 'name'), text('Call sign', 'callsign', { placeholder: 'e.g. KRAP' }), text('On the dial', 'frequency', { placeholder: '97.7 FM' })),
       h('div', { class: 'grid cols' }, text('Tagline', 'tagline', { placeholder: 'the line the AI hosts say' }), h('label', { class: 'field' }, 'Accent colour', h('input', { type: 'color', value: c.color || '#5b3df5', oninput: (e) => { c.color = e.target.value; } }))),
       area('About it', 'description', 3),
       listField('Genres and vibes (one per line)', 'genres', 3, 'punk\ntalk\nlate night'),
