@@ -2,6 +2,7 @@
 // is decoded with Web Audio, then written as 16-bit WAV or encoded with lamejs, which is loaded from a CDN the first time MP3 is
 // chosen). `load` returns a Blob or an object URL and is called each time, so it always gets the current audio.
 import { h, toast } from './kit.js';
+import { popMenu } from './popmenu.js';
 
 const LAME = 'https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js';
 const EXT = { 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav', 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3' };
@@ -74,23 +75,18 @@ export async function convert(blob, format) {
   return format === 'mp3' ? encodeMp3(decoded) : encodeWav(decoded);
 }
 
+// One quiet control: a download icon that saves the audio as it is, and a small arrow beside it for WAV or MP3.
 export function downloadMenu({ load, name }) {
-  const menu = h('details', { class: 'dl', style: 'display:inline-block;position:relative' });
-  const go = (format) => async (e) => {
-    const button = e.currentTarget;
-    button.disabled = true;
+  const go = (format, button) => async () => {
+    if (button) button.disabled = true;
     try {
       const source = await toBlob(await load());
       const out = await convert(source, format);
       saveBlob(out, `${slug(typeof name === 'function' ? name() : name)}.${kind(out)}`);
-      menu.open = false;
-    } catch (err) { toast(err.message || 'Could not prepare the download.', 'error'); } finally { button.disabled = false; }
+    } catch (err) { toast(err.message || 'Could not prepare the download.', 'error'); } finally { if (button) button.disabled = false; }
   };
-  menu.append(
-    h('summary', { class: 'button', title: 'Download this audio', style: 'cursor:pointer' }, '⬇ Download'),
-    h('div', { class: 'card', style: 'position:absolute;z-index:5;padding:6px;display:grid;gap:4px;min-width:150px' },
-      h('button', { type: 'button', onclick: go('original') }, 'As saved'),
-      h('button', { type: 'button', onclick: go('wav') }, 'WAV'),
-      h('button', { type: 'button', onclick: go('mp3') }, 'MP3')));
-  return menu;
+  const main = h('button', { type: 'button', class: 'icon-btn', title: 'Download this audio', 'aria-label': 'Download this audio' }, '\u2B07');
+  main.addEventListener('click', go('original', main));
+  return h('span', { class: 'dl-split' }, main,
+    popMenu({ label: 'Choose a download format', icon: '\u25BE', items: [{ label: 'Download as saved', onclick: go('original') }, { label: 'Download as WAV', onclick: go('wav') }, { label: 'Download as MP3', onclick: go('mp3') }] }));
 }

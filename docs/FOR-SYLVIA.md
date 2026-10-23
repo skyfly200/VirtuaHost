@@ -4,6 +4,23 @@ Read this first. It is written so you can get up to speed in a few minutes. Noth
 `virtual_host.py`, `gen.py`, `process.py`, `scripts.py` and `radiodj_api.sh` are exactly as you left them. Everything below is new code
 next to them, in `chips-voice/` (a Node server that runs beside Icecast/Liquidsoap) and in VirtuaHost's `lib/`.
 
+> ## Update note for Sylvia (read this first; the rest of the file is the longer story)
+>
+> **What is merged and deployable:** just-in-time drops (the hub writes and speaks a line a few minutes before a dynamic slot, shadow mode by default); the RadioDJ agent with a read key and a control key, a kill switch only you can clear on the PC, live-show refusal, an audit log, a hash-named clip folder under `C:\GreenLightRadio`, and an outbound **pull** loop so the PC never needs an inbound connection; two clocks (`BROADCAST_TZ=America/Denver`, `MACHINE_TZ=America/Chicago`); conversations of up to four speakers; a Studio page that replaces Generate and Voice Lab. Everything was tested against fakes only. **Nothing has touched your RadioDJ.**
+>
+> **Behaviour changes you will notice:** the agent now listens on `127.0.0.1` only (set `AGENT_HOST` to expose it, or better use `HUB_URL` to pull); `AGENT_KEY` still works but separate `AGENT_READ_KEY` and `AGENT_CONTROL_KEY` are preferred; skip needs `RADIODJ_SKIP_VERIFIED=true` after you have tested it; the agent starts in **shadow mode** (`AGENT_SHADOW=true`: it accepts clips and inserts but executes nothing) until you set it to `false`; the fixed `current_link.mp3` is only written when `CLIP_CART` is set.
+>
+> **What I need from you, in order:**
+> 1. A real `/npjson` response with a few items queued (so the agent reads the queue and the elapsed/remaining times correctly).
+> 2. `INSERT_EXEC`: a script called `script <audio-file> <position> <replace-id>` that puts the file at that 1-based queue position **and removes the planned (evergreen) item with that id in the same step** (the generated clip preempts the planned one). Do your loudness and same-room processing in it. Exit non-zero on any failure. If you cannot make the swap one step, tell me: a leftover evergreen would air twice and the agent reports that as a failure.
+> 3. `LOAD_EXEC` (loads `GLR YYYY-MM-DD*`), and the nightly plan file `GLR YYYY-MM-DD.json` next to each playlist (shape in `chips-voice/agent-radiodj/schedule.js`: items with `kind`, Denver `time`, and `dynamic-slot` markers carrying `slotKind`, `personaId`, `leadSeconds`, `fallbackClipId`).
+> 4. Make the planned clips at dynamic slots **song-neutral** (station IDs, time checks, generic breaks, promos, weather; no "that was X" or "up next, Y"), and keep **legal station IDs** in planned clips (a generated station ID replaces them, so the generated line must still say the call sign and city: tell me the exact wording required).
+> 5. For song requests: how to find a song in RadioDJ's library by artist and title, and whether the same insert script can add a requested song. For relay shows: how the stream switches between RadioDJ and a DJ's relay today, and an on/off script for it.
+>
+> **The live test, when 1 and 2 exist:** on a quiet stream, `AGENT_SHADOW=false`, insert one clip two ahead through the agent, and tell me what the queue looked like before and after. Nothing goes on the live station until Rocky has approved the shadow review and that single-item test.
+>
+> **Interfaces to keep stable:** a shared `now()` using `broadcastTz`; `tts_line(speaker, text, file)` with a backend switch (ElevenLabs direct, or this site's `POST /api/generate` with `preview: true`); the dynamic-slot markers in the plan file; the insert script contract above. Setup and every environment variable: `chips-voice/agent-radiodj/.env.example`. Roadmap: `docs/ROADMAP.md`. Everything not yet built or decided: `docs/HANDOFF.md`.
+
 ## The one-paragraph picture
 
 VirtuaHost (Netlify) generates DJ audio with Gemini and now hands each clip to the **Chips Voice server** (`chips-voice/`), which runs on
