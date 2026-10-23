@@ -12,7 +12,8 @@ import { loadStations, allStations, currentStation, setStation } from './shared/
 import { mountPanel, unmountPanel } from './panel/panel.js';
 import { mountDynamic, unmountDynamic } from './dynamic/dynamic.js';
 import { brand } from './shared/brand.js';
-import { mountUsers, accountCard } from './users/users.js';
+import { mountUsers, mountAccount } from './users/users.js';
+import { popMenu } from './shared/popmenu.js';
 
 const app = $('#app');
 const SESSION_KEY = 'session';
@@ -98,9 +99,12 @@ function showApp(credential, options, me) {
     { id: 'personas', label: 'Personas', group: 'Station', on: true },
     { id: 'control', label: 'Control', group: 'Station', on: features.hub && admin, hidden: !admin, needs: 'the hub', vars: 'HUB_URL and HUB_KEY',
       what: 'Control every station on one screen: now playing, skip, volume, playlists, broadcasts at the same moment, and host settings.' },
-    { id: 'users', label: 'Users', group: 'Admin', on: admin, hidden: !admin },
+    // Reached from the user menu at the top right, not from the section menu.
+    { id: 'account', label: 'Account', on: true, nav: false },
+    { id: 'users', label: 'Users', on: admin, hidden: !admin, nav: false },
   ];
-  const groups = [...new Set(tabs.map((t) => t.group))];
+  const navTabs = tabs.filter((t) => t.nav !== false);
+  const groups = [...new Set(navTabs.map((t) => t.group))];
   const panel = h('div');
   let leave = () => {};
   let activeTab = '';
@@ -114,7 +118,7 @@ function showApp(credential, options, me) {
   });
 
   // Each tab has two buttons, one for the desktop bar and one for the phone menu; select() keeps both in step.
-  const entries = tabs.map((t) => ({
+  const entries = navTabs.map((t) => ({
     tab: t,
     desk: h('button', { type: 'button', hidden: Boolean(t.hidden), onclick: () => { closeDrops(); select(t.id); } }, tabLabel(t)),
     drawer: h('button', { type: 'button', role: 'tab', class: 'drawer-tab', hidden: Boolean(t.hidden), onclick: () => { closeMenu(); select(t.id); } }, tabLabel(t)),
@@ -201,6 +205,7 @@ function showApp(credential, options, me) {
     });
     drops.forEach((d) => d.btn.classList.toggle('has-active', d.list.some((e) => e.tab.id === id)));
     menuCurrent.textContent = tab.label;
+    userBtn.classList.toggle('has-active', id === 'account' || id === 'users');
     try { sessionStorage.setItem('tab', id); } catch { /* storage blocked */ }
     if (!tab.on) return clear(panel, offCard(tab));
     if (id === 'studio') await mountStudio(panel, clientFor('/api', credential));
@@ -209,6 +214,7 @@ function showApp(credential, options, me) {
     if (id === 'promos') await mountPromos(panel, clientFor('/api', credential));
     if (id === 'flier') await mountFlier(panel, clientFor('/api', credential));
     if (id === 'library') await mountLibrary(panel, clientFor('/api', credential));
+    if (id === 'account') mountAccount(panel, clientFor('/api', credential), me);
     if (id === 'users') await mountUsers(panel, clientFor('/api', credential));
     if (id === 'stations') await mountStationProfiles(panel, clientFor('/api', credential));
     if (id === 'dynamic') { leave = unmountDynamic; await mountDynamic(panel, clientFor('/api', credential), clientFor('/api/hub', credential)); }
@@ -226,7 +232,15 @@ function showApp(credential, options, me) {
   const api = clientFor('/api', credential);
   window.addEventListener('vh-stations', async () => { await loadStations(api); paintStations(); });
 
-  const signOut = h('button', { type: 'button', class: 'signout', onclick: () => { setSession(''); location.reload(); } }, 'Sign out');
+  // The person at the top right: account settings, Users (admins) and sign out.
+  const userMenu = popMenu({ label: `Account: ${me.username || 'you'}`, className: 'user-btn', items: () => [
+    { heading: true, label: h('span', {}, h('strong', {}, me.username || 'Signed in'), me.role || '') },
+    { label: 'Account settings', onclick: () => select('account') },
+    { label: 'Users', hidden: !admin, onclick: () => select('users') },
+    { label: 'Sign out', danger: true, onclick: () => { setSession(''); location.reload(); } },
+  ] });
+  const userBtn = userMenu.querySelector('button');
+  userBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
 
   clear(app,
     h('header', { class: 'bar' },
@@ -234,10 +248,10 @@ function showApp(credential, options, me) {
       h('div', { class: 'menu-wrap' }, menuBtn, menuCurrent),
       h('span', { class: 'grow' }),
       stationSlot,
-      signOut,
+      h('span', { class: 'user-menu' }, userMenu),
       deskNav),
     drawer,
-    h('main', {}, accountCard(clientFor('/api', credential), me), panel));
+    h('main', {}, panel));
 
   let first = 'studio';
   try { first = sessionStorage.getItem('tab') || first; } catch { /* storage blocked */ }

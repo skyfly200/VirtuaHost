@@ -91,7 +91,7 @@ export async function mountUsers(root, api) {
 }
 
 // A small "your account" card for the top of the page: role, usage against limits, and change password.
-export function accountCard(api, me) {
+export function accountCard(api, me, { open = false } = {}) {
   const usage = me.usage || { daily: 0, monthly: 0 };
   const q = me.quota || {};
   const lines = me.role === 'admin' ? ['No limits.'] : [
@@ -102,7 +102,7 @@ export function accountCard(api, me) {
   ].filter(Boolean);
   const current = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Current password' });
   const next = h('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'New password' });
-  return h('details', { class: 'card' },
+  return h('details', { class: 'card', open },
     h('summary', {}, `${me.username} (${me.role})`),
     h('p', { class: 'small muted' }, lines.length ? lines.join(' · ') : 'No limits set for you.'),
     me.username === 'api-key' || me.username === 'local' ? null : keyBox(api),
@@ -110,4 +110,9 @@ export function accountCard(api, me) {
       e.preventDefault();
       try { await patch(api, '/users/me', { currentPassword: current.value, newPassword: next.value }); current.value = ''; next.value = ''; toast('Password changed', 'info'); } catch (err) { toast(err.message, 'error'); }
     } }, h('label', { class: 'field' }, 'Current password', current), h('label', { class: 'field' }, 'New password (10+ characters)', next), h('button', { type: 'submit' }, 'Change password')));
+}
+
+// The account page: reached from the user menu at the top right.
+export function mountAccount(root, api, me) {
+  root.replaceChildren(h('h2', {}, 'Account settings'), accountCard(api, me, { open: true }));
 }
