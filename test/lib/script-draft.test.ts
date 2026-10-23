@@ -105,6 +105,20 @@ describe("draftScript", () => {
     expect(new Set(out.lines.map((l) => l.speaker))).toEqual(new Set(["Rocky", "Dale"]));
   });
 
+  it("accepts a short label for a longer cast name, and lines that start with a sound effect tag", async () => {
+    vi.mocked(complete).mockResolvedValue("[sfx:phone] Rocky: Green Light, you're on.\nDale: [sfx:static over] Hi, it's me.\n**Rocky Flats**: Welcome.");
+    const out = await draftScript({ kind: "conversation", topic: "call", cast: [{ name: "Rocky Flats" }, { name: "Dale" }] }, ctx());
+    expect(out.lines.map((l) => l.speaker)).toEqual(["Rocky Flats", "Dale", "Rocky Flats"]);
+    expect(out.lines[1].text).toBe("[sfx:static over] Hi, it's me.");
+  });
+
+  it("says what the writer sent back when it cannot be read", async () => {
+    vi.mocked(complete).mockResolvedValue("Sorry, I cannot help with that.");
+    await expect(draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx())).rejects.toThrow(/Rocky, Dale.*Sorry, I cannot help/);
+    vi.mocked(complete).mockResolvedValue("");
+    await expect(draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx())).rejects.toThrow(/sent back nothing/);
+  });
+
   it("throws a clear error when both attempts give nothing usable", async () => {
     vi.mocked(complete).mockResolvedValue("Sorry, I cannot help with that.");
     await expect(draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx())).rejects.toThrow(/did not return a script/);

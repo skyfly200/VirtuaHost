@@ -1,5 +1,5 @@
 // A small popover menu behind one button: the way to keep a row of actions short. One menu is open at a time; a click elsewhere or Escape closes
-// it; arrow keys move between items. items: [{ label, onclick, danger?, hidden? }] (or a function returning that list, read each time it opens).
+// it; arrow keys move between items. items: [{ label, onclick, danger?, hidden? }] (or { label, heading: true } for a non-clickable title) (or a function returning that list, read each time it opens).
 import { h } from './kit.js';
 
 let open = null;
@@ -23,7 +23,7 @@ export function popMenu({ label = 'More actions', icon = '⋯', items, className
     open() {
       if (open && open !== menu) open.close();
       const rows = (typeof items === 'function' ? items() : items).filter((i) => !i.hidden);
-      list.replaceChildren(...rows.map((i) => h('button', { type: 'button', role: 'menuitem', class: i.danger ? 'danger' : '', onclick: () => { menu.close(); i.onclick(); } }, i.label)));
+      list.replaceChildren(...rows.map((i) => i.heading ? h('div', { class: 'pop-heading', role: 'presentation' }, i.label) : h('button', { type: 'button', role: 'menuitem', class: i.danger ? 'danger' : '', onclick: () => { menu.close(); i.onclick(); } }, i.label)));
       list.hidden = false; button.setAttribute('aria-expanded', 'true'); open = menu;
     },
   };

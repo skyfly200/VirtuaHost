@@ -12,7 +12,7 @@ header.bar .brand { order: 0; }
 header.bar .menu-desk { order: 1; flex: 0 1 auto; align-items: center; gap: 2px; flex-wrap: nowrap; margin-left: 8px; }
 header.bar .grow { order: 2; }
 header.bar .station-slot { order: 3; }
-header.bar .signout { order: 4; }
+header.bar .user-menu { order: 4; }
 /* Desktop dropdowns: a group of several tabs is a button that opens a list; a group of one is just the tab. */
 .menu-item { position: relative; display: flex; align-items: center; }
 .menu-item[hidden] { display: none; }
@@ -47,7 +47,7 @@ body.menu-open { overflow: hidden; }
   header.bar { gap: 8px; padding: 10px 12px; }
   header.bar .grow, header.bar .menu-desk { display: none; }
   header.bar .brand { flex: 1 1 auto; }
-  header.bar .signout { order: 1; }
+  header.bar .user-menu { order: 1; }
   .menu-wrap { display: flex; align-items: center; gap: 8px; order: 2; flex: 1 1 auto; min-width: 0; }
   .menu-btn { min-height: 44px; padding: 0 14px; }
   header.bar .station-slot { order: 3; flex: 1 1 150px; min-width: 0; }
@@ -75,3 +75,8 @@ code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
 .off-card { text-align: center; padding: 28px 16px; }
 .off-card h2 { font-size: 18px; }
 .off-card ol { text-align: left; max-width: 520px; margin: 12px auto 0; color: var(--muted); font-size: 14px; }
+
+/* The user icon at the top right */
+.user-menu { display: inline-flex; margin-left: 4px; }
+.user-btn { width: 38px; min-width: 38px; height: 38px; padding: 0; border-radius: 50%; }
+.user-btn.has-active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }

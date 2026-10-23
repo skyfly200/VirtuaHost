@@ -10,7 +10,7 @@ export type When =
 
 export type Content =
   | { kind: "text"; text: string }
-  | { kind: "ai"; prompt: string; format?: string }
+  | { kind: "ai"; prompt: string; format?: string; sfx?: boolean }
   | { kind: "clip"; clipId: string }
   /** A saved script (lib/scripts.ts). `fresh`: the AI writes a new version from its topic and cast on every run; otherwise its saved text is said, placeholders filled in fresh. */
   | { kind: "script"; scriptId: string; fresh?: boolean };
@@ -138,7 +138,7 @@ export function sanitizeContent(raw: unknown): Content {
     const prompt = str(c.prompt, 2000);
     if (!prompt) throw new Error("Enter a brief for the AI");
     const format = str(c.format, 40);
-    return { kind: "ai", prompt, ...(format ? { format } : {}) };
+    return { kind: "ai", prompt, ...(format ? { format } : {}), ...(c.sfx === true ? { sfx: true } : {}) };
   }
   if (c.kind === "clip") {
     const clipId = str(c.clipId, 64);

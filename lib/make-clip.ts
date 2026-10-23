@@ -11,6 +11,7 @@ import { saveClip } from "./store.js";
 import { createLogger } from "./log.js";
 import { elevenConfigured, isElevenModel } from "./elevenlabs.js";
 import { renderTemplate, type TemplateContext } from "./drop-template.js";
+import { canMix, hasTags, speakMixed } from "./sfx-mix.js";
 import type { ClipMetadata } from "./types.js";
 
 const log = createLogger("make-clip");
@@ -37,7 +38,9 @@ export interface MakeClipOptions {
 
 export type MadeClip = { ok: true; id: string; scriptText: string; mimeType: string; speechModel: string; voice: string } | { ok: false; status: number; error: string };
 
-export type Spoke = { ok: true; spoken: Spoken; scriptText: string; provider: string; tone: string } | { ok: false; status: number; error: string };
+/** `sfx` is present when the text had effect tags: which were mixed in and which were not. */
+export interface SfxReport { applied: string[]; skipped: string[] }
+export type Spoke = { ok: true; spoken: Spoken; scriptText: string; provider: string; tone: string; sfx?: SfxReport } | { ok: false; status: number; error: string };
 
 /** The speaking half of makeClip: placeholders filled, tags removed as the model needs, then spoken. Nothing is saved. Used for each line of a script too. */
 export async function speakText(options: Pick<MakeClipOptions, "text" | "tone" | "voice" | "speechModel" | "templateContext">): Promise<Spoke> {
@@ -63,8 +66,22 @@ export async function speakText(options: Pick<MakeClipOptions, "text" | "tone" |
   if (!scriptText) return { ok: false, status: 400, error: "There is nothing to say once tags are removed" };
 
   const tone = cleanTone(options.tone);
+  // Sound effects: when the voice returns WAV, each stretch of words is spoken on its own and the effects are mixed between them.
+  let sfx: SfxReport | undefined;
+  if (hasTags(filled.text)) {
+    if (canMix(provider, speechModel?.id)) {
+      try {
+        const mixed = await speakMixed(filled.text, (words) => speak({ text: cues.tags === false ? stripDeliveryTags(words).text : words, provider, speechModel, voice: options.voice || undefined, tone }));
+        if (mixed) return { ok: true, spoken: mixed.spoken, scriptText: mixed.scriptText, provider, tone, sfx: { applied: mixed.applied, skipped: mixed.skipped } };
+      } catch (err) {
+        log.error("speech synthesis failed", { err });
+        return { ok: false, status: 502, error: `Speech synthesis failed: ${(err as Error).message}` };
+      }
+    }
+    sfx = { applied: [], skipped: ["this voice does not return WAV audio, so effects cannot be mixed here"] };
+  }
   try {
-    return { ok: true, spoken: await speak({ text: scriptText, provider, speechModel, voice: options.voice || undefined, tone }), scriptText, provider, tone };
+    return { ok: true, spoken: await speak({ text: scriptText, provider, speechModel, voice: options.voice || undefined, tone }), scriptText, provider, tone, ...(sfx ? { sfx } : {}) };
   } catch (err) {
     log.error("speech synthesis failed", { err });
     return { ok: false, status: 502, error: `Speech synthesis failed: ${(err as Error).message}` };

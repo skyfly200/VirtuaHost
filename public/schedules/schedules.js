@@ -68,7 +68,7 @@ export async function mountSchedules(root, api) {
   }
 
   // ---------- the form ----------
-  const f = { name: '', kind: 'text', text: '', prompt: '', clipId: clips[0] ? clips[0].id : '', scriptId: scripts[0] ? scripts[0].id : '', fresh: false, type: 'daily', onceAt: '', everyN: 1, unit: 'hours', time: '07:30', days: [], tz: (currentStation() && currentStation().tz) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', personaId: (currentStation() && currentStation().defaultPersonaId) || '', send: queueOn ? 'air' : 'none', preempt: false, fx: (currentStation() && currentStation().defaultFx) || '', until: '', count: 0 };
+  const f = { name: '', kind: 'text', text: '', prompt: '', clipId: clips[0] ? clips[0].id : '', scriptId: scripts[0] ? scripts[0].id : '', fresh: false, sfx: false, type: 'daily', onceAt: '', everyN: 1, unit: 'hours', time: '07:30', days: [], tz: (currentStation() && currentStation().tz) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', personaId: (currentStation() && currentStation().defaultPersonaId) || '', send: queueOn ? 'air' : 'none', preempt: false, fx: (currentStation() && currentStation().defaultFx) || '', until: '', count: 0 };
 
   // A prefill from another tab: choose its kind and fields, then say where it came from.
   let prefill = '';
@@ -124,7 +124,8 @@ export async function mountSchedules(root, api) {
       content = h('div', { class: 'stack' }, h('label', { class: 'field' }, 'What to say', box), weatherTools(box, 'text'));
     } else if (f.kind === 'ai') {
       const box = textBox('prompt', { placeholder: 'a friendly top-of-the-hour station ID' });
-      content = h('div', { class: 'stack' }, h('label', { class: 'field' }, 'Brief for the AI (it writes a fresh line each time)', box), weatherTools(box, 'prompt'));
+      content = h('div', { class: 'stack' }, h('label', { class: 'field' }, 'Brief for the AI (it writes a fresh line each time)', box), weatherTools(box, 'prompt'),
+        h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: f.sfx, onchange: (e) => { f.sfx = e.target.checked; } }), 'AI may add sound effects (mixed in when the voice returns WAV)'));
     } else if (f.kind === 'script') {
       content = scriptPicker();
     } else {
@@ -144,7 +145,7 @@ export async function mountSchedules(root, api) {
         const minutes = f.unit === 'days' ? f.everyN * 1440 : f.unit === 'hours' ? f.everyN * 60 : f.everyN;
         const whenBody = f.type === 'once' ? { type: 'once', at: f.onceAt ? new Date(f.onceAt).toISOString() : '' }
           : f.type === 'interval' ? { type: 'interval', everyMinutes: minutes, startAt: new Date().toISOString() } : { type: 'daily', time: f.time, days: f.days, tz: f.tz };
-        const contentBody = f.kind === 'text' ? { kind: 'text', text: f.text } : f.kind === 'ai' ? { kind: 'ai', prompt: f.prompt }
+        const contentBody = f.kind === 'text' ? { kind: 'text', text: f.text } : f.kind === 'ai' ? { kind: 'ai', prompt: f.prompt, ...(f.sfx ? { sfx: true } : {}) }
           : f.kind === 'script' ? { kind: 'script', scriptId: f.scriptId, fresh: Boolean(f.fresh && hasTopic(scripts.find((s) => s.id === f.scriptId))) } : { kind: 'clip', clipId: f.clipId };
         await api.post('/schedules', { name: f.name, when: whenBody, content: contentBody, personaId: f.personaId, send: f.send, preempt: f.preempt, fx: f.fx, count: f.count, stationId: stationId() || undefined, ...(f.until ? { until: new Date(f.until).toISOString() } : {}) });
         toast('Schedule created.', 'info'); await reload();

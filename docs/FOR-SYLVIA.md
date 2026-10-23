@@ -21,6 +21,34 @@ next to them, in `chips-voice/` (a Node server that runs beside Icecast/Liquidso
 >
 > **Interfaces to keep stable:** a shared `now()` using `broadcastTz`; `tts_line(speaker, text, file)` with a backend switch (ElevenLabs direct, or this site's `POST /api/generate` with `preview: true`); the dynamic-slot markers in the plan file; the insert script contract above. Setup and every environment variable: `chips-voice/agent-radiodj/.env.example`. Roadmap: `docs/ROADMAP.md`. Everything not yet built or decided: `docs/HANDOFF.md`.
 
+## Running the hub on a laptop and getting ready for the first real test
+
+Rocky's side has the hub running on a Windows laptop (PowerShell, Node 26). Both suites pass there: hub 61, agent 56. The commands below are what worked or are the intended next steps; the PowerShell lines were written without a Windows shell here, so say if one fails.
+
+**Start the hub** (`chips-voice\hub`, one window, set the variables in that same window):
+```powershell
+$env:HUB_KEY = -join ((48..57 + 97..102) | Get-Random -Count 48 | ForEach-Object { [char]$_ })   # 12+ characters; keep it
+$env:HUB_HOST = "127.0.0.1"
+$env:SITE_URL = "https://<site>.netlify.app"; $env:SITE_KEY = "<service key>"   # only to write and speak lines
+node server.js          # port 3200 (HUB_PORT to change; EADDRINUSE means an old hub is still running)
+```
+`SITE_KEY` is one of the site's `SERVICE_KEYS` entries (`name:generate+stations.read+personas.read:<key>`, set on Netlify, then redeploy). `$env:` values last only for that window; `curl` in PowerShell is not curl (use `Invoke-RestMethod` or `curl.exe`).
+
+**Add the test station** (a pull station: the PC only makes outbound calls):
+```powershell
+$body = @{ name="Green Light Radio (test)"; connection="pull"; siteStationId="green-light-radio-d6b9"; broadcastTz="America/Denver"; machineTz="America/Chicago" } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3200/stations -Headers @{ "x-api-key"=$key } -ContentType "application/json" -Body $body
+```
+The reply carries a `pullKey` **shown once** (stored hashed). The agent uses it as `HUB_STATION_KEY` with `HUB_URL` and `HUB_STATION_ID`. A new one: `POST /stations/<id>/pullkey`. The station reads offline until the agent's first heartbeat, and warns that the two zones differ by an hour (correct).
+
+**For the first real test, in this order:**
+1. Rocky approves shadow mode and a single live item before anything is aired.
+2. Keep `AGENT_SHADOW=true` (default); read `audit.jsonl` to see what it would have done.
+3. Keep the kill switch ready: a file named `KILL` in the agent's data folder stops everything; only someone at the PC clears it.
+4. Read-only checks first: now playing, the queue, the schedule file. The `/npjson` playlist shape and the `GLR YYYY-MM-DD.json` plan file are best guesses, still "needs live verification".
+5. Then one insert, two ahead. `INSERT_EXEC` must swap atomically; the insert, skip and `played` confirmation have never run against a real RadioDJ.
+6. Agent stays on `127.0.0.1`; nothing inbound to the PC. Keys never go in chat or the repo.
+
 ## The one-paragraph picture
 
 VirtuaHost (Netlify) generates DJ audio with Gemini and now hands each clip to the **Chips Voice server** (`chips-voice/`), which runs on

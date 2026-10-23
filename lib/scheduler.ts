@@ -15,6 +15,7 @@ import { chargeAi } from "./quota.js";
 import { findAccount } from "./session.js";
 import { withKeys } from "./with-keys.js";
 import { contextFor, promptHelp } from "./drop-template.js";
+import { effectNames, sfxHelp } from "./sfx-mix.js";
 import { getScript } from "./script-store.js";
 import { draftScript } from "./script-draft.js";
 import { makeScriptClip } from "./script-clip.js";
@@ -80,7 +81,7 @@ async function runScheduleScoped(s: Schedule): Promise<string> {
       if (!provider) throw new Error("no AI provider is configured");
       if (provider === "openrouter") textModel = (resolveTextModel(undefined, [persona?.textModel, station?.defaultTextModel]) as { model: string }).model;
       const format = s.content.format ? findFormat(s.content.format) : undefined;
-      text = (await writeScript({ prompt: s.content.prompt, provider, textModel, tone: s.tone || persona?.tone, format, persona: persona?.instructions, placeholders: promptHelp(tctx), ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text;
+      text = (await writeScript({ prompt: s.content.prompt, provider, textModel, tone: s.tone || persona?.tone, format, persona: persona?.instructions, placeholders: promptHelp(tctx), ...(s.content.sfx ? { effects: sfxHelp(await effectNames()) } : {}), ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text;
       mode = "ai";
     } else {
       text = s.content.text;

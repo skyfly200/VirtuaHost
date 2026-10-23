@@ -85,6 +85,18 @@ describe("weather", () => {
     expect((await renderTemplate("{{temp}}", contextFor({ station: { ...station, tempUnit: "C" }, now: NOW }))).text).toBe("17 degrees");
   });
 
+  it("uses Fahrenheit unless the station or TEMP_UNIT says otherwise, wherever the station is", async () => {
+    const london = { ...station, tz: "Europe/London" };
+    forecast();
+    expect((await renderTemplate("{{temp}}", contextFor({ station: london, now: NOW }))).text).toBe("62 degrees");
+    vi.stubEnv("TEMP_UNIT", "C");
+    try {
+      forecast();
+      expect((await renderTemplate("{{temp}}", contextFor({ station: { ...london, variables: { x: "1" } }, now: NOW }))).text).toBe("17 degrees");
+      expect((await renderTemplate("{{temp}}", contextFor({ station: { ...london, tempUnit: "F" }, now: NOW }))).text).toBe("62 degrees");
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it("asks only when a placeholder needs it, and once per few minutes", async () => {
     forecast();
     await renderTemplate("{{time}}", ctx());
