@@ -209,7 +209,7 @@ function showApp(credential, options, me) {
     try { sessionStorage.setItem('tab', id); } catch { /* storage blocked */ }
     if (!tab.on) return clear(panel, offCard(tab));
     if (id === 'studio') await mountStudio(panel, clientFor('/api', credential));
-    if (id === 'personas') await mountPersonas(panel, clientFor('/api', credential));
+    if (id === 'personas') await mountPersonas(panel, clientFor('/api', credential), { admin });
     if (id === 'schedules') await mountSchedules(panel, clientFor('/api', credential));
     if (id === 'promos') await mountPromos(panel, clientFor('/api', credential));
     if (id === 'flier') await mountFlier(panel, clientFor('/api', credential));

@@ -38,7 +38,23 @@ export async function handlePersonas(req: Request, id: string | undefined): Prom
   if (!existing || !canView(who, existing.ownerId)) return Response.json({ error: "Persona not found" }, { status: 404 });
 
   if (req.method === "GET") return Response.json({ persona: existing });
-  if (existing.builtin) return Response.json({ error: "Built-in personas cannot be changed; duplicate it to make your own" }, { status: 403 });
+  // An example persona is shared: an admin may edit it (the edit is stored under its id and replaces the original for everyone; DELETE resets it),
+  // anyone else duplicates it.
+  if (existing.builtin) {
+    if (who.role !== "admin") return Response.json({ error: "Example personas can only be edited by an admin; duplicate it to make your own" }, { status: 403 });
+    if (req.method === "PUT") {
+      const clean = sanitizePersona(await readJson(req));
+      if ("error" in clean) return Response.json({ error: clean.error }, { status: 400 });
+      const persona: Persona = { id, ...clean.persona };
+      await savePersona(persona);
+      return Response.json({ persona: { ...persona, builtin: true, edited: true } });
+    }
+    if (req.method === "DELETE") {
+      if (!(await deletePersona(id))) return Response.json({ error: "This example has not been changed, so there is nothing to reset" }, { status: 409 });
+      return new Response(null, { status: 204 });
+    }
+    return new Response("Method Not Allowed", { status: 405 });
+  }
   if (!canModify(who, existing.ownerId)) return Response.json({ error: "That persona is shared; duplicate it to make your own" }, { status: 403 });
 
   if (req.method === "PUT") {

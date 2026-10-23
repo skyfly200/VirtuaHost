@@ -55,3 +55,4 @@ Product
 ## Work done by Haiku subagents, and how it was checked
 
 Tests for scripts (`test/lib/scripts*.test.ts`, `audio-join`, `script-draft`, `test/functions/scripts.test.ts`), the grouped menu and phone layout (`public/app.js`, `app.css`, `kit.css`), the Schedules UI (`public/schedules/schedules.js`), and the cast and line editors (`public/shared/casteditor.js`, `lineeditor.js`). Each was read, run and re-tested here; two real bugs came out of that review (bold speaker labels, name matching across sentences) and were fixed with tests.
+- **Personas: edited examples and seeds.** An admin's edit of an example persona is shared (stored under the example's id); there is no per-person edit of an example, and no "edited by" record. CHIP is created once from `lib/persona-seeds.ts` the first time personas are listed or looked up (a marker keeps a deleted one gone). Untested against real Blobs.
