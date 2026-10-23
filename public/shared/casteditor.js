@@ -75,7 +75,7 @@ export function castEditor({ personas = [], cast = [], kind = 'conversation', ma
       // Who they are. The current name is always an option (a numbered "Guest 2", or a name from an older script); picking Host, DJ or Guest numbers it if taken.
       const roleSel = h('select', {
         'aria-label': 'Speaker',
-        onchange: (e) => { row.name = uniqueName(e.target.value, i); roleSel.value = row.name; emit(); },
+        onchange: (e) => { row.name = uniqueName(e.target.value, i); draw(); emit(); },   // redrawn so a numbered name ("Host 2") is an option
       }, ...(ROLES.includes(row.name) ? [] : [h('option', { value: row.name }, row.name)]), ...ROLES.map((r) => h('option', { value: r }, r)));
       roleSel.value = row.name;
       const personaSel = h('select', {
