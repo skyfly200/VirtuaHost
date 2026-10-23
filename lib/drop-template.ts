@@ -54,7 +54,9 @@ const GREETING = { morning: "Good morning", afternoon: "Good afternoon", evening
 // ---------- weather ----------
 const WMO: Array<[number, string]> = [[0, "clear"], [1, "mostly clear"], [2, "partly cloudy"], [3, "overcast"], [48, "foggy"], [57, "drizzling"], [65, "rainy"], [67, "freezing rain"], [77, "snowy"], [82, "showery"], [86, "snowing"], [99, "stormy"]];
 export const conditionsFor = (code: number): string => (WMO.find(([max]) => code <= max) ?? [0, "unsettled"])[1];
-const unitOf = (c: TemplateContext): "F" | "C" => c.station?.tempUnit ?? ((c.station?.tz ?? c.tz ?? "").startsWith("America/") ? "F" : "C");
+// Fahrenheit unless told otherwise: the station's own setting first, then TEMP_UNIT (F or C) for the whole site, then Fahrenheit.
+export const defaultTempUnit = (): "F" | "C" => (/^c/i.test(process.env.TEMP_UNIT?.trim() ?? "") ? "C" : "F");
+const unitOf = (c: TemplateContext): "F" | "C" => c.station?.tempUnit ?? defaultTempUnit();
 const tempIn = (w: Weather, unit: "F" | "C") => Math.round(unit === "F" ? (w.tempC * 9) / 5 + 32 : w.tempC);
 const hasLocation = (c: TemplateContext) => Boolean(c.station && ((typeof c.station.lat === "number" && typeof c.station.lon === "number") || c.station.city));
 

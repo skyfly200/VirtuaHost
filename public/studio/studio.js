@@ -44,7 +44,7 @@ export async function mountStudio(root, api) {
   const choosable = options.models.choosable;
   const models = choosable ? options.models.speech : [];
   const state = {
-    id: '', name: '', mode: 'single', cast: [{ name: 'Host' }], topic: '', format: '', seconds: 0, explicit: false, gap: 0.3, notes: '',
+    id: '', name: '', mode: 'single', cast: [{ name: 'Host' }], topic: '', format: '', seconds: 0, explicit: false, sfx: false, gap: 0.3, notes: '',
     text: takePrefill() || `Welcome back to ${stationName(options.station) || 'the station'}. [sfx:chime] This is a quick test of how a voice sounds.`,
     slots: [],
   };
@@ -120,7 +120,7 @@ export async function mountStudio(root, api) {
       if (!(await guard.confirmSpend([{ kind: 'write', prompt: state.topic, ...(state.cast[0] && state.cast[0].personaId ? { persona: state.cast[0].personaId } : {}), ...(stationId() ? { station: stationId() } : {}) }], 'Draft with AI'))) return;
       draft.disabled = true; draftStatus.busy('Writing the script in each speaker\'s voice');
       try {
-        const out = await api.post('/scripts/draft', { kind: kind(), cast: state.cast, topic: state.topic, format: state.format || undefined, seconds: state.seconds || undefined, explicit: state.explicit || undefined, ...(stationId() ? { station: stationId() } : {}) });
+        const out = await api.post('/scripts/draft', { kind: kind(), cast: state.cast, topic: state.topic, format: state.format || undefined, seconds: state.seconds || undefined, explicit: state.explicit || undefined, sfx: state.sfx || undefined, ...(stationId() ? { station: stationId() } : {}) });
         state.text = out.raw || out.text; paintAll();
         const note = [out.copiedExample ? `${out.copiedExample.join(', ')} repeated an example line: draft again or edit it.` : '', out.droppedLines ? `${out.droppedLines} line(s) from outside the cast were dropped.` : ''].filter(Boolean).join(' ');
         if (note) toast(note, 'info');
@@ -149,7 +149,7 @@ export async function mountStudio(root, api) {
       h('div', { class: 'grid cols' }, h('label', { class: 'field' }, 'Topic for the AI', topic),
         h('label', { class: 'field' }, 'Kind of script', h('select', { onchange: (e) => { state.format = e.target.value; } }, h('option', { value: '' }, 'Free-form'), (options.formats || []).map((f) => h('option', { value: f.id, selected: f.id === state.format }, f.label)))),
         h('label', { class: 'field' }, 'Length', h('select', { onchange: (e) => { state.seconds = Number(e.target.value); } }, [[0, 'Any (short)'], [10, 'About 10 seconds'], [20, 'About 20 seconds'], [30, 'About 30 seconds'], [60, 'About a minute']].map(([v, t]) => h('option', { value: v, selected: v === state.seconds }, t))))),
-      h('div', { class: 'row' }, draft, h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: state.explicit, onchange: (e) => { state.explicit = e.target.checked; } }), 'Allow strong language'), draftStatus.el),
+      h('div', { class: 'row' }, draft, h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: state.explicit, onchange: (e) => { state.explicit = e.target.checked; } }), 'Allow strong language'), h('label', { class: 'row small', title: 'The AI may place [sfx:name] tags such as a phone ring or a chime; they are mixed in when the voice returns WAV' }, h('input', { type: 'checkbox', checked: state.sfx, onchange: (e) => { state.sfx = e.target.checked; } }), 'AI may add sound effects'), draftStatus.el),
       h('h3', {}, 'The script'), body, helpers());
   }
 

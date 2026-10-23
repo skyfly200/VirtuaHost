@@ -244,7 +244,7 @@ export async function mountStationProfiles(root, api) {
       h('h3', {}, 'Placeholders for drops'),
       h('p', { class: 'small muted' }, 'Drops can say {{time}}, {{weather}}, {{station}}, {{dj}} and more, filled in when the audio is made. Weather and alerts need a location: find the place above, or enter the coordinates here by hand.'),
       h('div', { class: 'grid cols' }, text('Latitude', 'lat', { placeholder: '29.76' }), text('Longitude', 'lon', { placeholder: '-95.37' }),
-        h('label', { class: 'field' }, 'Temperature unit', h('select', { onchange: (e) => { c.tempUnit = e.target.value; } }, [['', 'Automatic (F in the Americas)'], ['F', 'Fahrenheit'], ['C', 'Celsius']].map(([v, t]) => h('option', { value: v, selected: v === (c.tempUnit || '') }, t))))),
+        h('label', { class: 'field' }, 'Temperature unit', h('select', { onchange: (e) => { c.tempUnit = e.target.value; } }, [['', 'Site default (Fahrenheit unless TEMP_UNIT=C)'], ['F', 'Fahrenheit'], ['C', 'Celsius']].map(([v, t]) => h('option', { value: v, selected: v === (c.tempUnit || '') }, t))))),
       area('Your own placeholders, one per line as name=text (for example sponsor=Joe\'s Pizza, then {{sponsor}} in a drop)', 'variablesText', 3, { placeholder: 'sponsor=Joe\'s Pizza\nhotline=555 0100' }),
       listField('Skip list: spots and relays, one artist per line (the host says nothing over or about them)', 'skipArtists', 3, 'Jingle Radio'),
       h('h3', {}, 'Sending clips to this station'),

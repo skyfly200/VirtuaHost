@@ -8,6 +8,7 @@ import { getPersona } from "../persona-store.js";
 import { getStation } from "../station-profile-store.js";
 import { deleteScript, getScript, listScripts, newScriptId, saveScript, SCRIPT_ID } from "../script-store.js";
 import { draftScript } from "../script-draft.js";
+import { effectNames, sfxHelp } from "../sfx-mix.js";
 import { sanitizeCast, sanitizeScript, type Script } from "../scripts.js";
 import type { Persona } from "../personas.js";
 
@@ -103,7 +104,7 @@ async function draft(req: Request, who: Principal): Promise<Response> {
     const seconds = Number(body.seconds ?? saved?.seconds);
     const template = contextFor({ station, now: atOf(body.at), targetSeconds: Number.isFinite(seconds) && seconds >= 3 ? Math.round(seconds) : undefined });
     try {
-      const out = await draftScript({ kind, cast, topic, format: String(body.format ?? saved?.format ?? "") || undefined, seconds: Number.isFinite(seconds) && seconds >= 3 ? Math.round(seconds) : undefined, maxLines: Number(body.maxLines) || undefined, names: stringList(body.names, 20, 120), facts: stringList(body.facts, 20, 200), explicit: body.explicit === true },
+      const out = await draftScript({ kind, cast, topic, format: String(body.format ?? saved?.format ?? "") || undefined, seconds: Number.isFinite(seconds) && seconds >= 3 ? Math.round(seconds) : undefined, maxLines: Number(body.maxLines) || undefined, names: stringList(body.names, 20, 120), facts: stringList(body.facts, 20, 200), explicit: body.explicit === true, ...(body.sfx === true ? { effects: sfxHelp(await effectNames()) } : {}) },
         { provider, textModel, station, personas: personas.map, template });
       return Response.json({ text: out.text, filledIn: out.text, raw: out.raw, lines: out.lines, ...(out.copied.length ? { copiedExample: out.copied } : {}), ...(out.dropped ? { droppedLines: out.dropped } : {}), provider, ...(textModel ? { textModel } : {}) });
     } catch (err) {

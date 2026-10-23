@@ -57,7 +57,7 @@ The Studio's **Length** choice (about 5 to 60 seconds) is sent as `seconds`. The
 In **Stations -> edit a station**, section *Placeholders for drops*:
 
 - **Where is it?** Find the place by name ("Houston, TX"): the coordinates and time zone are filled in. (Or enter latitude and longitude by hand; with neither, the city is looked up each time.) The same location feeds weather and alerts.
-- **Temperature unit**: automatic (Fahrenheit when the station's time zone is in the Americas, otherwise Celsius), or choose.
+- **Temperature unit**: Fahrenheit by default. A station can choose `F` or `C`; otherwise the site-wide `TEMP_UNIT` environment variable (`F` or `C`) applies.
 - **Your own placeholders**, one per line as `name=text`, for example `sponsor=Joe's Pizza` then `{{sponsor}}` in any drop. Names are lowercase words; built-in names (like `time`) cannot be replaced; up to 20.
 
 Weather comes from [Open-Meteo](https://open-meteo.com/) (free, no key), is cached for 10 minutes, and is only requested when a drop actually uses a weather placeholder. **Not verified against the live service**: the requests follow Open-Meteo's public documentation. If it cannot be reached the placeholder uses its fallback or is dropped; a drop never fails because of weather.

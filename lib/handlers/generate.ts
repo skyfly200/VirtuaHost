@@ -18,6 +18,7 @@ import { contextFor, promptHelp, renderTemplate } from "../drop-template.js";
 import { elevenConfigured, isElevenModel } from "../elevenlabs.js";
 import { copiedExample, exampleLines } from "../copy-guard.js";
 import { renderScript, saveRendered } from "../script-clip.js";
+import { canMix, effectNames, hasTags, sfxHelp, speakMixed } from "../sfx-mix.js";
 import { getScript } from "../script-store.js";
 import { linesOf, sanitizeCast, type Script } from "../scripts.js";
 import { recordModelResult } from "../model-health.js";
@@ -126,12 +127,15 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   const hearAt = Number.isFinite(atMs) && atMs - Date.now() <= 3 * 3600e3 && atMs - Date.now() >= -5 * 60e3 ? new Date(atMs) : undefined;
   const tctx = contextFor({ station, persona, targetSeconds, ...(hearAt ? { now: hearAt } : {}) });
 
+  // `sfx: true` lets the writer drop in sound effect tags (they are mixed in when the voice returns WAV, otherwise removed).
+  const effects = body.sfx === true && mode === "ai" ? sfxHelp(await effectNames()) : undefined;
+
   let scriptText: string;
   // Models sometimes copy an example line from the persona's brief; one retry asks for something new, and if it is still a copy it is reported.
   const examples = persona ? exampleLines(persona.instructions, persona.templates) : [];
   let copied: string | undefined;
   try {
-    const write = (prompt: string) => writeScript({ prompt, provider, textModel, tone, format, persona: persona?.instructions, explicit: body.explicit === true, placeholders: promptHelp(tctx), targetSeconds, ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) });
+    const write = (prompt: string) => writeScript({ prompt, provider, textModel, tone, format, persona: persona?.instructions, explicit: body.explicit === true, placeholders: promptHelp(tctx), targetSeconds, ...(effects ? { effects } : {}), ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) });
     if (mode === "ai") {
       let out = await write(input);
       copied = copiedExample(out.text, examples);
@@ -168,6 +172,7 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   if (filled.missing.length) log.warn("template values missing", { missing: filled.missing });
   if (!scriptText) return Response.json({ error: "The text is empty once the placeholders are filled in" }, { status: 400 });
 
+  const tagged = scriptText;
   const stripped = stripSfxTags(scriptText);
   if (stripped.removed) scriptText = stripped.text;
   if (!scriptText) {
@@ -186,8 +191,14 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   const toneIgnored = Boolean(tone) && cues.tone === "none";
 
   let spoken;
+  let sfx: { applied: string[]; skipped: string[] } | undefined;
   try {
-    spoken = await speak({ text: scriptText, provider, speechModel, voice, tone });
+    // Effect tags are mixed in when the voice returns WAV (lib/sfx-mix.ts); otherwise they were removed above and the response says so.
+    const mixed = hasTags(tagged) && canMix(provider, speechModel?.id)
+      ? await speakMixed(tagged, (words) => speak({ text: cues.tags === false ? stripDeliveryTags(words).text : words, provider, speechModel, voice, tone }))
+      : null;
+    if (mixed) { spoken = mixed.spoken; scriptText = mixed.scriptText; sfx = { applied: mixed.applied, skipped: mixed.skipped }; }
+    else spoken = await speak({ text: scriptText, provider, speechModel, voice, tone });
   } catch (err) {
     log.error("speech synthesis failed", { provider, speechModel, voice, err });
     return Response.json({ error: `Speech synthesis failed: ${(err as Error).message}` }, { status: 502 });
@@ -196,7 +207,7 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   if (body.preview === true) {
     return Response.json({
       preview: true, filledIn: scriptText, scriptText, audio: spoken.audio.toString("base64"), mimeType: spoken.mimeType, voice: spoken.voice, provider, speechModel: spoken.model,
-      ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}), ...(filled.missing.length ? { templateMissing: filled.missing } : {}),
+      ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed && !sfx ? { sfxTagsRemoved: true } : {}), ...(sfx ? { sfx } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}), ...(filled.missing.length ? { templateMissing: filled.missing } : {}),
     });
   }
 
@@ -234,7 +245,7 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   }
 
   return Response.json(
-    { id, scriptText, audioUrl: `/api/clips/${id}`, provider, speechModel: spoken.model, ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed ? { sfxTagsRemoved: true } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}), ...(handoff ? { handoff } : {}) },
+    { id, scriptText, audioUrl: `/api/clips/${id}`, provider, speechModel: spoken.model, ...(textModel && mode === "ai" ? { textModel } : {}), ...(stripped.removed && !sfx ? { sfxTagsRemoved: true } : {}), ...(sfx ? { sfx } : {}), ...(cueTagsRemoved ? { cueTagsRemoved: true } : {}), ...(toneIgnored ? { toneIgnored: true } : {}), ...(handoff ? { handoff } : {}) },
     { status: 201 },
   );
 }
