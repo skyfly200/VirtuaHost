@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-vi.mock("../../lib/library/index.js", () => ({ listLibrary: vi.fn(async () => ({ items: [], errors: [] })), fetchLibraryItem: vi.fn() }));
+const clips = vi.hoisted(() => new Map<string, Buffer>());   // "kind/name" -> a WAV file the fake library holds
+vi.mock("../../lib/library/index.js", () => ({
+  listLibrary: vi.fn(async (kind: string) => ({ items: [...clips.keys()].filter((k) => k.startsWith(`${kind}/`)).map((k) => ({ source: "uploads", kind, name: k.split("/")[1], file: "x.wav", ref: k })), errors: [] })),
+  fetchLibraryItem: vi.fn(async (_s: string, kind: string, name: string) => { const b = clips.get(`${kind}/${name}`); return b ? { data: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), mimeType: "audio/wav" } : null; }),
+}));
 
-import { parsePieces, synthesize, SFX_NAMES, speakMixed, canMix, hasTags, stripTags, sfxHelp } from "../../lib/sfx-mix.js";
+import { parsePieces, synthesize, SFX_NAMES, speakMixed, canMix, hasTags, stripTags, sfxHelp, sanitizeAudio, withAudio } from "../../lib/sfx-mix.js";
 import { parseWav } from "../../lib/audio-join.js";
 import { pcmToWav } from "../../lib/wav.js";
 
@@ -53,7 +57,7 @@ describe("speakMixed", () => {
   it("reports what it could not do, drops music, and caps the number of effects", async () => {
     const m = await speakMixed("a [sfx:zzz] b [music:bed] c", async () => speech(0.5));
     expect(m!.applied).toEqual([]);
-    expect(m!.skipped).toEqual(["music:bed", "zzz (not found)"]);
+    expect(m!.skipped).toEqual(["zzz (not found)", "music:bed (music not found, or not a WAV file)"]);
     const many = await speakMixed(`a ${"[sfx:click] ".repeat(10)} b`, async () => speech(0.1));
     expect(many!.applied).toHaveLength(8);
     expect(many!.skipped).toHaveLength(2);
@@ -82,5 +86,42 @@ describe("canMix and the writer's help", () => {
   });
   it("lists the names the writer may use", () => {
     expect(sfxHelp(["ding", "phone"])).toContain("ding, phone");
+  });
+});
+
+describe("background, intro and outro from the library", () => {
+  const wav = (sec: number, rate = RATE) => pcmToWav(Buffer.alloc(Math.round(sec * rate) * 2, 2), rate);
+  const setup = () => { clips.clear(); clips.set("music/bed", wav(1)); clips.set("intro/hello", wav(2)); clips.set("outro/bye", wav(3, 12000)); };
+
+  it("parses the new tags with their options", () => {
+    expect(parsePieces("[intro:hello vol=0.5] hi [music:bed vol=0.1] there [outro:bye]")).toEqual([
+      { type: "intro", name: "hello", vol: 0.5 }, { type: "speech", text: "hi" }, { type: "music", name: "bed", vol: 0.1 }, { type: "speech", text: "there" }, { type: "outro", name: "bye", vol: 1 },
+    ]);
+    expect(parsePieces("a [intro:hello over] b").some((p) => p.type === "intro")).toBe(false);   // an option it does not take: the tag is left out
+    expect(stripTags("[intro:x] hi [outro:y]")).toBe("hi");
+  });
+
+  it("plays the intro first, the outro last, and the bed under the words with a lead and a tail", async () => {
+    setup();
+    const m = await speakMixed("[intro:hello] hi [music:bed vol=0.2] there [outro:bye]", async () => speech(1));
+    expect(m!.applied).toEqual(["intro:hello", "music:bed", "outro:bye"]);
+    expect(m!.skipped).toEqual([]);
+    expect(m!.scriptText).toBe("hi there");
+    expect(seconds(m!.spoken.audio)).toBeCloseTo(2 + (0.8 + 2 + 1.5) + 3, 1);    // intro + (lead + two words + tail) + outro (resampled to the voice's rate)
+  });
+
+  it("uses only the first intro, outro and bed, and reports a missing file", async () => {
+    setup();
+    const m = await speakMixed("[intro:hello] [intro:hello] hi [outro:nope]", async () => speech(1));
+    expect(m!.applied).toEqual(["intro:hello"]);
+    expect(m!.skipped).toEqual(["intro:hello (only one intro per clip)", "outro:nope (outro not found, or not a WAV file)"]);
+  });
+
+  it("turns the audio choices into tags, and ignores unsafe names", () => {
+    expect(withAudio("Hello.", { intro: "hello", bed: "bed", bedVol: 0.2, outro: "bye" })).toBe("[intro:hello] [music:bed vol=0.2] Hello. [outro:bye]");
+    expect(withAudio("Hello.", undefined)).toBe("Hello.");
+    expect(sanitizeAudio({ bed: "Bed", bedVol: 5, intro: "../x", outro: "bye]" })).toEqual({ bed: "bed", bedVol: 1 });
+    expect(sanitizeAudio({})).toBeUndefined();
+    expect(sanitizeAudio("x")).toBeUndefined();
   });
 });

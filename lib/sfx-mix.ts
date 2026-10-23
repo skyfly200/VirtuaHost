@@ -2,9 +2,12 @@
 // clips, hub drops, scripts and API generations get them too (the Studio mixes the same tags in the browser, public/generate/mixer.js).
 //   [sfx:ding]            between the speech before and after the tag      [sfx:whoosh over]    over the start of the speech that follows
 //   [sfx:crowd vol=0.5]   quieter (0 to 2)                                 [sfx:beep wait=0.5]  then a pause (0 to 5 seconds)
-// What it can do: effects are synthesised here (no files), and a name that is not built in is looked up in the sound library (WAV files only:
-// there is no MP3 decoder on the site). It needs the voice to return WAV (Gemini, and Google speech models on OpenRouter); MP3 voices (ElevenLabs,
-// most OpenRouter models) cannot be mixed here, so their tags are removed and the clip says so. [music:...] beds are not mixed here (removed).
+//   [music:name vol=0.2]  a background bed under the whole speech (0 to 1, default 0.25), fading in and out, looped if short
+//   [intro:name vol=1]    a clip played before the speech          [outro:name vol=1]   a clip played after it
+// What it can do: effects are synthesised here (no files), and any other name is looked up in the sound library (uploads and cloud folders; WAV files
+// only: there is no MP3 decoder on the site, which is why the browser converts uploads to WAV). Beds, intros and outros always come from the library.
+// It needs the voice to return WAV (Gemini, and Google speech models on OpenRouter); MP3 voices (ElevenLabs, most OpenRouter models) cannot be
+// mixed here, so their tags are removed and the clip says so.
 import { parseWav } from "./audio-join.js";
 import { pcmToWav } from "./wav.js";
 import { isElevenModel } from "./elevenlabs.js";
@@ -12,14 +15,15 @@ import { fetchLibraryItem, listLibrary } from "./library/index.js";
 import type { Spoken } from "./ai.js";
 
 export const MAX_SFX = 8;
-const TAG = /\[\s*(sfx|music)\s*:\s*([a-z0-9_-]{1,40})((?:\s+[a-z]+(?:=[0-9.]+)?){0,4})\s*\]/gi;
-const ANY_TAG = /\[\s*(sfx|music)\s*:[^\]]*\]/gi;
+const TAG = /\[\s*(sfx|music|intro|outro)\s*:\s*([a-z0-9_-]{1,40})((?:\s+[a-z]+(?:=[0-9.]+)?){0,4})\s*\]/gi;
+const ANY_TAG = /\[\s*(sfx|music|intro|outro)\s*:[^\]]*\]/gi;
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 export const hasTags = (text: string): boolean => new RegExp(ANY_TAG.source, "i").test(text);
 export const stripTags = (text: string): string => text.replace(ANY_TAG, " ").replace(/\s{2,}/g, " ").trim();
 
-export type Piece = { type: "speech"; text: string } | { type: "sfx"; name: string; vol: number; over: boolean; wait: number } | { type: "music"; name: string };
+export type Piece = { type: "speech"; text: string } | { type: "sfx"; name: string; vol: number; over: boolean; wait: number }
+  | { type: "music"; name: string; vol: number } | { type: "intro"; name: string; vol: number } | { type: "outro"; name: string; vol: number };
 
 /** Text with tags -> speech and effect pieces. A tag with an option it does not know is left out (never read aloud, never an error). */
 export function parsePieces(text: string): Piece[] {
@@ -30,18 +34,18 @@ export function parsePieces(text: string): Piece[] {
     speech(text.slice(last, m.index));
     last = m.index! + m[0].length;
     const name = m[2].toLowerCase();
-    if (m[1].toLowerCase() === "music") { out.push({ type: "music", name }); continue; }
-    const fx = { type: "sfx" as const, name, vol: 1, over: false, wait: 0 };
+    const type = m[1].toLowerCase() as "sfx" | "music" | "intro" | "outro";
+    const fx = { type, name, vol: type === "music" ? 0.25 : 1, over: false, wait: 0 };
     let ok = true;
     for (const tok of m[3].trim().split(/\s+/).filter(Boolean)) {
       const [key, val] = tok.toLowerCase().split("=");
       const num = Number(val);
-      if (key === "over" && val === undefined) fx.over = true;
-      else if (key === "vol" && val !== undefined && Number.isFinite(num)) fx.vol = clamp(num, 0, 2);
-      else if (key === "wait" && val !== undefined && Number.isFinite(num)) fx.wait = clamp(num, 0, 5);
+      if (type === "sfx" && key === "over" && val === undefined) fx.over = true;
+      else if (key === "vol" && val !== undefined && Number.isFinite(num)) fx.vol = clamp(num, 0, type === "music" ? 1 : 2);
+      else if (type === "sfx" && key === "wait" && val !== undefined && Number.isFinite(num)) fx.wait = clamp(num, 0, 5);
       else ok = false;
     }
-    if (ok) out.push(fx);
+    if (ok) out.push(type === "sfx" ? (fx as Piece) : { type, name, vol: fx.vol } as Piece);
   }
   speech(text.slice(last));
   return out;
@@ -114,11 +118,11 @@ function toWav(x: Float32Array, rate: number): Buffer {
   return pcmToWav(pcm, rate);
 }
 
-async function libraryEffect(name: string, rate: number): Promise<Float32Array | null> {
+async function libraryClip(kind: "sfx" | "music" | "intro" | "outro", name: string, rate: number): Promise<Float32Array | null> {
   try {
-    const item = (await listLibrary("sfx")).items.find((i) => i.name === name);
+    const item = (await listLibrary(kind)).items.find((i) => i.name === name);
     if (!item) return null;
-    const got = await fetchLibraryItem(item.source, "sfx", name);
+    const got = await fetchLibraryItem(item.source, kind, name);
     const w = got && wavSamples(Buffer.from(got.data));
     return w ? resample(w.samples, w.rate, rate) : null;
   } catch { return null; }
@@ -133,16 +137,24 @@ export function canMix(provider: string | null, speechModelId?: string): boolean
 
 export interface Mixed { spoken: Spoken; scriptText: string; applied: string[]; skipped: string[] }
 
+const BED_LEAD = 0.8;   // seconds of music before the first word
+const BED_TAIL = 1.5;   // seconds of music after the last word, fading out
+
 /**
- * Speaks `text` with its effect tags mixed in. `speakPiece` speaks one stretch of plain words (the caller adds its own voice, tone and cue rules).
+ * Speaks `text` with its sound tags mixed in (effects between the words, a background bed under them, an intro before and an outro after).
+ * `speakPiece` speaks one stretch of plain words (the caller adds its own voice, tone and cue rules).
  * Returns null when there is nothing to mix (no usable tags) so the caller speaks the text the ordinary way.
  */
 export async function speakMixed(text: string, speakPiece: (words: string) => Promise<Spoken>): Promise<Mixed | null> {
   const pieces = parsePieces(text);
-  const effects = pieces.filter((p) => p.type === "sfx") as Extract<Piece, { type: "sfx" }>[];
-  if (!effects.length || !pieces.some((p) => p.type === "speech")) return null;
-  const skipped: string[] = pieces.filter((p) => p.type === "music").map((p) => `music:${(p as { name: string }).name}`);
-  const keep = pieces.filter((p) => p.type !== "music");
+  if (!pieces.some((p) => p.type !== "speech") || !pieces.some((p) => p.type === "speech")) return null;
+  const skipped: string[] = [];
+  // One bed, one intro and one outro per clip: the first of each counts.
+  const seen = new Set<string>();
+  const keep = pieces.filter((p) => {
+    if (p.type === "music" || p.type === "intro" || p.type === "outro") { if (seen.has(p.type)) { skipped.push(`${p.type}:${p.name} (only one ${p.type} per clip)`); return false; } seen.add(p.type); }
+    return true;
+  });
   const spokenPieces = new Map<number, Spoken>();
   let first: Spoken | undefined;
   for (let i = 0; i < keep.length; i++) {
@@ -154,24 +166,32 @@ export async function speakMixed(text: string, speakPiece: (words: string) => Pr
   }
   const rate = wavSamples(first!.audio)?.rate;
   if (!rate) return null;
-  const timeline: Float32Array[] = []; let over: Float32Array[] = [];
+
   const applied: string[] = []; let count = 0;
+  const timeline: Float32Array[] = []; let over: Float32Array[] = [];
+  let bed: { samples: Float32Array; vol: number } | undefined; let intro: Float32Array | undefined; let outro: Float32Array | undefined;
   for (let i = 0; i < keep.length; i++) {
     const p = keep[i];
+    if (p.type === "music" || p.type === "intro" || p.type === "outro") {
+      const clip = await libraryClip(p.type, p.name, rate);
+      if (!clip) { skipped.push(`${p.type}:${p.name} (${p.type} not found, or not a WAV file)`); continue; }
+      applied.push(`${p.type}:${p.name}`);
+      if (p.type === "music") bed = { samples: clip, vol: p.vol }; else if (p.type === "intro") intro = clip.map((v) => v * p.vol); else outro = clip.map((v) => v * p.vol);
+      continue;
+    }
     let samples: Float32Array | null;
     if (p.type === "speech") {
       const w = wavSamples(spokenPieces.get(i)!.audio);
       if (!w) return null;
       samples = resample(w.samples, w.rate, rate);
     } else {
-      if (++count > MAX_SFX) { skipped.push(`${(p as { name: string }).name} (too many effects)`); continue; }
-      const raw = synthesize((p as { name: string }).name, rate) ?? await libraryEffect((p as { name: string }).name, rate);
-      if (!raw) { skipped.push(`${(p as { name: string }).name} (not found)`); continue; }
-      const fx = p as Extract<Piece, { type: "sfx" }>;
-      samples = raw.map((v) => v * fx.vol);
-      applied.push(fx.name);
-      if (fx.over && i < keep.length - 1) { over.push(samples); continue; }
-      if (fx.wait > 0) { timeline.push(samples, new Float32Array(Math.round(fx.wait * rate))); continue; }
+      if (++count > MAX_SFX) { skipped.push(`${p.name} (too many effects)`); continue; }
+      const raw = synthesize(p.name, rate) ?? await libraryClip("sfx", p.name, rate);
+      if (!raw) { skipped.push(`${p.name} (not found)`); continue; }
+      samples = raw.map((v) => v * p.vol);
+      applied.push(p.name);
+      if (p.over && i < keep.length - 1) { over.push(samples); continue; }
+      if (p.wait > 0) { timeline.push(samples, new Float32Array(Math.round(p.wait * rate))); continue; }
     }
     if (over.length && p.type === "speech") {
       const len = Math.max(samples.length, ...over.map((o) => o.length));
@@ -180,14 +200,38 @@ export async function speakMixed(text: string, speakPiece: (words: string) => Pr
       over = []; timeline.push(slot);
     } else timeline.push(samples);
   }
-  const total = timeline.reduce((n, t) => n + t.length, 0);
-  const out = new Float32Array(total); let at = 0;
-  for (const t of timeline) { out.set(t, at); at += t.length; }
+  const body = timeline.reduce((n, t) => n + t.length, 0);
+  const lead = bed ? Math.round(BED_LEAD * rate) : 0; const tail = bed ? Math.round(BED_TAIL * rate) : 0;
+  const core = new Float32Array(lead + body + tail); let at = lead;
+  for (const t of timeline) { core.set(t, at); at += t.length; }
+  if (bed && bed.samples.length) {
+    const fadeInLen = Math.round(0.5 * rate); const fadeOutLen = Math.max(1, tail);
+    for (let n = 0; n < core.length; n++) core[n] += bed.samples[n % bed.samples.length] * bed.vol * Math.min(1, n / fadeInLen) * Math.min(1, (core.length - n) / fadeOutLen);
+  }
+  const out = new Float32Array((intro?.length ?? 0) + core.length + (outro?.length ?? 0));
+  if (intro) out.set(intro, 0);
+  out.set(core, intro?.length ?? 0);
+  if (outro) out.set(outro, (intro?.length ?? 0) + core.length);
   let peak = 0; for (let n = 0; n < out.length; n++) peak = Math.max(peak, Math.abs(out[n]));
   if (peak > 0.98) for (let n = 0; n < out.length; n++) out[n] *= 0.98 / peak;
   const words = keep.filter((p) => p.type === "speech").map((p) => (p as { text: string }).text).join(" ");
   return { spoken: { ...first!, audio: toWav(out, rate), mimeType: "audio/wav" }, scriptText: words, applied, skipped };
 }
+
+/** The audio choices a schedule or request carries: a background bed, an intro and an outro, by library name. */
+export interface AudioChoice { bed?: string; bedVol?: number; intro?: string; outro?: string }
+const NAME = /^[a-z0-9_-]{1,40}$/;
+export function sanitizeAudio(raw: unknown): AudioChoice | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const pick = (v: unknown) => (typeof v === "string" && NAME.test(v.trim().toLowerCase()) ? v.trim().toLowerCase() : undefined);
+  const vol = typeof r.bedVol === "number" && Number.isFinite(r.bedVol) ? clamp(r.bedVol, 0, 1) : undefined;
+  const out: AudioChoice = { ...(pick(r.bed) ? { bed: pick(r.bed) } : {}), ...(vol !== undefined && pick(r.bed) ? { bedVol: vol } : {}), ...(pick(r.intro) ? { intro: pick(r.intro) } : {}), ...(pick(r.outro) ? { outro: pick(r.outro) } : {}) };
+  return Object.keys(out).length ? out : undefined;
+}
+/** The text with the tags for those choices around it (what the mixer then acts on). */
+export const withAudio = (text: string, audio?: AudioChoice): string => (!audio ? text
+  : [audio.intro ? `[intro:${audio.intro}]` : "", audio.bed ? `[music:${audio.bed}${audio.bedVol !== undefined ? ` vol=${audio.bedVol}` : ""}]` : "", text, audio.outro ? `[outro:${audio.outro}]` : ""].filter(Boolean).join(" "));
 
 /** Names the writer may use: the built-in effects plus the library's, when one is connected. */
 export async function effectNames(): Promise<string[]> {

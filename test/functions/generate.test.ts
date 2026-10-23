@@ -138,6 +138,15 @@ describe("handleGenerate", () => {
       expect(mockedSaveClip.mock.calls[0][1].length).toBeGreaterThan(44);
     });
 
+    it("wraps a background, intro and outro around the line (named from the library) and reports the ones it cannot find", async () => {
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "Hello there", audio: { intro: "hello", bed: "Bed", bedVol: 0.2, outro: "../bad" } }));
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { scriptText: string; sfx: { applied: string[]; skipped: string[] } };
+      expect(body.scriptText).toBe("Hello there");
+      expect(mockedSynthesizeSpeech.mock.calls.map((c) => c[0])).toEqual(["Hello there"]);
+      expect(body.sfx.skipped).toEqual(["intro:hello (intro not found, or not a WAV file)", "music:bed (music not found, or not a WAV file)"]);
+    });
+
     it("skips an effect it does not have and says so", async () => {
       const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "Hello [sfx:nosuchsound] there" }));
       expect(res.status).toBe(201);

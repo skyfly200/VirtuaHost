@@ -18,7 +18,7 @@ import { contextFor, promptHelp, renderTemplate } from "../drop-template.js";
 import { elevenConfigured, isElevenModel } from "../elevenlabs.js";
 import { copiedExample, exampleLines } from "../copy-guard.js";
 import { renderScript, saveRendered } from "../script-clip.js";
-import { canMix, effectNames, hasTags, sfxHelp, speakMixed } from "../sfx-mix.js";
+import { canMix, effectNames, hasTags, sanitizeAudio, sfxHelp, speakMixed, withAudio } from "../sfx-mix.js";
 import { getScript } from "../script-store.js";
 import { linesOf, sanitizeCast, type Script } from "../scripts.js";
 import { recordModelResult } from "../model-health.js";
@@ -28,7 +28,7 @@ const log = createLogger("generate");
 
 // Chips Voice scripts can contain [sfx:name] sound effect tags. This Gemini path cannot mix them, and Gemini
 // would read them aloud, so they are removed (use the station's /speak to get the effects mixed in).
-const SFX_TAG = /\[\s*sfx\s*:[^\]]*\]/gi;
+const SFX_TAG = /\[\s*(sfx|music|intro|outro)\s*:[^\]]*\]/gi;
 export function stripSfxTags(text: string): { text: string; removed: boolean } {
   const removed = new RegExp(SFX_TAG.source, "i").test(text);
   return { text: removed ? text.replace(SFX_TAG, " ").replace(/\s{2,}/g, " ").trim() : text, removed };
@@ -168,7 +168,8 @@ async function generate(req: Request, who: Principal): Promise<Response> {
     });
   }
 
-  scriptText = filled.text;
+  // `audio` ({ bed, bedVol, intro, outro }, library names) adds a background, intro and outro around the line.
+  scriptText = withAudio(filled.text, sanitizeAudio(body.audio));
   if (filled.missing.length) log.warn("template values missing", { missing: filled.missing });
   if (!scriptText) return Response.json({ error: "The text is empty once the placeholders are filled in" }, { status: 400 });
 

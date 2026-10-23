@@ -86,7 +86,7 @@ describe("host endpoints", () => {
     expect(body).toMatchObject({ audioUrl: `/api/station/clips/${body.clipId}`, fx: "hull", preempt: true });
     expect(body.text.length).toBeGreaterThan(10);
     const spoken = vi.mocked(speak).mock.calls[0][0];
-    expect(spoken.tone).toContain("weathered");        // the default persona is CHIP
+    expect(spoken.tone).toContain("sleepy");        // the default persona is Night Owl
     expect(vi.mocked(saveClip).mock.calls[0][2]).toMatchObject({ id: body.clipId, format: "host-link", input: "host link: Ada - Song" });
   });
 

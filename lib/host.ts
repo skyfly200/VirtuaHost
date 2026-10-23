@@ -31,7 +31,7 @@ export interface HostConfig {
 export const DEFAULT_SKIP = ["", "syndicate empire radio", "way high radio", "k.r.a.p. relay"];
 
 export const HOST_DEFAULTS: HostConfig = {
-  enabled: false, every: 1, minGapSeconds: 45, lines: "template", personaId: "chip", voice: "", speechModel: "", textModel: "", tone: "", fx: "", preempt: false, skipArtists: DEFAULT_SKIP,
+  enabled: false, every: 1, minGapSeconds: 45, lines: "template", personaId: "night-owl", voice: "", speechModel: "", textModel: "", tone: "", fx: "", preempt: false, skipArtists: DEFAULT_SKIP,
 };
 
 export const TEMPLATES = [

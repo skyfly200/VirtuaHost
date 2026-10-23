@@ -47,6 +47,7 @@ Add these to the site's environment variables:
 | `OPENROUTER_VOICE` | voice to use when the model entry has none | no |
 | `OPENROUTER_ALLOW_ANY_MODEL` | `true` lets any signed-in person type any model slug (they could pick costly ones) | no |
 | `PROVIDER` | `openrouter` or `gemini` to force one when both keys are set | no |
+| `UPLOAD_MAX_PER_USER` | how many uploaded audio files each non-admin may keep (default 50) | no |
 | `TEMP_UNIT` | `F` (default) or `C`: the unit `{{temp}}` and weather lines use when a station does not choose its own | no |
 | `STATION_NAME` | e.g. `Way High Radio` (used in the DJ prompt and the examples) | no |
 | `GEMINI_TTS_VOICE` | a Gemini voice name (default `Kore`) | no |

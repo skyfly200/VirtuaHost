@@ -32,7 +32,7 @@ beforeEach(() => {
 });
 
 describe("personas", () => {
-  it("lists the built-in CHIP and creates, edits and deletes your own", async () => {
+  it("lists the built-in examples and creates, edits and deletes your own", async () => {
     const made = await call("POST", undefined, { name: "Night Owl", instructions: "A sleepy jazz host.", tone: "low, slow", templates: ["Next: {title}.", ""], extra: "ignored" });
     expect(made.status).toBe(201);
     const { persona } = (await made.json()) as { persona: { id: string; templates: string[] } };
@@ -40,7 +40,7 @@ describe("personas", () => {
     expect(persona.templates).toEqual(["Next: {title}."]);
 
     const list = (await (await call("GET")).json()) as { personas: Array<{ id: string; builtin?: boolean }> };
-    expect(list.personas.map((p) => p.id)).toContain("chip");
+    expect(list.personas.map((p) => p.id)).toContain("night-owl");
     expect(list.personas.filter((p) => !p.builtin).map((p) => p.id)).toEqual(["night-owl-abc123"]);
 
     expect((await call("PUT", persona.id, { name: "Night Owl 2", instructions: "Still sleepy." })).status).toBe(200);
@@ -75,8 +75,8 @@ describe("personas", () => {
   });
 
   it("refuses to change a built-in persona and rejects an empty one", async () => {
-    expect((await call("PUT", "chip", { name: "x", instructions: "y" })).status).toBe(403);
-    expect((await call("DELETE", "chip")).status).toBe(403);
+    expect((await call("PUT", "night-owl", { name: "x", instructions: "y" })).status).toBe(403);
+    expect((await call("DELETE", "night-owl")).status).toBe(403);
     expect((await call("POST", undefined, { name: "No instructions" })).status).toBe(400);
   });
 

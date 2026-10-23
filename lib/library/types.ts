@@ -2,8 +2,9 @@
 // Each source lists the audio files in its configured folder for a kind and can fetch one. Only listed files can be fetched
 // (the HTTP layer never builds a provider path from request input).
 
-export type LibraryKind = "sfx" | "music";
-export const KINDS: readonly LibraryKind[] = ["sfx", "music"];
+// sfx and music can also come from cloud folders; intro and outro (a clip played before or after the speech) are uploads only.
+export type LibraryKind = "sfx" | "music" | "intro" | "outro";
+export const KINDS: readonly LibraryKind[] = ["sfx", "music", "intro", "outro"];
 
 export interface LibraryItem {
   source: string;

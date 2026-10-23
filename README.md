@@ -65,7 +65,7 @@ curl -X POST https://your-site.netlify.app/api/generate \
 `public/` is a single page with these tabs, all running on the site itself (no other server):
 **Generate** (write or have the AI write a line, hear it with effects and music mixed in, then save it),
 **Studio** (compare voices, models, tone and effects side by side; conversations),
-**Personas** (host characters with ten examples, a sample explorer, and the virtual host settings),
+**Personas** (host characters with nine examples, a sample explorer, and the virtual host settings),
 **Flier** (turn an event flier into a promo clip that stops airing when the event is over), **Promos** (every promo, whether it can still play, and what repeats it),
 **Schedules** (things that happen on a timetable), and **Library** (your saved clips, plus sound effects and music from OwnCloud or Google Drive). **Users** (admins) manages people and their limits.
 Every piece of generated audio has a **Download** menu (as saved, WAV or MP3), and before each AI step the page shows an estimate of what it will use (tokens, and dollars where a price is known) and asks first if the model is premium, unpriced or much dearer than the default. Models are labelled by price tier and by whether they filter strong language; *Allow strong language* hides the ones that do. Drops can carry placeholders such as `{{time}}`, `{{weather}}` and `{{dj}}` that are filled in just before the voice speaks ([docs/DROPS.md](docs/DROPS.md)).

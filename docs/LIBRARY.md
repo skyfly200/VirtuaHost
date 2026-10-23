@@ -10,6 +10,10 @@ uploaded or changed: the site only lists and downloads audio files (mp3, wav, og
 Built-in effects (`ding`, `chime`, `whoosh`, ...) always exist and win a name clash. Files over about 5 MB are not passed through
 (Netlify's response limit), so trim long music to a loop or a short bed. Use the Library tab to browse, play and copy tags.
 
+## Uploads (no setup)
+
+You do not need a cloud account: upload background music, intros, outros and sound effects straight in the Library tab (or from the Studio and schedule forms). They live in Netlify Blobs, are shared by the station and work everywhere the cloud folders do, plus **intros and outros**, which only uploads provide. Details, limits and the tags: [SOUND-EFFECTS.md](SOUND-EFFECTS.md).
+
 ## OwnCloud (also works with Nextcloud)
 
 Create the folders (for example `/VirtuaHost/sfx` and `/VirtuaHost/music`), make an **app password** (Settings > Security),

@@ -11,12 +11,14 @@ export const bytesOf = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0
 const withStation = (base) => (base.station || !stationId() ? base : { ...base, station: stationId() });
 
 export function createSpeaker(api, features) {
-  const library = { sfx: [], music: [] };
+  const library = { sfx: [], music: [], intro: [], outro: [] };
   const cache = new Map();
 
   async function loadLibrary() {
     const f = features && features.library;
     if (!f || !(f.sfx || f.music)) return library;
+    for (const k of Object.keys(library)) library[k].length = 0;      // a reload after an upload replaces the lists
+    cache.clear();
     try { for (const item of (await api.get('/library')).items) (library[item.kind] || []).push(item); } catch { /* built-in effects still work */ }
     return library;
   }
@@ -40,6 +42,7 @@ export function createSpeaker(api, features) {
   function check(pieces) {
     for (const p of pieces) {
       if (p.type === 'sfx' && !effectNames().includes(p.name) && !item('sfx', p.name)) throw new Error(`Unknown sound effect "${p.name}". Available: ${soundNames().join(', ')}`);
+      if ((p.type === 'intro' || p.type === 'outro') && !item(p.type, p.name)) throw new Error(library[p.type].length ? `Unknown ${p.type} "${p.name}". Available: ${library[p.type].map((i) => i.name).join(', ')}` : `There is no ${p.type} clip yet: upload one in the Library or with the Upload button.`);
       if (p.type === 'music' && !item('music', p.name)) throw new Error(library.music.length ? `Unknown music "${p.name}". Available: ${library.music.map((i) => i.name).join(', ')}` : 'No music library is connected (see docs/LIBRARY.md).');
     }
   }
@@ -50,6 +53,7 @@ export function createSpeaker(api, features) {
       if (r.type === 'speech') items.push({ kind: 'speech', samples: await decode(bytesOf(r.data.audio)) });
       else if (r.type === 'silence') items.push({ kind: 'speech', samples: new Float32Array(Math.round(r.seconds * RATE)) });
       else if (r.type === 'music') items.push({ kind: 'music', vol: r.vol, samples: await librarySamples('music', r.name) });
+      else if (r.type === 'intro' || r.type === 'outro') items.push({ kind: r.type, vol: r.vol, samples: await librarySamples(r.type, r.name) });
       else items.push({ kind: 'sfx', name: r.name, vol: r.vol, over: r.over, wait: r.wait, ...(effectNames().includes(r.name) ? {} : { samples: await librarySamples('sfx', r.name) }) });
     }
     return items;
@@ -89,7 +93,7 @@ export function createSpeaker(api, features) {
   async function renderDialogue(lines, { gap = 0.3, fx = '', fxAmount = 1, onProgress = () => {} } = {}) {
     const results = [];
     const names = [];
-    let beds = 0;
+    let beds = 0; const ends = { intro: 0, outro: 0 };
     for (const [n, line] of lines.entries()) {
       const pieces = parseTags(line.text);
       check(pieces);
@@ -97,6 +101,7 @@ export function createSpeaker(api, features) {
       onProgress(`Line ${n + 1} of ${lines.length} (${line.speaker})`, { step: n + 1, total: lines.length + 1 });
       for (const piece of pieces) {
         if (piece.type === 'music') { if (++beds > 1) throw new Error('Use only one [music:...] bed per conversation.'); results.unshift(piece); names.push(piece.name); continue; }
+        if (piece.type === 'intro' || piece.type === 'outro') { if (++ends[piece.type] > 1) throw new Error(`Use only one [${piece.type}:...] per conversation.`); results.push(piece); names.push(piece.name); continue; }
         if (piece.type === 'sfx') { results.push(piece); names.push(piece.name); continue; }
         results.push({ type: 'speech', data: await api.post('/generate', { ...withStation(line.base), mode: 'say', preview: true, text: piece.text }) });
       }

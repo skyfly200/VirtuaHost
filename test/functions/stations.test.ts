@@ -70,16 +70,16 @@ describe("station profiles", () => {
 
 describe("the station in use", () => {
   it("names the station in AI-written lines and fills in its defaults, then tags the clip with it", async () => {
-    const { station } = (await (await call("POST", undefined, { name: "Way High Radio", tagline: "Taking radio higher", defaultPersonaId: "chip", defaultVoice: "af_heart", defaultFx: "hull" })).json()) as { station: { id: string } };
+    const { station } = (await (await call("POST", undefined, { name: "Way High Radio", tagline: "Taking radio higher", defaultPersonaId: "night-owl", defaultVoice: "af_heart", defaultFx: "hull" })).json()) as { station: { id: string } };
     const res = await handleGenerate(new Request("http://localhost/api/generate", { method: "POST", headers: { "x-api-key": KEY, "content-type": "application/json" }, body: JSON.stringify({ mode: "ai", prompt: "next song", station: station.id }) }));
     expect(res.status).toBe(201);
     const system = vi.mocked(chat).mock.calls[0][0].system;
     expect(system).toContain("Way High Radio");
     expect(system).toContain('tagline is "Taking radio higher"');
-    expect(system).toContain("Your character: You are CHIP");                // the station's default persona
+    expect(system).toContain("Your character: You are the Night Owl");                // the station's default persona
     expect(vi.mocked(speech).mock.calls[0][0]).toMatchObject({ voice: "af_heart" });
     const saved = (await import("../../lib/store.js")).saveClip as ReturnType<typeof vi.fn>;
-    expect(saved.mock.calls[0][2].info).toMatchObject({ station: station.id, persona: "chip" });
+    expect(saved.mock.calls[0][2].info).toMatchObject({ station: station.id, persona: "night-owl" });
     expect((await handleGenerate(new Request("http://localhost/api/generate", { method: "POST", headers: { "x-api-key": KEY, "content-type": "application/json" }, body: JSON.stringify({ mode: "say", text: "x", station: "nope" }) }))).status).toBe(400);
   });
 
@@ -109,7 +109,7 @@ describe("per-station settings", () => {
     // a station's own profile is where its host starts
     const start = (await (await host("GET", a)).json()) as { config: { personaId: string; fx: string; skipArtists: string[]; enabled: boolean } };
     expect(start.config).toMatchObject({ personaId: "night-owl", fx: "hull", skipArtists: ["Alpha Spot"], enabled: false });
-    expect(((await (await host("GET", b)).json()) as { config: { personaId: string } }).config.personaId).toBe("chip");
+    expect(((await (await host("GET", b)).json()) as { config: { personaId: string } }).config.personaId).toBe("night-owl");
 
     // changing one leaves the other alone
     await host("PUT", a, { enabled: true, every: 4 });
