@@ -95,6 +95,6 @@ async function draft(req: Request, who: Principal): Promise<Response> {
     return Response.json({ error: `Persona generation failed: ${(err as Error).message}` }, { status: 502 });
   }
   const parsed = parsePersonaReply(reply);
-  if ("error" in parsed) return Response.json({ error: parsed.error }, { status: 502 });
+  if ("error" in parsed) return Response.json({ error: parsed.error, reply: reply.slice(0, 20_000) }, { status: 502 });
   return Response.json({ persona: parsed.persona });
 }

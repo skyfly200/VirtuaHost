@@ -75,6 +75,13 @@ describe("personas", () => {
     expect(normalizePersona({ id: "old", name: "Old", description: "", instructions: "x", tone: "", templates: [], stationIds: [] } as never)).toMatchObject({ tags: [], promos: [], signOffs: [] });
   });
 
+  it("sends back the model's reply when a persona draft cannot be read", async () => {
+    vi.mocked(complete).mockResolvedValue("I would love to, but here is a story instead. Once upon a time...");
+    const res = await call("POST", "generate", { description: "a sleepy jazz host" });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("did not return a persona"), reply: expect.stringContaining("Once upon a time") });
+  });
+
   it("lets an admin edit an example (it comes back marked edited), reset it, and rejects an empty persona", async () => {
     const original = ((await (await call("GET", "night-owl")).json()) as { persona: { name: string; edited?: boolean } }).persona;
     expect(original.edited).toBeUndefined();

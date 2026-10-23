@@ -52,7 +52,7 @@ export async function mountStudio(root, api) {
   const newSlot = (from = {}) => ({ speechModel: choosable ? options.models.defaultSpeech : '', voice: '', tone: '', fx: '', fxAmount: 1, take: null, url: '', ...from, id: Math.random().toString(36).slice(2), busy: false, st: createStatus() });
   state.slots = [newSlot()];
   const handedPersona = personas.find((p) => p.id === takePersona());
-  if (handedPersona) state.cast = [{ name: handedPersona.name.split(' ')[0].slice(0, 24), personaId: handedPersona.id }];
+  if (handedPersona) state.cast = [{ name: 'Host', personaId: handedPersona.id }];
   const modelEntry = (id) => models.find((m) => m.id === id);
   const castOf = (name) => state.cast.find((c) => c.name.toLowerCase() === String(name).toLowerCase());
   const kind = () => (state.mode === 'conversation' ? 'conversation' : 'single');
@@ -135,7 +135,7 @@ export async function mountStudio(root, api) {
         state.text = out.raw || out.text; paintAll();
         const note = [out.copiedExample ? `${out.copiedExample.join(', ')} repeated an example line: draft again or edit it.` : '', out.droppedLines ? `${out.droppedLines} line(s) from outside the cast were dropped.` : ''].filter(Boolean).join(' ');
         if (note) toast(note, 'info');
-      } catch (err) { draftStatus.fail(err.message); } finally { draft.disabled = false; }
+      } catch (err) { draftStatus.fail(err.message, err.reply); } finally { draft.disabled = false; }
     } }, 'Draft with AI');
     const mode = (m, label) => h('button', { type: 'button', class: state.mode === m ? 'seg on' : 'seg', onclick: () => {
       if (state.mode === m) return;

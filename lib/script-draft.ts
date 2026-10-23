@@ -24,6 +24,12 @@ export interface DraftInput {
   effects?: string;
 }
 export interface DraftContext { provider: ProviderName; textModel?: string; station?: Station | null; personas: Map<string, Persona>; template: TemplateContext }
+/** The writer answered, but not in a form that could be used. `reply` is everything it said, so the UI can show it. */
+export class DraftFormatError extends Error {
+  constructor(message: string, readonly reply: string) { super(message); this.name = "DraftFormatError"; }
+}
+export const REPLY_LIMIT = 20_000;
+
 export interface Drafted { text: string; raw: string; lines: Array<{ speaker: string; text: string }>; copied: string[]; dropped: number }
 
 export function buildDraft(input: DraftInput, ctx: Pick<DraftContext, "station" | "personas" | "template">): { system: string; prompt: string } {
@@ -118,9 +124,9 @@ export async function draftScript(input: DraftInput, ctx: DraftContext): Promise
     if (retry.lines.length) { out = retry; copied = find(out.lines); } else out = retry;
   }
   if (!out.lines.length) {
-    // Say what came back, so a wrong format or an empty reply is visible instead of a guess.
-    const seen = out.reply.replace(/\s+/g, " ").trim().slice(0, 160);
-    throw new Error(`The writer did not return a script in the "Name: line" format for ${input.cast.map((c) => c.name).join(", ")}. ${seen ? `It replied: "${seen}${out.reply.trim().length > 160 ? "..." : ""}". ` : "It sent back nothing (the writing model may be down or filtered the request). "}Try again, pick another writing model, or give it a clearer topic.`);
+    // Say what came back (the UI shows the whole reply in a drop-down) so a wrong format or an empty reply is visible instead of a guess.
+    const reply = out.reply.slice(0, REPLY_LIMIT);
+    throw new DraftFormatError(`The writer did not return a script in the "Name: line" format for ${input.cast.map((c) => c.name).join(", ")}. ${reply.trim() ? "Its full reply is below." : "It sent back nothing (the writing model may be down or filtered the request). "}Try again, pick another writing model, or give it a clearer topic.`, reply);
   }
   const raw = input.kind === "single" ? out.lines[0].text : out.lines.map((l) => `${l.speaker}: ${l.text}`).join("\n");
   const filled = await renderTemplate(raw, ctx.template);

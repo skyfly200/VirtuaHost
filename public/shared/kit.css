@@ -153,3 +153,6 @@ button.play:disabled { opacity: .6; }
 .tag-drop button.on { background: var(--chip); font-weight: 700; }
 .popwrap.grow { display: flex; flex: 1 1 auto; }
 .popwrap.grow > input { width: 100%; }
+.reply-details { flex-basis: 100%; margin-top: 6px; font-size: 13px; }
+.reply-details summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.reply-details pre { margin: 6px 0 0; padding: 10px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font: 12px/1.5 ui-monospace, monospace; color: var(--ink); user-select: text; }
