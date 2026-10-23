@@ -6,7 +6,7 @@ import type { Station } from "../../lib/station-profile.js";
 vi.mock("../../lib/ai.js", () => ({ complete: vi.fn() }));
 
 import { complete } from "../../lib/ai.js";
-import { buildDraft, draftScript, parseDraft, personaAliases, type DraftContext } from "../../lib/script-draft.js";
+import { buildDraft, draftScript, DraftFormatError, parseDraft, personaAliases, type DraftContext } from "../../lib/script-draft.js";
 import { contextFor } from "../../lib/drop-template.js";
 
 const EXAMPLE = "Nothing like a cold one after a long shift, folks.";
@@ -112,11 +112,17 @@ describe("draftScript", () => {
     expect(out.lines[1].text).toBe("[sfx:static over] Hi, it's me.");
   });
 
-  it("says what the writer sent back when it cannot be read", async () => {
-    vi.mocked(complete).mockResolvedValue("Sorry, I cannot help with that.");
-    await expect(draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx())).rejects.toThrow(/Rocky, Dale.*Sorry, I cannot help/);
+  it("keeps the writer's whole reply when it cannot be read, so the UI can show it", async () => {
+    const long = `Sorry, I cannot help with that. ${"More words. ".repeat(50)}`;
+    vi.mocked(complete).mockResolvedValue(long);
+    const err = await draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx()).catch((e) => e);
+    expect(err).toBeInstanceOf(DraftFormatError);
+    expect(err.message).toMatch(/Rocky, Dale.*full reply is below/);
+    expect(err.reply).toBe(long);
     vi.mocked(complete).mockResolvedValue("");
-    await expect(draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx())).rejects.toThrow(/sent back nothing/);
+    const empty = await draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx()).catch((e) => e);
+    expect(empty.message).toMatch(/sent back nothing/);
+    expect(empty.reply).toBe("");
   });
 
   it("throws a clear error when both attempts give nothing usable", async () => {
