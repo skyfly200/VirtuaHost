@@ -8,6 +8,10 @@
 //   STATION_FX            an effect preset the station applies to every clip it receives (for example
 //                         "underground"); a request can override it with its own `fx`
 
+import { createLogger } from "./log.js";
+
+const log = createLogger("handoff");
+
 /** Audio treatment the station applies on arrival: a preset name, or a preset with voice-changer settings. */
 export type FxSetting = string | { preset?: string; pitch?: number; speed?: number; tighten?: boolean };
 
@@ -104,6 +108,7 @@ export async function pushToStation(wav: Buffer, options: HandoffOptions): Promi
     }
     return { sent: true, clipId: body.clip?.id, played: body.played ?? false, reason: body.reason };
   } catch (err) {
+    log.error("station hand-off failed", { err });
     return { sent: false, error: `could not reach the station: ${(err as Error).message}` };
   }
 }

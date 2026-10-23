@@ -84,7 +84,9 @@ test('stations: add, list with live status, never show the key, update, remove',
   const t = await boot();
   const added = await addStation(t, s, { name: 'Ship Radio', site: 'Way High' });
   assert.strictEqual(added.status, 201);
-  assert.deepStrictEqual(added.json, { id: 'ship-radio', name: 'Ship Radio', site: 'Way High', url: s.url, notes: '', hasKey: true });
+  const { id, name, site, url, notes, hasKey, ...extra } = added.json;
+  assert.deepStrictEqual({ id, name, site, url, notes, hasKey }, { id: 'ship-radio', name: 'Ship Radio', site: 'Way High', url: s.url, notes: '', hasKey: true });
+  assert.deepStrictEqual([extra.connection, extra.machineTz, extra.broadcastTz, extra.mode, extra.hasPullKey, extra.jit.enabled, extra.jit.shadow], ['push', '', '', 'unknown', false, false, true]);   // new, additive fields
   assert.strictEqual((await addStation(t, s, { name: 'Ship Radio' })).json.id, 'ship-radio-2');       // ids stay unique
   const list = (await t.call('GET', '/stations')).json.stations;
   assert.strictEqual(list[0].online, true);

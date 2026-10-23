@@ -1,18 +1,22 @@
 import { GoogleGenAI } from "@google/genai";
+import { apiKey } from "./credentials.js";
 
 const TEXT_MODEL = "gemini-3.6-flash";
 const TTS_MODEL = "gemini-3.1-flash-tts-preview";
 export const DEFAULT_VOICE = "Kore";
 
-let client: GoogleGenAI | undefined;
+// One client per key: the site's, and any a person or station brought (lib/credentials.ts).
+const clients = new Map<string, GoogleGenAI>();
 
 function getClient(): GoogleGenAI {
+  const key = apiKey("gemini");
+  if (!key) {
+    throw new Error("GEMINI_API_KEY is not set");
+  }
+  let client = clients.get(key);
   if (!client) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not set");
-    }
-    client = new GoogleGenAI({ apiKey });
+    client = new GoogleGenAI({ apiKey: key });
+    clients.set(key, client);
   }
   return client;
 }
@@ -39,6 +43,18 @@ export async function writeDjLine(prompt: string, systemInstruction?: string): P
   return text;
 }
 
+// Reads an image (a flier, a poster) with the text model and returns its answer to the prompt.
+export async function describeImage(prompt: string, systemInstruction: string, mimeType: string, base64: string): Promise<string> {
+  const response = await getClient().models.generateContent({
+    model: TEXT_MODEL,
+    contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }] }],
+    config: { systemInstruction },
+  });
+  const text = response.text?.trim();
+  if (!text) throw new Error("Gemini returned no text for the image");
+  return text;
+}
+
 export interface SynthesizedSpeech {
   pcm: Buffer;
   mimeType: string;
@@ -62,8 +78,8 @@ export async function synthesizeSpeech(
   text: string,
   voice: string = DEFAULT_VOICE,
 ): Promise<SynthesizedSpeech> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const key = apiKey("gemini");
+  if (!key) {
     throw new Error("GEMINI_API_KEY is not set");
   }
 
@@ -73,7 +89,7 @@ export async function synthesizeSpeech(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-goog-api-key": apiKey,
+        "x-goog-api-key": key,
       },
       body: JSON.stringify({
         contents: [{ parts: [{ text }] }],

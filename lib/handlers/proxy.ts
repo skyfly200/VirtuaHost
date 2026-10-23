@@ -1,4 +1,7 @@
-import { checkAuth } from "../auth.js";
+import { authorize } from "../auth.js";
+import { createLogger } from "../log.js";
+
+const log = createLogger("proxy");
 
 // The web UI talks to the radio side of the system through this site, so the browser only ever signs in here:
 //
@@ -30,7 +33,7 @@ export const features = () => ({
 });
 
 export async function handleProxy(req: Request): Promise<Response> {
-  const denied = checkAuth(req);
+  const { who, denied } = await authorize(req, { admin: true });
   if (denied) return denied;
 
   const incoming = new URL(req.url);
@@ -70,7 +73,8 @@ export async function handleProxy(req: Request): Promise<Response> {
   }
 
   // Only what the radio side needs is passed on; the caller's own credentials are replaced with the server-side key.
-  const headers: Record<string, string> = { "x-api-key": target.key };
+  // `x-actor` tells the hub which signed-in person did this, for its audit log and approval records (the hub trusts it only from this key).
+  const headers: Record<string, string> = { "x-api-key": target.key, ...(target.name === "hub" ? { "x-actor": who.username.replace(/[^\w .@-]/g, "").slice(0, 40) } : {}) };
   const contentType = req.headers.get("content-type");
   if (contentType) headers["content-type"] = contentType;
   const accept = req.headers.get("accept");
@@ -81,6 +85,7 @@ export async function handleProxy(req: Request): Promise<Response> {
     upstream = await fetch(upstreamUrl, { method: req.method, headers, body, signal: AbortSignal.timeout(25_000), redirect: "manual" });
   } catch (err) {
     const timedOut = (err as Error).name === "TimeoutError";
+    log.error("proxy request failed", { target: target.name, timedOut, err });
     return Response.json({ error: `The ${target.name} did not answer${timedOut ? " in time" : ""}: ${(err as Error).message}` }, { status: 502 });
   }
 

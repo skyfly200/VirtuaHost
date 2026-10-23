@@ -1,0 +1,70 @@
+# Station profiles
+
+A **station profile** is data about a station kept on the site: you can set one up before it has any server. Open the **Stations** tab, add
+a station, and choose **Work on this station** (or pick it in the header). Every other tab then uses it.
+
+| Field | Used for |
+|---|---|
+| Name, tagline | AI-written lines say the station's name ("You are the on-air DJ for ...") and know its tagline; `{station}` in a persona's lines becomes the name. |
+| Time zone | The default for schedules (daily at 07:30 means 07:30 *there*) and for flier promos (dates and the expiry are in the station's clock). |
+| Default persona, speech model, voice | New clips for this station use them when the request names none (a request, then a persona, then the station). |
+| Audio treatment | The fx preset the station applies to queued clips (for example `hull`). |
+| Skip list | Spots and relays the virtual host says nothing over or about. |
+| **Where is it?** (find by name) | Type a town or city ("Houston, TX") and press Find: pick the match and the city, coordinates and time zone are filled in, so nobody types latitude and longitude. The place is used for weather, alerts, `{{place}}` / `{{state}}`, and to tell which stations are near an event. Behind it is `GET /api/places?q=` (Open-Meteo's free geocoder; towns and cities, not street addresses; not verified live). |
+| Transmitter and antenna | Transmitter power, antenna type (quarter-wave ground plane, dipole, collinear, directional), height above ground, optional HAAT, cable loss, surroundings. The page draws the estimated strong/good/fringe rings (a circle, or an ellipse for a directional antenna) and lists the reach in km and miles. A quick power-based estimate that ignores terrain: [COVERAGE.md](COVERAGE.md). Later you will be able to import a terrain-aware map from Nautel's tool instead; how to prepare it is in the same page. Used for which alerts to follow and which stations an event is near. |
+| Coverage radius (km) | A circle around the place: where the station can be heard. A first coverage model; see [COVERAGE.md](COVERAGE.md). |
+| Latitude/longitude, temperature unit, your own placeholders | Fill `{{weather}}`, `{{temp}}` and your own `{{name}}` placeholders in drops (see [DROPS.md](DROPS.md)). With no coordinates the city is looked up. |
+| Allowed models | Optional lists of writing and speech models this station may use (one per line). They also bind people using their own key, and the pickers offer only these. See [KEYS.md](KEYS.md). |
+| AI key (admins) | A station-level OpenRouter, Gemini or ElevenLabs key used for requests made for this station when the person has no key of their own. Write-only. |
+| Call sign, frequency, genres, city, links, contact, notes | Shown on the card and available to other tools; nothing depends on them. |
+| Connection | A note of what the station will connect to later (Chips Voice, RadioDJ, Icecast, a hub id). Nothing connects. |
+
+## Voice and models: who speaks and who writes
+
+A **persona**, the **virtual host**, a **station** and a **flier promo** can each carry a *speech model and voice* (what speaks) and a
+*writing model* (what writes the words). A blank means "use the next one down", and the pickers show what that is:
+
+> request (or a choice on the promo/host) → the persona's → the station's defaults → the site's default
+
+So CHIP can always speak with one voice and be written by one model, while a promo for that persona can still choose another voice for
+one night. Each picker has a play button to hear the result, and picking a different speech model clears the voice (voices differ per
+model). A writing model that is no longer on your list falls through to the next one; one you ask for by name that is not offered is an error.
+
+## Settings that belong to each station
+
+Open a saved station in the Stations tab (Edit) and you get its own:
+
+- **Sending clips**: put new clips on air as soon as they arrive, and may cut in over a live DJ. A request, a schedule or a button press still wins; with no station these come from `STATION_AUTOPLAY` / `STATION_PREEMPT`.
+- **Defaults** for how new clips sound (persona, speech model, voice) and the audio treatment the station applies (`defaultFx`).
+- **Virtual host**: on/off, how often, persona, lines (example lines or the AI), audio treatment, skip list, whether it may cut in over a live DJ. It starts from the station's own persona, voice, treatment and skip list; what you save on top wins. Its status (now playing, the waiting link, counters) is reported per station.
+
+Only **admins** can create, edit or delete stations and change their host settings; everyone can view them and work on one. A daemon started with `STATION_ID=<id>` reads and reports exactly that station's host settings; another station's daemon never sees them.
+
+## What gets tagged with the station
+
+Clips made while a station is active carry `info.station` (its id, also an ID3 `station` frame), schedules and flier repeats record
+`stationId`, and queue items carry it. A station daemon started with `STATION_ID=<id>` collects only its own station's items (and items
+with no station), so several stations can share one site.
+
+The Stations tab shows, for each station, what the site holds for it: clips, promos, schedules (and the next run), items waiting for its
+daemon, and when its virtual host last reported.
+
+## API
+
+`GET/POST /api/stations`, `GET/PUT/DELETE /api/stations/:id`, `GET /api/stations/:id/summary`, `GET /api/stations?near=<lat>,<lon>` (also ranks stations by distance from a point and says whether each covers it), `GET /api/places?q=` (find a place by name), `GET /api/alerts?station=` (active US weather alerts at the station). `POST /api/generate`, `/api/flier/*`
+accept `station` (an id); `GET /api/options?station=<id>` fills the examples with that station's name. With no stations made, the API
+offers one placeholder named from `STATION_NAME`.
+
+## Connecting a real station later
+
+Nothing here changes: start the daemon with `STATION_ID` (see `station-daemon/README.md`) and the site's queue, host and schedules for that
+station start flowing to it. The old hub controls (several live stations on one screen) are the **Control** tab.
+
+## Two clocks, and the {{weather}} location
+
+- `broadcastTz` (same value as `tz`, kept in sync) is the station's own clock; `machineTz` is the playout PC's, only for reading the PC's timestamps. `GET /api/stations` returns `warnings` for each station: `zones-differ`, `machine-tz-missing` (RadioDJ stations), invalid zones, and `weather-location-missing` (`{{weather}}` needs a city or coordinates). The editor shows them live. The hub record has the same fields plus the agent's real offset check: docs/HUB.md.
+- Existing profiles keep working: `tz` still sets the zone.
+
+## Menu and phones
+
+The tabs are grouped (Create: Studio, Flier, Promos; Library; Plan: Schedules, Dynamic; Station: Stations, Personas, Control; Admin: Users). On a phone the groups collapse into a Menu drawer, grids become one column and tables scroll inside their card. A station's `warnings` (clocks, weather location) show in the Stations editor, the Studio and Schedules.

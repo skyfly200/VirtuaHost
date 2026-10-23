@@ -24,9 +24,9 @@ export function clear(el, ...children) { el.replaceChildren(...children.flat().f
 export function toast(message, type = 'info') {
   let box = $('#toasts');
   if (!box) { box = h('div', { id: 'toasts', role: 'status', 'aria-live': 'polite' }); document.body.append(box); }
-  const t = h('div', { class: `toast ${type}` }, message);
+  const t = h('div', { class: `toast ${type}`, title: 'Click to dismiss', onclick: () => t.remove() }, message);
   box.append(t);
-  setTimeout(() => t.remove(), type === 'error' ? 7000 : 3500);
+  setTimeout(() => t.remove(), type === 'error' ? 10000 : 3500);
 }
 
 export class ApiError extends Error {
@@ -35,10 +35,10 @@ export class ApiError extends Error {
 
 // A client for one API base, for example the site's /api, /api/hub or /api/voice. `session` = { url, headers }.
 export function createClient(session, { onUnauthorized } = {}) {
-  async function request(method, path, { body, raw, query, blob, contentType, signal } = {}) {
+  async function request(method, path, { body, raw, query, blob, contentType, signal, headers: extra } = {}) {
     const url = new URL(path.replace(/^\//, ''), session.url.endsWith('/') ? session.url : `${session.url}/`);
     for (const [k, v] of Object.entries(query || {})) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
-    const headers = { ...session.headers };
+    const headers = { ...session.headers, ...(extra || {}) };
     let payload;
     if (raw) { payload = raw; headers['content-type'] = contentType || raw.type || 'application/octet-stream'; } else if (body !== undefined) { payload = JSON.stringify(body); headers['content-type'] = 'application/json'; }
     let res;

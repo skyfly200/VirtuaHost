@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+vi.mock("../../lib/user-store.js", async (orig) => ({ ...(await orig<typeof import("../../lib/user-store.js")>()), getUser: vi.fn(async () => null), saveUser: vi.fn() }));
 vi.mock("../../lib/throttle.js", () => ({ isBlocked: vi.fn(), recordFailure: vi.fn(), clearFailures: vi.fn() }));
 
 import { isBlocked, recordFailure, clearFailures } from "../../lib/throttle.js";
@@ -30,7 +31,7 @@ describe("POST /api/login", () => {
     expect(body.expiresAt).toBeGreaterThan(Date.now());
     expect(vi.mocked(clearFailures)).toHaveBeenCalledWith("203.0.113.5");
     const api = new Request("http://localhost/api/clips", { headers: { authorization: `Bearer ${body.token}` } });
-    expect(checkAuth(api)).toBeNull();
+    expect(await checkAuth(api)).toBeNull();
   });
 
   it("refuses a wrong password or unknown user with the same message, and counts the failure", async () => {
@@ -59,10 +60,10 @@ describe("POST /api/login", () => {
   });
 
   it("says so when password login is not set up", async () => {
-    vi.stubEnv("LOGIN_USERS", "");
+    vi.stubEnv("SESSION_SECRET", "");
     const res = await handleLogin(post({ username: "alice", password: "alice password" }));
     expect(res.status).toBe(503);
-    expect(((await res.json()) as { error: string }).error).toMatch(/LOGIN_USERS/);
+    expect(((await res.json()) as { error: string }).error).toMatch(/SESSION_SECRET/);
   });
 });
 
@@ -71,7 +72,7 @@ describe("GET /api/login", () => {
     vi.stubEnv("ACCESS_KEY", "k".repeat(20));
     const res = await handleLogin(new Request("http://localhost/api/login"));
     expect(await res.json()).toEqual({ passwordLogin: true, accessKey: true, disabled: false });
-    vi.stubEnv("LOGIN_USERS", "");
+    vi.stubEnv("SESSION_SECRET", "");
     vi.stubEnv("ACCESS_KEY", "");
     expect(await (await handleLogin(new Request("http://localhost/api/login"))).json()).toEqual({ passwordLogin: false, accessKey: false, disabled: false });
   });
@@ -83,24 +84,24 @@ describe("the API accepts either a login or the access key", () => {
   it("lets a script use the access key while people use logins", async () => {
     vi.stubEnv("ACCESS_KEY", "machine-key-0123456789");
     const login = (await (await handleLogin(post({ username: "alice", password: "alice password" }))).json()) as { token: string };
-    expect(checkAuth(req("machine-key-0123456789"))).toBeNull();
-    expect(checkAuth(req(login.token))).toBeNull();
-    expect(checkAuth(req("something else"))?.status).toBe(401);
-    expect(checkAuth(req())?.status).toBe(401);
+    expect(await checkAuth(req("machine-key-0123456789"))).toBeNull();
+    expect(await checkAuth(req(login.token))).toBeNull();
+    expect((await checkAuth(req("something else")))?.status).toBe(401);
+    expect((await checkAuth(req()))?.status).toBe(401);
   });
 
-  it("works with only logins configured, and with only the key configured", () => {
-    expect(checkAuth(req())?.status).toBe(401);                         // logins only, no credential
-    vi.stubEnv("LOGIN_USERS", "");
+  it("works with only logins configured, and with only the key configured", async () => {
+    expect((await checkAuth(req()))?.status).toBe(401);                         // logins only, no credential
+    vi.stubEnv("SESSION_SECRET", "");
     vi.stubEnv("ACCESS_KEY", "machine-key-0123456789");
-    expect(checkAuth(req("machine-key-0123456789"))).toBeNull();
+    expect(await checkAuth(req("machine-key-0123456789"))).toBeNull();
     vi.stubEnv("ACCESS_KEY", "");
-    expect(checkAuth(req("machine-key-0123456789"))?.status).toBe(503);  // nothing configured: closed
+    expect((await checkAuth(req("machine-key-0123456789")))?.status).toBe(503);  // nothing configured: closed
   });
 
   it("does not accept a session token once the user is gone, or after a new secret", async () => {
     const login = (await (await handleLogin(post({ username: "alice", password: "alice password" }))).json()) as { token: string };
     vi.stubEnv("SESSION_SECRET", "z".repeat(40));
-    expect(checkAuth(req(login.token))?.status).toBe(401);
+    expect((await checkAuth(req(login.token)))?.status).toBe(401);
   });
 });

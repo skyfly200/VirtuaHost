@@ -126,14 +126,31 @@ describe("handleGenerate", () => {
   });
 
   describe("sound effect tags", () => {
-    it("removes [sfx:...] tags before speaking, because Gemini would read them aloud", async () => {
+    it("speaks each stretch of words separately and mixes the effects between them (Gemini returns WAV)", async () => {
       const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "Welcome [sfx:ding] to the show [SFX: whoosh over vol=0.5] folks." }));
 
       expect(res.status).toBe(201);
-      expect(mockedSynthesizeSpeech).toHaveBeenCalledWith("Welcome to the show folks.", "Kore");
-      const body = (await res.json()) as { scriptText: string; sfxTagsRemoved: boolean };
+      expect(mockedSynthesizeSpeech.mock.calls.map((c) => c[0])).toEqual(["Welcome", "to the show", "folks."]);
+      const body = (await res.json()) as { scriptText: string; sfx: { applied: string[]; skipped: string[] }; sfxTagsRemoved?: boolean };
       expect(body.scriptText).toBe("Welcome to the show folks.");
-      expect(body.sfxTagsRemoved).toBe(true);
+      expect(body.sfx).toEqual({ applied: ["ding", "whoosh"], skipped: [] });
+      expect(body).not.toHaveProperty("sfxTagsRemoved");
+      expect(mockedSaveClip.mock.calls[0][1].length).toBeGreaterThan(44);
+    });
+
+    it("wraps a background, intro and outro around the line (named from the library) and reports the ones it cannot find", async () => {
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "Hello there", audio: { intro: "hello", bed: "Bed", bedVol: 0.2, outro: "../bad" } }));
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { scriptText: string; sfx: { applied: string[]; skipped: string[] } };
+      expect(body.scriptText).toBe("Hello there");
+      expect(mockedSynthesizeSpeech.mock.calls.map((c) => c[0])).toEqual(["Hello there"]);
+      expect(body.sfx.skipped).toEqual(["intro:hello (intro not found, or not a WAV file)", "music:bed (music not found, or not a WAV file)"]);
+    });
+
+    it("skips an effect it does not have and says so", async () => {
+      const res = await handleGenerate(jsonRequest("POST", { mode: "say", text: "Hello [sfx:nosuchsound] there" }));
+      expect(res.status).toBe(201);
+      expect(((await res.json()) as { sfx: { skipped: string[] } }).sfx.skipped).toEqual(["nosuchsound (not found)"]);
     });
 
     it("leaves other bracketed text alone and does not flag it", async () => {

@@ -5,20 +5,25 @@
 //
 // With OpenRouter the writing model and speech model can be chosen per request (lib/openrouter.ts). Gemini is used
 // directly with its fixed models.
-import { writeDjLine, synthesizeSpeech as geminiSpeech, DEFAULT_VOICE } from "./gemini.js";
+import { apiKey, keySource } from "./credentials.js";
+import { writeDjLine, describeImage, synthesizeSpeech as geminiSpeech, DEFAULT_VOICE } from "./gemini.js";
 import * as openrouter from "./openrouter.js";
 import { pcmToWav } from "./wav.js";
+import { elevenSpeech, isElevenModel } from "./elevenlabs.js";
 import { buildSystemPrompt, type DjFormat } from "./formats.js";
 
 export type ProviderName = "openrouter" | "gemini";
 
+// A key a person or station brought (lib/credentials.ts) is used before the site's, whichever provider it is for; PROVIDER only
+// chooses between the site's own keys.
 export function activeProvider(): ProviderName | null {
+  for (const p of ["openrouter", "gemini"] as const) if (keySource(p) !== "site") return p;
   const forced = process.env.PROVIDER?.trim().toLowerCase();
-  if (forced === "openrouter" && process.env.OPENROUTER_API_KEY) return "openrouter";
-  if (forced === "gemini" && process.env.GEMINI_API_KEY) return "gemini";
+  if (forced === "openrouter" && apiKey("openrouter")) return "openrouter";
+  if (forced === "gemini" && apiKey("gemini")) return "gemini";
   if (forced === "openrouter" || forced === "gemini") return null; // forced to a provider whose key is missing
-  if (process.env.OPENROUTER_API_KEY) return "openrouter";
-  if (process.env.GEMINI_API_KEY) return "gemini";
+  if (apiKey("openrouter")) return "openrouter";
+  if (apiKey("gemini")) return "gemini";
   return null;
 }
 
@@ -31,15 +36,45 @@ export interface WriteOptions {
   textModel?: string;
   tone?: string;
   format?: DjFormat;
+  /** A persona's character brief, from lib/personas.ts. */
+  persona?: string;
+  /** Allow profanity and strong language (the model may still refuse; see lib/content.ts). */
+  explicit?: boolean;
+  /** Instructions about the {{placeholders}} the engine will fill in (lib/drop-template.ts promptHelp). */
+  placeholders?: string;
+  /** Sound effects the writer may place as [sfx:name] tags (lib/sfx-mix.ts sfxHelp). */
+  effects?: string;
+  /** About how long the line should run when spoken. */
+  targetSeconds?: number;
+  /** The station the line is for (its name and tagline go into the prompt); defaults to STATION_NAME. */
+  station?: { name: string; tagline?: string };
 }
 
 export async function writeScript(options: WriteOptions): Promise<{ text: string; model: string }> {
-  const system = buildSystemPrompt({ station: process.env.STATION_NAME || "the station", tone: options.tone, format: options.format });
+  const system = buildSystemPrompt({ station: options.station?.name || process.env.STATION_NAME || "the station", tagline: options.station?.tagline, tone: options.tone, format: options.format, persona: options.persona, explicit: options.explicit, placeholders: options.placeholders, targetSeconds: options.targetSeconds, effects: options.effects });
   if (options.provider === "openrouter") {
     const model = options.textModel ?? openrouter.defaultTextModel();
     return { text: await openrouter.chat({ model, system, prompt: options.prompt }), model };
   }
   return { text: await writeDjLine(options.prompt, system), model: "gemini-3.6-flash" };
+}
+
+// A free-form completion (used to draft personas): the same two providers as writeScript, with a larger reply budget.
+export async function complete(options: { system: string; prompt: string; provider: ProviderName; textModel?: string }): Promise<string> {
+  if (options.provider === "openrouter") {
+    return openrouter.chat({ model: options.textModel ?? openrouter.defaultTextModel(), system: options.system, prompt: options.prompt, maxTokens: openrouter.WRITE_MAX_TOKENS });
+  }
+  return writeDjLine(options.prompt, options.system);
+}
+
+// Looks at one image (a data: URL) and answers the prompt: used to read fliers.
+export async function readImage(options: { system: string; prompt: string; image: string; provider: ProviderName; model?: string }): Promise<string> {
+  if (options.provider === "openrouter") {
+    return openrouter.chatWithImage({ model: options.model ?? openrouter.visionModel(), system: options.system, prompt: options.prompt, image: options.image });
+  }
+  const m = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(options.image);
+  if (!m) throw new Error("The image must be a base64 data URL");
+  return describeImage(options.prompt, options.system, m[1], m[2]);
 }
 
 export interface SpeakOptions {
@@ -58,6 +93,11 @@ export interface Spoken {
 }
 
 export async function speak(options: SpeakOptions): Promise<Spoken> {
+  // An ElevenLabs model (voice clones) is spoken by ElevenLabs itself, whichever service writes the words.
+  if (isElevenModel(options.speechModel?.id)) {
+    const out = await elevenSpeech({ model: options.speechModel!.id, voice: options.voice, text: options.text });
+    return { audio: out.audio, mimeType: "audio/mpeg", voice: out.voice, model: options.speechModel!.id };
+  }
   if (options.provider === "openrouter") {
     const model = options.speechModel ?? openrouter.defaultSpeechModel();
     const voice = openrouter.voiceFor(model, options.voice);

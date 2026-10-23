@@ -22,6 +22,10 @@ export async function saveClip(id: string, audio: Buffer, metadata: ClipMetadata
   });
 }
 
+export async function deleteClip(id: string): Promise<void> {
+  await store().delete(clipKey(id));
+}
+
 export interface StoredClip {
   data: ArrayBuffer;
   metadata: ClipMetadata;

@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../lib/gemini.js", () => ({ writeDjLine: vi.fn(), synthesizeSpeech: vi.fn(), DEFAULT_VOICE: "Kore" }));
 vi.mock("../../lib/store.js", () => ({ saveClip: vi.fn() }));
+vi.mock("../../lib/persona-store.js", async () => {
+  const { BUILTIN_PERSONAS } = await import("../../lib/personas.js");
+  return { getPersona: vi.fn(async (id: string) => BUILTIN_PERSONAS.find((p) => p.id === id) ?? null) };
+});
 vi.mock("../../lib/handoff.js", () => ({ handoffConfigured: vi.fn(), handoffDefaults: vi.fn(), pushToStation: vi.fn() }));
 // Real model configuration, but no network: only the two calls to OpenRouter are replaced.
 vi.mock("../../lib/openrouter.js", async (importOriginal) => ({
@@ -47,7 +51,7 @@ describe("generate with OpenRouter", () => {
     const body = (await res.json()) as Body;
 
     expect(res.status).toBe(201);
-    expect(body).toMatchObject({ provider: "openrouter", scriptText: "Written by the model.", textModel: "openai/gpt-4o-mini", speechModel: "google/gemini-3.1-flash-tts-preview" });
+    expect(body).toMatchObject({ provider: "openrouter", scriptText: "Written by the model.", textModel: "openai/gpt-4o-mini", speechModel: "hexgrad/kokoro-82m" });
     expect(writeDjLine).not.toHaveBeenCalled();
     expect(synthesizeSpeech).not.toHaveBeenCalled();
     expect(mockedChat.mock.calls[0][0]).toMatchObject({ model: "openai/gpt-4o-mini", prompt: "hype friday" });
@@ -73,6 +77,64 @@ describe("generate with OpenRouter", () => {
     await handleGenerate(post({ mode: "say", text: "Exactly this" }));
     expect(mockedChat).not.toHaveBeenCalled();
     expect(mockedSpeech.mock.calls[0][0]).toMatchObject({ model: "x/tts", voice: "Nova", text: "Exactly this" });
+  });
+
+  it("removes delivery tags for a model that cannot perform them, and keeps them for Gemini", async () => {
+    vi.stubEnv("OPENROUTER_SPEECH_MODELS", "hexgrad/kokoro-82m|af_heart,google/gemini-3.1-flash-tts-preview|Kore");
+    const kokoro = (await (await handleGenerate(post({ mode: "say", text: "Hi [laughs] there", speechModel: "hexgrad/kokoro-82m", tone: "warm" }))).json()) as Record<string, unknown>;
+    expect(mockedSpeech.mock.calls[0][0].text).toBe("Hi there");
+    expect(kokoro).toMatchObject({ cueTagsRemoved: true, toneIgnored: true });
+
+    await handleGenerate(post({ mode: "say", text: "Hi [laughs] there", speechModel: "google/gemini-3.1-flash-tts-preview" }));
+    expect(mockedSpeech.mock.calls[1][0].text).toBe("Hi [laughs] there");
+  });
+
+  it("returns audio without saving or sending it when asked for a preview", async () => {
+    vi.mocked(handoffConfigured).mockReturnValue(true);
+    const res = await handleGenerate(post({ mode: "say", text: "Just listening", preview: true }));
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ preview: true, scriptText: "Just listening", audio: Buffer.from([9, 9, 9, 9]).toString("base64"), mimeType: "audio/mpeg" });
+    expect(mockedSave).not.toHaveBeenCalled();
+    expect(pushToStation).not.toHaveBeenCalled();
+  });
+
+  it("applies a persona: its character goes to the writer and its tone is the default", async () => {
+    const res = await handleGenerate(post({ mode: "ai", prompt: "next song", persona: "night-owl" }));
+    expect(res.status).toBe(201);
+    expect(mockedChat.mock.calls[0][0].system).toContain("Your character: You are the Night Owl");
+    expect(mockedSpeech.mock.calls[0][0].tone).toContain("sleepy");
+    expect((await handleGenerate(post({ mode: "ai", prompt: "x", persona: "nobody" }))).status).toBe(400);
+  });
+
+  it("retries once when the writer copies one of the persona's example lines, and reports it if it still does", async () => {
+    const { BUILTIN_PERSONAS } = await import("../../lib/personas.js");
+    const example = BUILTIN_PERSONAS.find((p) => p.id === "night-owl")!.templates[1].replace(/\{artist\}/g, "Boards of Canada").replace(/\{title\}/g, "Roygbiv");
+    mockedChat.mockResolvedValueOnce(example).mockResolvedValueOnce("A completely fresh thing to say about the night shift.");
+    const fresh = (await (await handleGenerate(post({ mode: "ai", prompt: "link", persona: "night-owl", textOnly: true }))).json()) as Record<string, unknown>;
+    expect(mockedChat).toHaveBeenCalledTimes(2);
+    expect(mockedChat.mock.calls[1][0].prompt).toContain("repeated one of the example lines");
+    expect(fresh.filledIn).toBe("A completely fresh thing to say about the night shift.");
+    expect(fresh.copiedExample).toBeUndefined();
+    mockedChat.mockReset().mockResolvedValue(example);
+    const stuck = (await (await handleGenerate(post({ mode: "ai", prompt: "link", persona: "night-owl", textOnly: true }))).json()) as Record<string, unknown>;
+    expect(stuck.copiedExample).toEqual(expect.any(String));
+  });
+
+  it("refuses a retired writing model with a clear message", async () => {
+    vi.stubEnv("OPENROUTER_ALLOW_ANY_MODEL", "true");
+    const res = await handleGenerate(post({ mode: "ai", prompt: "x", textModel: "anthropic/claude-3.5-haiku" }));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as Body).error).toMatch(/retired/);
+  });
+
+  it("writes the line without calling the speech service when asked for text only", async () => {
+    const res = await handleGenerate(post({ mode: "ai", prompt: "hype friday", textOnly: true }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ textOnly: true, scriptText: "Written by the model.", textModel: "openai/gpt-4o-mini" });
+    expect(mockedSpeech).not.toHaveBeenCalled();
+    expect(mockedSave).not.toHaveBeenCalled();
+    expect((await handleGenerate(post({ mode: "say", text: "hi", textOnly: true }))).status).toBe(400);
   });
 
   it("wraps PCM from Google models in a WAV header and stores the file type", async () => {

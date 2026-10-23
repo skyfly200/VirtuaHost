@@ -1,10 +1,60 @@
 .login { max-width: 380px; margin: 12vh auto 0; padding: 0 16px; }
 .login h1 { font-size: 22px; margin: 0 0 4px; }
 .login form { display: grid; gap: 12px; }
+
+/* ----- the menu: groups on the desktop bar (>= 800px), a full-screen menu on the phone (< 800px) ----- */
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .tabs button { border: 0; background: none; color: var(--muted); padding: 6px 12px; border-radius: 8px; font-weight: 600; }
-.tabs button[aria-selected="true"] { background: var(--chip); color: var(--ink); }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
 .tabs button .off { font-weight: 500; font-size: 11px; margin-left: 4px; opacity: .8; }
+header.bar > * { min-width: 0; }
+header.bar .brand { order: 0; }
+header.bar .menu-desk { order: 1; flex: 0 1 auto; align-items: center; gap: 2px; flex-wrap: nowrap; margin-left: 8px; }
+header.bar .grow { order: 2; }
+header.bar .station-slot { order: 3; }
+header.bar .user-menu { order: 4; }
+/* Desktop dropdowns: a group of several tabs is a button that opens a list; a group of one is just the tab. */
+.menu-item { position: relative; display: flex; align-items: center; }
+.menu-item[hidden] { display: none; }
+.menu-desk button { white-space: nowrap; }
+.menu-desk > .menu-item > button[aria-current="page"], .menu-drop-btn.has-active { background: var(--accent); color: var(--accent-ink); }
+.menu-drop-btn { display: inline-flex; align-items: center; gap: 6px; }
+.menu-drop-btn .caret { font-size: 11px; opacity: .85; }
+.menu-drop-btn[aria-expanded="true"]:not(.has-active) { background: var(--chip); color: var(--ink); }
+.menu-drop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 190px; display: flex; flex-direction: column; gap: 2px; padding: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 28px rgba(20, 24, 31, .18); }
+.menu-drop[hidden] { display: none; }
+.menu-drop button { text-align: left; width: 100%; padding: 8px 12px; }
+.menu-drop button:hover, .menu-drop button:focus-visible { background: var(--chip); color: var(--ink); }
+.menu-drop button[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
+.menu-wrap, .menu-drawer { display: none; }
+.menu-btn { display: inline-flex; align-items: center; font-weight: 650; }
+.menu-current { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-drawer { position: fixed; inset: 0; z-index: 30; background: var(--bg); color: var(--ink); overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px 28px; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.drawer-head strong { font-size: 18px; }
+.drawer-body { display: grid; gap: 18px; }
+.drawer-group { display: grid; gap: 8px; }
+.drawer-group[hidden] { display: none; }
+.drawer-label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; padding: 0 4px; }
+.drawer-tab { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 52px; padding: 12px 16px; font-size: 17px; font-weight: 600; text-align: left; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; }
+.drawer-tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.drawer-tab .off { font-weight: 500; font-size: 12px; opacity: .8; }
+.drawer-tab[hidden] { display: none; }
+body.menu-open { overflow: hidden; }
+
+/* Phone: one row for the title and sign out, one for the menu button, the current tab and the station. */
+@media (max-width: 799px) {
+  header.bar { gap: 8px; padding: 10px 12px; }
+  header.bar .grow, header.bar .menu-desk { display: none; }
+  header.bar .brand { flex: 1 1 auto; }
+  header.bar .user-menu { order: 1; }
+  .menu-wrap { display: flex; align-items: center; gap: 8px; order: 2; flex: 1 1 auto; min-width: 0; }
+  .menu-btn { min-height: 44px; padding: 0 14px; }
+  header.bar .station-slot { order: 3; flex: 1 1 150px; min-width: 0; }
+  .station-slot > label.row { flex-wrap: nowrap; width: 100%; }
+  .station-slot select { flex: 1 1 auto; width: auto; min-width: 0; max-width: 100%; }
+  .menu-drawer { display: block; }
+}
 .hint { font-size: 13px; color: var(--muted); background: var(--bg); border: 1px dashed var(--line); border-radius: 8px; padding: 8px 10px; }
 .hint b { color: var(--ink); }
 .note.warn { color: var(--bad); }
@@ -25,3 +75,8 @@ code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
 .off-card { text-align: center; padding: 28px 16px; }
 .off-card h2 { font-size: 18px; }
 .off-card ol { text-align: left; max-width: 520px; margin: 12px auto 0; color: var(--muted); font-size: 14px; }
+
+/* The user icon at the top right */
+.user-menu { display: inline-flex; margin-left: 4px; }
+.user-btn { width: 38px; min-width: 38px; height: 38px; padding: 0; border-radius: 50%; }
+.user-btn.has-active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }

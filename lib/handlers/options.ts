@@ -1,30 +1,57 @@
-import { checkAuth } from "../auth.js";
+import { authorize } from "../auth.js";
+import { stationOf, withKeys } from "../with-keys.js";
 import { activeProvider, NO_PROVIDER_MESSAGE } from "../ai.js";
-import { textModels, speechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
+import { allTextModels, allSpeechModels, defaultTextModel, defaultSpeechModel, allowAnyModel } from "../openrouter.js";
+import { cuesFor, GEMINI_DIRECT_CUES } from "../cues.js";
 import { features } from "./proxy.js";
+import { queueMode } from "../station-send.js";
+import { libraryFeatures } from "../library/index.js";
+import { getStation } from "../station-profile-store.js";
+import { priceOf, speechTier, textTier } from "../pricing.js";
+import { contentFilter } from "../content.js";
+import { modelFlag } from "../model-health.js";
+import { modelPrices } from "../openrouter.js";
 import { TONES, FORMATS, MAX_TONE_LENGTH, fillStation } from "../formats.js";
 
 // What the test console offers: the provider in use, the models that can be chosen, tones, and script formats with examples.
 export async function handleOptions(req: Request): Promise<Response> {
-  const denied = checkAuth(req);
+  const { who, denied } = await authorize(req, { scope: "options.read" });
   if (denied) return denied;
   if (req.method !== "GET") {
     return new Response("Method Not Allowed", { status: 405 });
   }
+  return withKeys(who, await stationOf(req), () => options(req));
+}
+
+async function options(req: Request): Promise<Response> {
 
   const provider = activeProvider();
-  const station = process.env.STATION_NAME || "the station";
+  // ?station=<id>: the examples and the name shown are for that station
+  const chosen = await getStation(new URL(req.url).searchParams.get("station") || undefined);
+  const station = chosen?.name || process.env.STATION_NAME || "the station";
   const openrouter = provider === "openrouter";
+
+  const speech = openrouter ? (await allSpeechModels()).map((m) => ({ ...m, cues: cuesFor(m.id) })) : [];
+  // The default must be a model that is offered: a configured default that OpenRouter does not list would only fail.
+  const wanted = defaultSpeechModel().id;
+  const defaultSpeech = speech.some((m) => m.id === wanted) ? wanted : speech[0]?.id ?? wanted;
+
+  // Price tier and (when known) USD per million tokens for each model, so the pickers can mark the dear ones.
+  const listed = openrouter ? await modelPrices().catch(() => new Map()) : new Map();
+  const info = openrouter ? Object.fromEntries(await Promise.all([
+    ...(await allTextModels()).map(async (m) => { const p = await priceOf(m); return [m, { tier: textTier(p), content: contentFilter(m, listed.get(m)), ...(modelFlag(m) ? { flag: modelFlag(m) } : {}), ...(p ? { inPerM: p.inPerM, outPerM: p.outPerM } : {}) }] as const; }),
+    ...speech.map(async (m) => { const p = await priceOf(m.id); return [m.id, { tier: speechTier(m.id, p), content: contentFilter(m.id, listed.get(m.id)), ...(p ? { inPerM: p.inPerM, outPerM: p.outPerM } : {}) }] as const; }),
+  ])) : {};
 
   return Response.json({
     provider,
-    features: features(),
+    features: { ...features(), library: libraryFeatures(), stationQueue: queueMode() },
     ...(provider ? {} : { warning: NO_PROVIDER_MESSAGE }),
     station,
     // Models can only be chosen with OpenRouter; with Gemini direct the models are fixed.
     models: openrouter
-      ? { choosable: true, allowAny: allowAnyModel(), text: textModels(), speech: speechModels(), defaultText: defaultTextModel(), defaultSpeech: defaultSpeechModel().id }
-      : { choosable: false, allowAny: false, text: [], speech: [], defaultText: "", defaultSpeech: "" },
+      ? { choosable: true, allowAny: allowAnyModel(), text: await allTextModels(), speech, defaultText: defaultTextModel(), defaultSpeech, info }
+      : { choosable: false, fixedCues: GEMINI_DIRECT_CUES, allowAny: false, text: [], speech: [], defaultText: "", defaultSpeech: "", info: {} },
     tones: TONES,
     maxToneLength: MAX_TONE_LENGTH,
     formats: FORMATS.map((f) => ({ ...f, example: fillStation(f.example, station) })),
