@@ -198,5 +198,5 @@ export async function effectNames(): Promise<string[]> {
 
 /** The writer's instructions when effects are allowed. */
 export const sfxHelp = (names: string[]): string =>
-  `You may add a few sound effects, at most 2 per spoken line and only where they really fit (a phone ringing, a chime, a whoosh): write each as a tag such as [sfx:chime] on its own between sentences, never inside one. `
+  `You may add a few sound effects, at most 2 per spoken line and only where they really fit (a phone ringing, a chime, a whoosh): write each as a tag such as [sfx:chime] inside the spoken text between sentences (after a speaker's \"Name:\" label when there is one), never on a line of its own and never before a label. `
   + `Use only these names: ${names.join(", ")}. Never describe a sound in words and never invent a name. Everything else you write is spoken aloud.`;

@@ -47,7 +47,7 @@ export function parseDialogue(text: string): Array<{ speaker: string; text: stri
   const lines: Array<{ speaker: string; text: string }> = [];
   for (const line of text.split(/\r?\n/)) {
     // Writers often bold the label: "**Dale:** hi" or "**Dale**: hi". The asterisks are not part of the name.
-    const raw = line.replace(/^(\s*)\*+\s*/, "$1").replace(/\*+(\s*:)/, "$1").replace(/(:\s*)\*+\s*/, "$1");
+    const raw = line.replace(/^\s*(?:\[[^\]]*\]\s*)+(?=\*{0,2}[A-Za-z0-9][A-Za-z0-9 _.'-]{0,23}\*{0,2}\s*:)/, "").replace(/^(\s*)\*+\s*/, "$1").replace(/\*+(\s*:)/, "$1").replace(/(:\s*)\*+\s*/, "$1");
     const m = raw.match(/^\s*([A-Za-z0-9][A-Za-z0-9 _.'-]{0,23}?)\s*(?:\([^)]*\))?\s*:\s*(.*)$/);
     if (m && m[2].trim()) lines.push({ speaker: m[1].trim(), text: m[2].trim() });
     else if (raw.trim() && lines.length) lines[lines.length - 1].text += ` ${raw.trim()}`;
