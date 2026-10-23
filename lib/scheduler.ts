@@ -87,7 +87,7 @@ async function runScheduleScoped(s: Schedule): Promise<string> {
       text = s.content.text;
     }
     const info = { source: "schedule", ...stationInfo, ...(s.info ?? {}), ...(s.until ? { expiresAt: s.until } : {}) };
-    const made = await makeClip({ ...(s.ownerId ? { ownerId: s.ownerId } : {}), templateContext: tctx, text, input: `schedule: ${s.name}`, mode, textModel, info, tone: s.tone || persona?.tone, voice: s.voice || persona?.voice || station?.defaultVoice, speechModel: s.speechModel || persona?.speechModel || station?.defaultSpeechModel });
+    const made = await makeClip({ ...(s.ownerId ? { ownerId: s.ownerId } : {}), ...(s.content.audio ? { audio: s.content.audio } : {}), templateContext: tctx, text, input: `schedule: ${s.name}`, mode, textModel, info, tone: s.tone || persona?.tone, voice: s.voice || persona?.voice || station?.defaultVoice, speechModel: s.speechModel || persona?.speechModel || station?.defaultSpeechModel });
     if (!made.ok) throw new Error(made.error);
     clipId = made.id; title = made.scriptText;
   }

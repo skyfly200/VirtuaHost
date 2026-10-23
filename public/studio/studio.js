@@ -13,6 +13,7 @@ import { costGuard } from '../shared/estimate.js';
 import { allStations, stationId, stationName } from '../shared/station.js';
 import { castEditor } from '../shared/casteditor.js';
 import { lineEditor } from '../shared/lineeditor.js';
+import { audioSlots, readAudioTags, writeAudioTags } from '../shared/audioslots.js';
 
 const MAX_SLOTS = 4;
 const MAX_CAST = 4;
@@ -109,6 +110,16 @@ export async function mountStudio(root, api) {
         h('div', { class: 'row', style: 'gap:6px' }, [...speaker.soundNames().map((n) => h('button', { type: 'button', class: 'chip-btn', onclick: () => insertToken(`[sfx:${n}]`) }, n)), ...speaker.library.music.map((m) => h('button', { type: 'button', class: 'chip-btn', onclick: () => insertToken(`[music:${m.name} vol=0.2]`) }, `♪ ${m.name}`))]),
         h('button', { type: 'button', onclick: async () => { try { const r = await api.post('/template', { text: state.text, station: stationId() || undefined }); clear(preview, `Right now: "${r.text}"${r.missing.length ? ` (no value for: ${r.missing.join(', ')})` : ''}`); } catch (err) { clear(preview, err.message); } } }, "Preview with today's values"), preview));
   }
+  // A background, intro and outro from the sound library (or your own upload). They are kept in the script as [music:], [intro:] and [outro:] tags.
+  function audioCard() {
+    const chosen = readAudioTags(state.text);
+    const slots = audioSlots({ api, value: chosen, note: 'Mixed in when you generate. Pick none to take them out.', onchange: async (a) => {
+      await speaker.loadLibrary();
+      state.text = writeAudioTags(state.text, a, { conversation: state.mode === 'conversation' });
+      paintAll();
+    } });
+    return h('details', { class: 'tips', open: Object.keys(chosen).length > 0 }, h('summary', {}, 'Background, intro and outro (upload your own)'), slots.el);
+  }
   function scriptCard() {
     castEd = castEditor({ personas, cast: state.cast, kind: kind(), max: MAX_CAST, onchange: (c) => { state.cast = c; if (lineEd) lineEd.setCast(c); } });
     const draftStatus = createStatus();
@@ -150,7 +161,7 @@ export async function mountStudio(root, api) {
         h('label', { class: 'field' }, 'Kind of script', h('select', { onchange: (e) => { state.format = e.target.value; } }, h('option', { value: '' }, 'Free-form'), (options.formats || []).map((f) => h('option', { value: f.id, selected: f.id === state.format }, f.label)))),
         h('label', { class: 'field' }, 'Length', h('select', { onchange: (e) => { state.seconds = Number(e.target.value); } }, [[0, 'Any (short)'], [10, 'About 10 seconds'], [20, 'About 20 seconds'], [30, 'About 30 seconds'], [60, 'About a minute']].map(([v, t]) => h('option', { value: v, selected: v === state.seconds }, t))))),
       h('div', { class: 'row' }, draft, h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: state.explicit, onchange: (e) => { state.explicit = e.target.checked; } }), 'Allow strong language'), h('label', { class: 'row small', title: 'The AI may place [sfx:name] tags such as a phone ring or a chime; they are mixed in when the voice returns WAV' }, h('input', { type: 'checkbox', checked: state.sfx, onchange: (e) => { state.sfx = e.target.checked; } }), 'AI may add sound effects'), draftStatus.el),
-      h('h3', {}, 'The script'), body, helpers());
+      h('h3', {}, 'The script'), body, helpers(), audioCard());
   }
 
   // ---------- compare voices ----------

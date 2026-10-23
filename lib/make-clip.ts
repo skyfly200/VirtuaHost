@@ -11,12 +11,12 @@ import { saveClip } from "./store.js";
 import { createLogger } from "./log.js";
 import { elevenConfigured, isElevenModel } from "./elevenlabs.js";
 import { renderTemplate, type TemplateContext } from "./drop-template.js";
-import { canMix, hasTags, speakMixed } from "./sfx-mix.js";
+import { canMix, hasTags, speakMixed, withAudio, type AudioChoice } from "./sfx-mix.js";
 import type { ClipMetadata } from "./types.js";
 
 const log = createLogger("make-clip");
 
-const SFX_TAG = /\[\s*(sfx|music)\s*:[^\]]*\]/gi;
+const SFX_TAG = /\[\s*(sfx|music|intro|outro)\s*:[^\]]*\]/gi;
 
 export interface MakeClipOptions {
   text: string;
@@ -34,6 +34,8 @@ export interface MakeClipOptions {
   ownerId?: string;
   /** Fill in {{placeholders}} (time, weather, station, DJ, song...) before speaking. Without it, placeholders are still removed. */
   templateContext?: TemplateContext;
+  /** A background bed, intro and outro from the sound library, wrapped around the text as tags (lib/sfx-mix.ts). */
+  audio?: AudioChoice;
 }
 
 export type MadeClip = { ok: true; id: string; scriptText: string; mimeType: string; speechModel: string; voice: string } | { ok: false; status: number; error: string };
@@ -89,7 +91,7 @@ export async function speakText(options: Pick<MakeClipOptions, "text" | "tone" |
 }
 
 export async function makeClip(options: MakeClipOptions): Promise<MadeClip> {
-  const said = await speakText(options);
+  const said = await speakText(options.audio ? { ...options, text: withAudio(options.text, options.audio) } : options);
   if (!said.ok) return said;
   const { spoken, scriptText, provider, tone } = said;
   const id = randomUUID();

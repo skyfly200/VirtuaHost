@@ -95,11 +95,11 @@ describe("Google Drive", () => {
 describe("GET /api/library", () => {
   const get = (path = "", params = {}) => handleLibrary(new Request(`http://localhost/api/library${path}`, { headers: { "x-api-key": KEY } }), params);
 
-  it("explains itself when nothing is connected", async () => {
+  it("explains itself when no cloud folder is connected (uploads are always there)", async () => {
     const body = (await (await get()).json()) as { items: unknown[]; warning?: string };
     expect(body.items).toEqual([]);
-    expect(body.warning).toMatch(/No library/);
-    expect(libraryFeatures().sfx).toBe(false);
+    expect(body.warning).toMatch(/No cloud library/);
+    expect(libraryFeatures().sources.map((s) => s.id)).toEqual(["uploads"]);
   });
 
   it("lists without leaking provider references, and serves a file", async () => {

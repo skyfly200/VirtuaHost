@@ -100,24 +100,24 @@ describe("generate with OpenRouter", () => {
   });
 
   it("applies a persona: its character goes to the writer and its tone is the default", async () => {
-    const res = await handleGenerate(post({ mode: "ai", prompt: "next song", persona: "chip" }));
+    const res = await handleGenerate(post({ mode: "ai", prompt: "next song", persona: "night-owl" }));
     expect(res.status).toBe(201);
-    expect(mockedChat.mock.calls[0][0].system).toContain("Your character: You are CHIP");
-    expect(mockedSpeech.mock.calls[0][0].tone).toContain("weathered");
+    expect(mockedChat.mock.calls[0][0].system).toContain("Your character: You are the Night Owl");
+    expect(mockedSpeech.mock.calls[0][0].tone).toContain("sleepy");
     expect((await handleGenerate(post({ mode: "ai", prompt: "x", persona: "nobody" }))).status).toBe(400);
   });
 
   it("retries once when the writer copies one of the persona's example lines, and reports it if it still does", async () => {
     const { BUILTIN_PERSONAS } = await import("../../lib/personas.js");
-    const example = BUILTIN_PERSONAS.find((p) => p.id === "chip")!.templates[0].replace(/\{artist\}/g, "Boards of Canada").replace(/\{title\}/g, "Roygbiv");
+    const example = BUILTIN_PERSONAS.find((p) => p.id === "night-owl")!.templates[1].replace(/\{artist\}/g, "Boards of Canada").replace(/\{title\}/g, "Roygbiv");
     mockedChat.mockResolvedValueOnce(example).mockResolvedValueOnce("A completely fresh thing to say about the night shift.");
-    const fresh = (await (await handleGenerate(post({ mode: "ai", prompt: "link", persona: "chip", textOnly: true }))).json()) as Record<string, unknown>;
+    const fresh = (await (await handleGenerate(post({ mode: "ai", prompt: "link", persona: "night-owl", textOnly: true }))).json()) as Record<string, unknown>;
     expect(mockedChat).toHaveBeenCalledTimes(2);
     expect(mockedChat.mock.calls[1][0].prompt).toContain("repeated one of the example lines");
     expect(fresh.filledIn).toBe("A completely fresh thing to say about the night shift.");
     expect(fresh.copiedExample).toBeUndefined();
     mockedChat.mockReset().mockResolvedValue(example);
-    const stuck = (await (await handleGenerate(post({ mode: "ai", prompt: "link", persona: "chip", textOnly: true }))).json()) as Record<string, unknown>;
+    const stuck = (await (await handleGenerate(post({ mode: "ai", prompt: "link", persona: "night-owl", textOnly: true }))).json()) as Record<string, unknown>;
     expect(stuck.copiedExample).toEqual(expect.any(String));
   });
 

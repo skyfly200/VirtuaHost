@@ -62,3 +62,25 @@ describe("browser mixer", () => {
     expect(Math.abs(out[out.length - 1])).toBeLessThan(0.01);                              // faded out
   });
 });
+
+describe("intro and outro", () => {
+  it("parses the tags, allows only vol, and one of each", () => {
+    expect(parseTags("[intro:hello vol=0.5] hi [outro:bye]")).toEqual([
+      { type: "intro", name: "hello", vol: 0.5, over: false, wait: 0 }, { type: "speech", text: "hi" }, { type: "outro", name: "bye", vol: 1, over: false, wait: 0 },
+    ]);
+    expect(() => parseTags("[intro:a over] hi")).toThrow(/unknown option/i);
+    expect(() => parseTags("[intro:a] [intro:b] hi")).toThrow(/only one \[intro/i);
+  });
+  it("plays the intro first and the outro last, outside the bed", () => {
+    const speech = new Float32Array(RATE).fill(0.1);
+    const out = mix([
+      { kind: "intro", vol: 1, samples: new Float32Array(RATE * 2).fill(0.2) },
+      { kind: "speech", samples: speech },
+      { kind: "outro", vol: 1, samples: new Float32Array(RATE * 3).fill(0.3) },
+    ]);
+    expect(out.length).toBe(RATE * 6);
+    expect(out[0]).toBeCloseTo(0.2, 5);
+    expect(out[RATE * 2 + 10]).toBeCloseTo(0.1, 5);
+    expect(out[RATE * 3 + 10]).toBeCloseTo(0.3, 5);
+  });
+});

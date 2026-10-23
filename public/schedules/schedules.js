@@ -4,6 +4,7 @@
 // Another tab can hand over something to schedule: it leaves JSON in sessionStorage 'scheduleDraft' and switches here.
 import { h, clear, toast } from '../shared/kit.js';
 import { allStations, currentStation, stationId } from '../shared/station.js';
+import { audioSlots } from '../shared/audioslots.js';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DRAFT_KEY = 'scheduleDraft';
@@ -68,7 +69,7 @@ export async function mountSchedules(root, api) {
   }
 
   // ---------- the form ----------
-  const f = { name: '', kind: 'text', text: '', prompt: '', clipId: clips[0] ? clips[0].id : '', scriptId: scripts[0] ? scripts[0].id : '', fresh: false, sfx: false, type: 'daily', onceAt: '', everyN: 1, unit: 'hours', time: '07:30', days: [], tz: (currentStation() && currentStation().tz) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', personaId: (currentStation() && currentStation().defaultPersonaId) || '', send: queueOn ? 'air' : 'none', preempt: false, fx: (currentStation() && currentStation().defaultFx) || '', until: '', count: 0 };
+  const f = { name: '', kind: 'text', text: '', prompt: '', clipId: clips[0] ? clips[0].id : '', scriptId: scripts[0] ? scripts[0].id : '', fresh: false, sfx: false, audio: {}, type: 'daily', onceAt: '', everyN: 1, unit: 'hours', time: '07:30', days: [], tz: (currentStation() && currentStation().tz) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', personaId: (currentStation() && currentStation().defaultPersonaId) || '', send: queueOn ? 'air' : 'none', preempt: false, fx: (currentStation() && currentStation().defaultFx) || '', until: '', count: 0 };
 
   // A prefill from another tab: choose its kind and fields, then say where it came from.
   let prefill = '';
@@ -118,14 +119,17 @@ export async function mountSchedules(root, api) {
         !topic ? h('p', { class: 'muted small' }, 'Only a script with a topic can be written fresh by the AI. This one plays its saved text.') : null);
     }
 
+    // A background, intro and outro for the spoken line (not for saved scripts or clips, which carry their own audio).
+    const audioPart = () => h('details', { class: 'tips', open: Object.keys(f.audio || {}).length > 0 }, h('summary', {}, 'Background, intro and outro (upload your own)'),
+      audioSlots({ api, value: f.audio, note: 'Mixed in each time this runs, when the voice returns WAV audio.', onchange: (a) => { f.audio = a; } }).el);
     let content;
     if (f.kind === 'text') {
       const box = textBox('text', { placeholder: 'e.g. The time is {{time}}. Stay with us.' });
-      content = h('div', { class: 'stack' }, h('label', { class: 'field' }, 'What to say', box), weatherTools(box, 'text'));
+      content = h('div', { class: 'stack' }, h('label', { class: 'field' }, 'What to say', box), weatherTools(box, 'text'), audioPart());
     } else if (f.kind === 'ai') {
       const box = textBox('prompt', { placeholder: 'a friendly top-of-the-hour station ID' });
       content = h('div', { class: 'stack' }, h('label', { class: 'field' }, 'Brief for the AI (it writes a fresh line each time)', box), weatherTools(box, 'prompt'),
-        h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: f.sfx, onchange: (e) => { f.sfx = e.target.checked; } }), 'AI may add sound effects (mixed in when the voice returns WAV)'));
+        h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: f.sfx, onchange: (e) => { f.sfx = e.target.checked; } }), 'AI may add sound effects (mixed in when the voice returns WAV)'), audioPart());
     } else if (f.kind === 'script') {
       content = scriptPicker();
     } else {
@@ -145,7 +149,7 @@ export async function mountSchedules(root, api) {
         const minutes = f.unit === 'days' ? f.everyN * 1440 : f.unit === 'hours' ? f.everyN * 60 : f.everyN;
         const whenBody = f.type === 'once' ? { type: 'once', at: f.onceAt ? new Date(f.onceAt).toISOString() : '' }
           : f.type === 'interval' ? { type: 'interval', everyMinutes: minutes, startAt: new Date().toISOString() } : { type: 'daily', time: f.time, days: f.days, tz: f.tz };
-        const contentBody = f.kind === 'text' ? { kind: 'text', text: f.text } : f.kind === 'ai' ? { kind: 'ai', prompt: f.prompt, ...(f.sfx ? { sfx: true } : {}) }
+        const contentBody = f.kind === 'text' ? { kind: 'text', text: f.text, ...(Object.keys(f.audio || {}).length ? { audio: f.audio } : {}) } : f.kind === 'ai' ? { kind: 'ai', prompt: f.prompt, ...(f.sfx ? { sfx: true } : {}), ...(Object.keys(f.audio || {}).length ? { audio: f.audio } : {}) }
           : f.kind === 'script' ? { kind: 'script', scriptId: f.scriptId, fresh: Boolean(f.fresh && hasTopic(scripts.find((s) => s.id === f.scriptId))) } : { kind: 'clip', clipId: f.clipId };
         await api.post('/schedules', { name: f.name, when: whenBody, content: contentBody, personaId: f.personaId, send: f.send, preempt: f.preempt, fx: f.fx, count: f.count, stationId: stationId() || undefined, ...(f.until ? { until: new Date(f.until).toISOString() } : {}) });
         toast('Schedule created.', 'info'); await reload();

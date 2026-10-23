@@ -28,7 +28,8 @@ export async function mountPersonas(root, api) {
 
   const ui = { search: '', tag: '', current: null, exploring: null };
   const gridBox = h('div', { class: 'persona-grid' });
-  const filterBox = h('div', { class: 'row', style: 'gap:6px' });
+  const activeTag = h('span');                                     // the chosen tag, shown beside the search box
+  const tagDrop = h('div', { class: 'popmenu tag-drop', role: 'listbox', 'aria-label': 'Tags', hidden: true });
   const editorBox = h('div');
   const explorerBox = h('div', { class: 'stack' });
 
@@ -37,8 +38,11 @@ export async function mountPersonas(root, api) {
   // ---------- the grid ----------
   function paintGrid() {
     const tags = [...new Set(personas.flatMap((p) => p.tags || []))].sort();
-    clear(filterBox, h('button', { type: 'button', class: ui.tag ? 'chip-btn' : 'chip-btn on', onclick: () => { ui.tag = ''; paintGrid(); } }, 'all'),
-      tags.map((t) => h('button', { type: 'button', class: ui.tag === t ? 'chip-btn on' : 'chip-btn', onclick: () => { ui.tag = ui.tag === t ? '' : t; paintGrid(); } }, t)));
+    const count = (t) => personas.filter((p) => (p.tags || []).includes(t)).length;
+    const pickTag = (t) => { ui.tag = t; tagDrop.hidden = true; paintGrid(); };
+    clear(tagDrop, h('button', { type: 'button', role: 'option', 'aria-selected': String(!ui.tag), class: ui.tag ? '' : 'on', onclick: () => pickTag('') }, 'All tags'),
+      tags.map((t) => h('button', { type: 'button', role: 'option', 'aria-selected': String(ui.tag === t), class: ui.tag === t ? 'on' : '', onclick: () => pickTag(ui.tag === t ? '' : t) }, h('span', { class: 'grow' }, t), h('span', { class: 'muted small' }, count(t)))));
+    clear(activeTag, ui.tag ? h('button', { type: 'button', class: 'chip-btn on', title: 'Show all tags again', onclick: () => pickTag('') }, `${ui.tag} \u2715`) : '');
     const q = ui.search.trim().toLowerCase();
     const shown = personas.filter((p) => (!ui.tag || (p.tags || []).includes(ui.tag)) && (!q || [p.name, p.description, p.tagline, ...(p.tags || [])].join(' ').toLowerCase().includes(q)));
     clear(gridBox, shown.length ? shown.map(card) : h('p', { class: 'empty' }, 'No personas match.'));
@@ -216,7 +220,17 @@ export async function mountPersonas(root, api) {
   }
 
   // ---------- the page ----------
-  const search = h('input', { type: 'search', placeholder: 'Search personas...', 'aria-label': 'Search personas', oninput: (e) => { ui.search = e.target.value; paintGrid(); } });
+  const search = h('input', { type: 'search', placeholder: 'Search personas...', 'aria-label': 'Search personas', 'aria-haspopup': 'listbox', oninput: (e) => { ui.search = e.target.value; paintGrid(); } });
+  // Clicking in the search box drops down the tags to filter by; a click elsewhere or Escape closes it.
+  const searchBox = h('div', { class: 'row', style: 'gap:8px;align-items:center' }, h('span', { class: 'popwrap grow' }, search, tagDrop), activeTag);
+  search.addEventListener('focus', () => { tagDrop.hidden = false; });
+  search.addEventListener('click', () => { tagDrop.hidden = false; });
+  search.addEventListener('keydown', (e) => { if (e.key === 'Escape') { tagDrop.hidden = true; } if (e.key === 'ArrowDown') { const first = tagDrop.querySelector('button'); if (first) { e.preventDefault(); tagDrop.hidden = false; first.focus(); } } });
+  tagDrop.addEventListener('keydown', (e) => {
+    const rows = [...tagDrop.querySelectorAll('button')]; const at = rows.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); rows[(at + 1) % rows.length].focus(); } else if (e.key === 'ArrowUp') { e.preventDefault(); rows[(at - 1 + rows.length) % rows.length].focus(); } else if (e.key === 'Escape') { tagDrop.hidden = true; search.focus(); }
+  });
+  document.addEventListener('click', (e) => { if (!searchBox.contains(e.target)) tagDrop.hidden = true; });
   const importInput = h('input', { type: 'file', accept: '.json,application/json', multiple: true, hidden: true, onchange: (e) => { importFiles([...e.target.files]); e.target.value = ''; } });
   clear(root, h('div', { class: 'stack' },
     h('section', { class: 'card' },
@@ -224,7 +238,7 @@ export async function mountPersonas(root, api) {
         h('button', { class: 'primary', type: 'button', onclick: () => edit(blank()) }, 'New persona'),
         h('button', { type: 'button', onclick: () => importInput.click() }, 'Import'), importInput),
       h('p', { class: 'muted small' }, 'A persona is the host: character, tone, voice and a bank of lines. Explore one to hear it say a station ID, a song link or a promo (and compare voices), use one in the Studio, or make it the virtual host for the station you are working on (virtual host settings are per station, in the Stations tab).'),
-      search, filterBox, gridBox),
+      searchBox, gridBox),
     explorerBox, editorBox));
   paintGrid();
 }

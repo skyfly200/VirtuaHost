@@ -2,6 +2,7 @@
 // one"); storage is lib/schedule-store.ts and the runner is lib/scheduler.ts, called every minute by a Netlify scheduled function.
 import { randomBytes } from "node:crypto";
 import { sanitizeInfo, type ClipInfo } from "./clip-info.js";
+import { sanitizeAudio, type AudioChoice } from "./sfx-mix.js";
 
 export type When =
   | { type: "once"; at: string }
@@ -9,8 +10,8 @@ export type When =
   | { type: "daily"; time: string; days: number[]; tz: string };
 
 export type Content =
-  | { kind: "text"; text: string }
-  | { kind: "ai"; prompt: string; format?: string; sfx?: boolean }
+  | { kind: "text"; text: string; audio?: AudioChoice }
+  | { kind: "ai"; prompt: string; format?: string; sfx?: boolean; audio?: AudioChoice }
   | { kind: "clip"; clipId: string }
   /** A saved script (lib/scripts.ts). `fresh`: the AI writes a new version from its topic and cast on every run; otherwise its saved text is said, placeholders filled in fresh. */
   | { kind: "script"; scriptId: string; fresh?: boolean };
@@ -132,13 +133,13 @@ export function sanitizeContent(raw: unknown): Content {
   if (c.kind === "text") {
     const text = str(c.text, 2000);
     if (!text) throw new Error("Enter the text to say");
-    return { kind: "text", text };
+    return { kind: "text", text, ...(sanitizeAudio(c.audio) ? { audio: sanitizeAudio(c.audio) } : {}) };
   }
   if (c.kind === "ai") {
     const prompt = str(c.prompt, 2000);
     if (!prompt) throw new Error("Enter a brief for the AI");
     const format = str(c.format, 40);
-    return { kind: "ai", prompt, ...(format ? { format } : {}), ...(c.sfx === true ? { sfx: true } : {}) };
+    return { kind: "ai", prompt, ...(format ? { format } : {}), ...(c.sfx === true ? { sfx: true } : {}), ...(sanitizeAudio(c.audio) ? { audio: sanitizeAudio(c.audio) } : {}) };
   }
   if (c.kind === "clip") {
     const clipId = str(c.clipId, 64);

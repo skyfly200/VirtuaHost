@@ -18,6 +18,8 @@ export interface GenerateRequest {
   explicit?: boolean;
   /** mode "ai": let the writer add [sfx:name] sound effect tags. */
   sfx?: boolean;
+  /** A background bed, intro and outro from the sound library, by name: { bed, bedVol, intro, outro }. */
+  audio?: { bed?: string; bedVol?: number; intro?: string; outro?: string };
   /** A voice the chosen model understands. */
   voice?: string;
   /** How it should sound, for example "warm, slow, a little tired" (up to 100 characters). */

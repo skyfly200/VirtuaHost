@@ -1,21 +1,25 @@
 import { gdrive } from "./gdrive.js";
 import { owncloud } from "./owncloud.js";
 import { KINDS, type LibraryItem, type LibraryKind, type LibrarySource } from "./types.js";
+import { uploads } from "./uploads.js";
 
 // Earlier sources win when two files share a name.
-const SOURCES: LibrarySource[] = [owncloud, gdrive];
+const SOURCES: LibrarySource[] = [owncloud, gdrive, uploads];
 
 export const configuredSources = (): LibrarySource[] => SOURCES.filter((s) => s.kinds().length > 0);
 export const libraryFeatures = () => ({
   sources: configuredSources().map((s) => ({ id: s.id, label: s.label, kinds: s.kinds() })),
   sfx: configuredSources().some((s) => s.kinds().includes("sfx")),
   music: configuredSources().some((s) => s.kinds().includes("music")),
+  intro: true,
+  outro: true,
+  uploads: true,
 });
 
 // Listings are cached briefly: a mix can need the same list several times, and Drive and OwnCloud are slow compared to us.
 const TTL_MS = 60_000;
 const cache = new Map<string, { at: number; items: LibraryItem[]; errors: string[] }>();
-export const clearLibraryCache = () => cache.clear();
+export const clearLibraryCache = () => cache.clear();   // also called after an upload or delete, so the new file shows at once
 
 export async function listLibrary(kind: LibraryKind): Promise<{ items: LibraryItem[]; errors: string[] }> {
   const hit = cache.get(kind);

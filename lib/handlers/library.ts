@@ -10,17 +10,17 @@ export async function handleLibrary(req: Request, params: { source?: string; kin
   if (req.method !== "GET") return new Response("Method Not Allowed", { status: 405 });
 
   if (!params.source) {
-    if (!configuredSources().length) {
-      return Response.json({ items: [], errors: [], ...libraryFeatures(), warning: "No library is connected. Set the OwnCloud or Google Drive variables (see docs/LIBRARY.md)." });
-    }
+    // Uploaded files are always there; the cloud folders are optional.
+    const noCloud = !configuredSources().some((s) => s.id !== "uploads");
     const kindParam = new URL(req.url).searchParams.get("kind");
-    if (kindParam && !KINDS.includes(kindParam as LibraryKind)) return Response.json({ error: "kind must be sfx or music" }, { status: 400 });
+    if (kindParam && !KINDS.includes(kindParam as LibraryKind)) return Response.json({ error: `kind must be one of: ${KINDS.join(", ")}` }, { status: 400 });
     const wanted = kindParam ? [kindParam as LibraryKind] : [...KINDS];
     const lists = await Promise.all(wanted.map((k) => listLibrary(k)));
     return Response.json({
       items: lists.flatMap((l) => l.items.map(({ ref: _ref, ...item }) => item)),
       errors: lists.flatMap((l) => l.errors),
       ...libraryFeatures(),
+      ...(noCloud ? { warning: "No cloud library folder is connected (OwnCloud or Google Drive, see docs/LIBRARY.md). Uploaded files still work." } : {}),
     });
   }
 
