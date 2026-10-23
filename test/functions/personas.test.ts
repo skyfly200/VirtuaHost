@@ -6,8 +6,9 @@ vi.mock("../../lib/persona-store.js", async () => {
   const personas = await import("../../lib/personas.js");
   const saved = new Map<string, unknown>();
   return {
-    listPersonas: vi.fn(async () => [...personas.BUILTIN_PERSONAS, ...saved.values()]),
-    getPersona: vi.fn(async (id: string) => personas.BUILTIN_PERSONAS.find((p) => p.id === id) ?? saved.get(id) ?? null),
+    // Like the real store: an example persona that was saved over comes back marked edited.
+    listPersonas: vi.fn(async () => [...personas.BUILTIN_PERSONAS.map((b) => (saved.has(b.id) ? { ...(saved.get(b.id) as object), builtin: true, edited: true } : b)), ...[...saved.values()].filter((p) => !personas.BUILTIN_PERSONAS.some((b) => b.id === (p as { id: string }).id))]),
+    getPersona: vi.fn(async (id: string) => { const b = personas.BUILTIN_PERSONAS.find((p) => p.id === id); return b ? (saved.has(id) ? { ...(saved.get(id) as object), builtin: true, edited: true } : b) : saved.get(id) ?? null; }),
     savePersona: vi.fn(async (p: { id: string }) => { saved.set(p.id, p); }),
     deletePersona: vi.fn(async (id: string) => saved.delete(id)),
     newPersonaId: (name: string) => `${personas.slugify(name)}-abc123`,
@@ -74,9 +75,24 @@ describe("personas", () => {
     expect(normalizePersona({ id: "old", name: "Old", description: "", instructions: "x", tone: "", templates: [], stationIds: [] } as never)).toMatchObject({ tags: [], promos: [], signOffs: [] });
   });
 
-  it("refuses to change a built-in persona and rejects an empty one", async () => {
-    expect((await call("PUT", "night-owl", { name: "x", instructions: "y" })).status).toBe(403);
-    expect((await call("DELETE", "night-owl")).status).toBe(403);
+  it("sends back the model's reply when a persona draft cannot be read", async () => {
+    vi.mocked(complete).mockResolvedValue("I would love to, but here is a story instead. Once upon a time...");
+    const res = await call("POST", "generate", { description: "a sleepy jazz host" });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("did not return a persona"), reply: expect.stringContaining("Once upon a time") });
+  });
+
+  it("lets an admin edit an example (it comes back marked edited), reset it, and rejects an empty persona", async () => {
+    const original = ((await (await call("GET", "night-owl")).json()) as { persona: { name: string; edited?: boolean } }).persona;
+    expect(original.edited).toBeUndefined();
+    expect((await call("DELETE", "night-owl")).status).toBe(409);                       // nothing to reset yet
+    const saved = await call("PUT", "night-owl", { name: "Night Owl", emoji: "☢️", instructions: "Changed brief." });
+    expect(saved.status).toBe(200);
+    expect(((await saved.json()) as { persona: { builtin: boolean; edited: boolean } }).persona).toMatchObject({ builtin: true, edited: true, emoji: "☢️" });
+    const list = (await (await call("GET")).json()) as { personas: Array<{ id: string; emoji?: string; edited?: boolean }> };
+    expect(list.personas.filter((p) => p.id === "night-owl")).toEqual([expect.objectContaining({ emoji: "☢️", edited: true })]);   // replaced, not duplicated
+    expect((await call("DELETE", "night-owl")).status).toBe(204);
+    expect(((await (await call("GET", "night-owl")).json()) as { persona: { emoji: string } }).persona.emoji).not.toBe("☢️");
     expect((await call("POST", undefined, { name: "No instructions" })).status).toBe(400);
   });
 

@@ -6,7 +6,7 @@ import type { Station } from "../../lib/station-profile.js";
 vi.mock("../../lib/ai.js", () => ({ complete: vi.fn() }));
 
 import { complete } from "../../lib/ai.js";
-import { buildDraft, draftScript, parseDraft, type DraftContext } from "../../lib/script-draft.js";
+import { buildDraft, draftScript, DraftFormatError, parseDraft, personaAliases, type DraftContext } from "../../lib/script-draft.js";
 import { contextFor } from "../../lib/drop-template.js";
 
 const EXAMPLE = "Nothing like a cold one after a long shift, folks.";
@@ -112,11 +112,17 @@ describe("draftScript", () => {
     expect(out.lines[1].text).toBe("[sfx:static over] Hi, it's me.");
   });
 
-  it("says what the writer sent back when it cannot be read", async () => {
-    vi.mocked(complete).mockResolvedValue("Sorry, I cannot help with that.");
-    await expect(draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx())).rejects.toThrow(/Rocky, Dale.*Sorry, I cannot help/);
+  it("keeps the writer's whole reply when it cannot be read, so the UI can show it", async () => {
+    const long = `Sorry, I cannot help with that. ${"More words. ".repeat(50)}`;
+    vi.mocked(complete).mockResolvedValue(long);
+    const err = await draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx()).catch((e) => e);
+    expect(err).toBeInstanceOf(DraftFormatError);
+    expect(err.message).toMatch(/Rocky, Dale.*full reply is below/);
+    expect(err.reply).toBe(long);
     vi.mocked(complete).mockResolvedValue("");
-    await expect(draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx())).rejects.toThrow(/sent back nothing/);
+    const empty = await draftScript({ kind: "conversation", topic: "x", cast: [{ name: "Rocky" }, { name: "Dale" }] }, ctx()).catch((e) => e);
+    expect(empty.message).toMatch(/sent back nothing/);
+    expect(empty.reply).toBe("");
   });
 
   it("throws a clear error when both attempts give nothing usable", async () => {
@@ -138,5 +144,45 @@ describe("draftScript", () => {
     const out = await draftScript({ kind: "single", topic: "welcome", cast: [{ name: "Rocky" }] }, ctx());
     expect(out.text).toBe("Welcome to KRAP, the loudest voice on the coast.");
     expect(out.raw).toContain("{{station}}");
+  });
+});
+
+describe("a writer that labels lines with the characters' own names", () => {
+  const cast = [{ name: "Host", personaId: "chip" }, { name: "Guest", personaId: "rocky-flats-7fb0ca" }];
+  const personas = new Map([
+    ["chip", { id: "chip", name: "CHIP (Way High Radio)" }],
+    ["rocky-flats-7fb0ca", { id: "rocky-flats-7fb0ca", name: "Rocky Flats" }],
+  ]) as never;
+  const reply = "Chip: Ahoy there Rocky Flats. The old transmitter's humming today.\nRocky Flats: You ever notice how the fog never lifts?\nChip: Only when the signal holds.";
+
+  it("builds the names a persona goes by, leaving out one two speakers share", () => {
+    expect([...personaAliases(cast, personas)]).toEqual([["chip (way high radio)", "Host"], ["chip", "Host"], ["rocky flats", "Guest"], ["rocky", "Guest"]]);
+    const twins = new Map([["a", { id: "a", name: "Owl" }], ["b", { id: "b", name: "Owl" }]]) as never;
+    expect(personaAliases([{ name: "One", personaId: "a" }, { name: "Two", personaId: "b" }], twins).size).toBe(0);
+  });
+
+  it("maps those names back to the cast", () => {
+    const out = parseDraft(reply, cast, 10, personaAliases(cast, personas));
+    expect(out.lines.map((l) => l.speaker)).toEqual(["Host", "Guest", "Host"]);
+    expect(out.dropped).toBe(0);
+  });
+
+  it("takes unknown labels in order when there are no names to go by", () => {
+    const out = parseDraft("Captain: Hello.\nStranger: Hi.\nCaptain: Bye.", [{ name: "Host" }, { name: "Guest" }], 10);
+    expect(out.lines.map((l) => l.speaker)).toEqual(["Host", "Guest", "Host"]);
+    // ...but not when there are more labels than speakers.
+    expect(parseDraft("A: 1.\nB: 2.\nC: 3.", [{ name: "Host" }, { name: "Guest" }], 10).lines).toEqual([]);
+  });
+
+  it("tells the writer which labels to use", () => {
+    const { system } = buildDraft({ kind: "conversation", topic: "x", cast }, { station: null, personas, template: {} as never });
+    expect(system).toContain("as the label of each line: Host, Guest");
+    expect(system).toContain("never with the character's own name");
+  });
+
+  it("drafts the conversation end to end", async () => {
+    vi.mocked(complete).mockResolvedValue(reply);
+    const out = await draftScript({ kind: "conversation", topic: "fog", cast }, { ...ctx(), personas });
+    expect(out.lines.map((l) => l.speaker)).toEqual(["Host", "Guest", "Host"]);
   });
 });

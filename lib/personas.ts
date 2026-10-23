@@ -4,6 +4,8 @@
 
 export interface Persona {
   id: string;
+  /** Output only: an example persona (built in) that an admin has changed. Reset (DELETE) brings the original back. */
+  edited?: boolean;
   /** Username of the owner. Unset = shared (built-ins and admin-made); only admins change those. */
   ownerId?: string;
   name: string;

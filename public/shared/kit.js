@@ -30,7 +30,8 @@ export function toast(message, type = 'info') {
 }
 
 export class ApiError extends Error {
-  constructor(message, status) { super(message); this.status = status; }
+  // `reply` is what an AI model sent back when it could not be used (the site includes it so it can be shown).
+  constructor(message, status, reply) { super(message); this.status = status; if (reply) this.reply = reply; }
 }
 
 // A client for one API base, for example the site's /api, /api/hub or /api/voice. `session` = { url, headers }.
@@ -48,8 +49,9 @@ export function createClient(session, { onUnauthorized } = {}) {
     if (res.status === 401 && onUnauthorized) onUnauthorized();
     if (!res.ok) {
       let message = `${res.status} ${res.statusText}`;
-      try { const j = await res.json(); if (j && j.error) message = j.error; } catch { /* keep status text */ }
-      throw new ApiError(message, res.status);
+      let reply;
+      try { const j = await res.json(); if (j && j.error) message = j.error; if (j && typeof j.reply === 'string') reply = j.reply; } catch { /* keep status text */ }
+      throw new ApiError(message, res.status, reply);
     }
     if (blob) return res.blob();
     const text = await res.text();

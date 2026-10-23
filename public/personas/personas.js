@@ -14,7 +14,8 @@ const LINES = (value) => value.split('\n').map((l) => l.trim()).filter(Boolean);
 const blank = () => ({ name: '', emoji: '', tagline: '', description: '', instructions: '', tone: '', voice: '', speechModel: '', tags: [], templates: [], stationIds: [], promos: [], signOffs: [], timeLines: {} });
 const goTo = (tab) => window.dispatchEvent(new CustomEvent('vh-tab', { detail: tab }));
 
-export async function mountPersonas(root, api) {
+// Admins can edit the example personas too (the edit replaces the example for everyone, and Reset brings the original back); everyone else duplicates one.
+export async function mountPersonas(root, api, { admin = false } = {}) {
   clear(root, h('p', { class: 'muted' }, 'Loading...'));
   let personas = []; let options = null;
   try {
@@ -67,12 +68,12 @@ export async function mountPersonas(root, api) {
     return h('article', { class: 'pcard' },
       h('div', { class: 'pcard-head' }, h('span', { class: 'pcard-emoji', 'aria-hidden': 'true' }, p.emoji || '🎙️'),
         h('div', { class: 'grow' }, h('strong', {}, p.name), p.tagline ? h('div', { class: 'small muted clamp1' }, `\u201C${p.tagline}\u201D`) : null),
-        p.builtin ? h('span', { class: 'chip', title: 'An example: duplicate it to change it' }, 'example') : null),
+        p.builtin ? h('span', { class: 'chip', title: admin ? 'An example persona. You can edit it; Reset puts the original back.' : 'An example: duplicate it to change it' }, p.edited ? 'example, edited' : 'example') : null),
       h('p', { class: 'small clamp2', style: 'margin:0' }, p.description || p.instructions),
       tags.length ? h('div', { class: 'row small', style: 'gap:4px' }, tags.slice(0, 3).map((t) => h('span', { class: 'chip' }, t)), tags.length > 3 ? h('span', { class: 'muted' }, `+${tags.length - 3}`) : null) : null,
       h('div', { class: 'pcard-actions' }, sample.button,
         h('button', { type: 'button', class: 'primary', onclick: () => explore(p) }, 'Explore'),
-        h('button', { type: 'button', onclick: () => edit(p) }, p.builtin ? 'View' : 'Edit'),
+        h('button', { type: 'button', onclick: () => edit(p) }, p.builtin && !admin ? 'View' : 'Edit'),
         h('span', { class: 'grow' }),
         popMenu({ label: `More for ${p.name}`, items: [
           { label: 'Use in the Studio', onclick: () => useInGenerate(p) },
@@ -134,7 +135,8 @@ export async function mountPersonas(root, api) {
   function paintEditor() {
     const c = ui.current;
     if (!c) { clear(editorBox); return; }
-    const locked = Boolean(c.builtin);
+    const locked = Boolean(c.builtin) && !admin;                 // an example is read-only unless you are an admin
+    const example = Boolean(c.builtin);
     const input = (label, key, { rows, placeholder, list, tags, max } = {}) => {
       const el = rows ? h('textarea', { rows, placeholder, disabled: locked }) : h('input', { placeholder, disabled: locked });
       el.value = list ? (c[key] || []).join('\n') : tags ? (c[key] || []).join(', ') : c[key] || '';
@@ -174,7 +176,7 @@ export async function mountPersonas(root, api) {
         const { persona } = await api.post('/personas/generate', { description: describe.value.trim() });
         ui.current = { ...blank(), ...persona, id: c.id, timeLines: { ...(persona.timeLines || {}) } };
         paintEditor(); toast('Drafted. Edit anything, then save.', 'info');
-      } catch (err) { draftStatus.fail(err.message); draftButton.disabled = false; }
+      } catch (err) { draftStatus.fail(err.message, err.reply); draftButton.disabled = false; }
     } }, 'Draft with AI');
 
     const save = h('button', { class: 'primary', type: 'button', disabled: locked, onclick: async () => {
@@ -185,7 +187,11 @@ export async function mountPersonas(root, api) {
         paintEditor(); toast('Persona saved.', 'info');
       } catch (err) { toast(err.message, 'error'); save.disabled = false; }
     } }, c.id ? 'Save changes' : 'Save persona');
-    const del = c.id && !locked ? h('button', { type: 'button', onclick: async () => {
+    const reset = example && admin && c.edited ? h('button', { type: 'button', onclick: async () => {
+      if (!confirm(`Put the original "${c.name}" example back? Your changes to it are lost.`)) return;
+      try { await api.del(`/personas/${encodeURIComponent(c.id)}`); ui.current = null; await reload(); paintEditor(); toast('Back to the original.', 'info'); } catch (err) { toast(err.message, 'error'); }
+    } }, 'Reset to original') : null;
+    const del = c.id && !example ? h('button', { type: 'button', onclick: async () => {
       if (!confirm(`Delete "${c.name}"?`)) return;
       try { await api.del(`/personas/${encodeURIComponent(c.id)}`); ui.current = null; await reload(); paintEditor(); toast('Deleted.', 'info'); } catch (err) { toast(err.message, 'error'); }
     } }, 'Delete') : null;
@@ -196,9 +202,10 @@ export async function mountPersonas(root, api) {
     const lineCount = (c.templates || []).length + (c.stationIds || []).length + (c.promos || []).length + (c.signOffs || []).length;
     const filledTimes = Object.keys(c.timeLines || {}).length;
     clear(editorBox, h('section', { class: 'card stack' },
-      h('div', { class: 'row' }, h('h2', { class: 'grow', style: 'margin:0' }, locked ? `${c.emoji || ''} ${c.name}` : c.id ? `Edit ${c.name}` : 'New persona'), locked ? h('span', { class: 'chip' }, 'example, read only') : null,
+      h('div', { class: 'row' }, h('h2', { class: 'grow', style: 'margin:0' }, locked ? `${c.emoji || ''} ${c.name}` : c.id ? `Edit ${c.name}` : 'New persona'), example ? h('span', { class: 'chip' }, locked ? 'example, read only' : c.edited ? 'example, edited' : 'example') : null,
         h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'Close', title: 'Close', onclick: () => { ui.current = null; paintEditor(); } }, '\u2715')),
-      locked ? h('p', { class: 'muted small' }, 'Example personas cannot be changed. Use More, then Duplicate, on the card to make a copy of your own.')
+      example && !locked ? h('p', { class: 'muted small' }, 'This is an example persona. Saving replaces it for everyone on the station' + (c.edited ? '; Reset to original puts the shipped version back.' : '; you can reset it to the original later.')) : null,
+      locked ? h('p', { class: 'muted small' }, 'Example personas can only be changed by an admin. Use More, then Duplicate, on the card to make a copy of your own.')
         : sect('Start from a description', 'optional', !c.id && !c.name, h('div', { class: 'row' }, h('label', { class: 'field grow' }, 'Describe the host and let the AI draft the rest', describe), draftButton), draftStatus.el),
       sect('Identity', c.name || 'name, emoji, tagline', true,
         h('div', { class: 'grid cols' }, emojiField({ value: c.emoji, disabled: locked, onchange: (e) => { c.emoji = e; } }), input('Name', 'name'), input('Tagline', 'tagline', { placeholder: 'their catchphrase' })),
@@ -216,7 +223,7 @@ export async function mountPersonas(root, api) {
         h('div', { class: 'grid cols' }, input(`Promos, one per line (${count(c.promos)})`, 'promos', { rows: 3, list: true }), input(`Sign-offs, one per line (${count(c.signOffs)})`, 'signOffs', { rows: 3, list: true }))),
       sect('Time of day', filledTimes ? `${filledTimes} of 4 set` : 'optional', false,
         h('p', { class: 'small muted', style: 'margin:0' }, 'A short sentence added to a song link now and then.'), h('div', { class: 'grid cols' }, ['morning', 'afternoon', 'evening', 'night'].map(timeInput))),
-      h('div', { class: 'actionbar' }, save, c.id ? h('button', { type: 'button', onclick: () => explore(c) }, 'Explore this persona') : null, h('span', { class: 'grow' }), del)));
+      h('div', { class: 'actionbar' }, save, c.id ? h('button', { type: 'button', onclick: () => explore(c) }, 'Explore this persona') : null, h('span', { class: 'grow' }), reset, del)));
   }
 
   // ---------- the page ----------
