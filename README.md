@@ -31,6 +31,8 @@ generated clip is handed over automatically. See [docs/INTEGRATION.md](docs/INTE
 | [docs/SCRIPTS.md](docs/SCRIPTS.md) | Scripts, conversations (up to 4 speakers) and the Studio |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What is built, what is next (requests, relay shows, Google Calendar) |
 | [docs/HUB.md](docs/HUB.md) | The hub, the RadioDJ agent, and the Studio and Stations tabs |
+| [docs/FRESHNESS.md](docs/FRESHNESS.md) | Which drops can be reused and which must be made on the spot (rules, the Jev second layer, lead time) |
+| [docs/GREEN-LIGHT-PARITY.md](docs/GREEN-LIGHT-PARITY.md) | What the Green Light Radio scripts do that the app does not yet (call-ins, promos, recaps, placement, rotation) |
 | [docs/PERSONA-CHIP.md](docs/PERSONA-CHIP.md) | CHIP, the computer DJ persona of Way High Radio |
 | [chips-voice/README.md](chips-voice/README.md) | The Chips Voice server: API, playback backends, Icecast and Liquidsoap |
 
