@@ -1,0 +1,40 @@
+{
+  "stations": [],
+  "playlists": {},
+  "jobs": [],
+  "jit": {
+    "settings": {
+      "kill": {
+        "on": false
+      },
+      "forceShadow": false,
+      "dailyCharCap": 6000,
+      "globalDailyCharCap": null,
+      "blocklist": [],
+      "languagePolicy": "clean",
+      "personaPolicies": {},
+      "costPer1kCharsUsd": null,
+      "costPer1kTextTokensUsd": null,
+      "safetyMarginSeconds": 60,
+      "minAudioBytes": 1500,
+      "breakerThreshold": 3,
+      "breakerCooldownSeconds": 300,
+      "tries": 3,
+      "alerts": {
+        "enabled": false
+      }
+    },
+    "slots": [],
+    "items": [],
+    "queue": [],
+    "clips": {},
+    "texts": {},
+    "usage": {},
+    "breakers": {}
+  },
+  "alerts": {
+    "watches": [],
+    "seen": {},
+    "log": []
+  }
+}
