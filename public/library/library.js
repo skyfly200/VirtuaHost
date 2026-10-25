@@ -2,7 +2,7 @@
 // Clips: everything saved on the site (clips.js). Sounds: Built-in effects are synthesised in the browser;
 // the rest come from the connected cloud storage (OwnCloud / Google Drive, see docs/LIBRARY.md). Click a tag to copy it.
 import { h, clear, toast } from '../shared/kit.js';
-import { effectNames } from '../generate/mixer.js';
+import { effectNames, EFFECTS, toWav } from '../generate/mixer.js';
 import { mountClips } from './clips.js';
 import { uploadButton, KIND_LABELS } from '../shared/uploader.js';
 
@@ -23,6 +23,14 @@ export async function mountLibrary(root, api) {
   };
   clear(root, h('div', { class: 'stack' }, h('div', { class: 'row' }, buttons), body));
   await show(part);
+}
+
+// The built-in effects are made in the browser, so they play without any file: one at a time, a new one cuts off the last.
+let preview = null;
+function playBuiltin(name) {
+  if (preview) { preview.pause(); URL.revokeObjectURL(preview.src); }
+  preview = new Audio(URL.createObjectURL(new Blob([toWav(EFFECTS[name]())], { type: 'audio/wav' })));
+  return preview.play();
 }
 
 async function mountSounds(root, api, only) {
@@ -87,8 +95,10 @@ async function mountSounds(root, api, only) {
     data.errors.length ? h('p', { class: 'note warn' }, data.errors.join(' ')) : null,
     uploadCard(),
     only === 'sfx' ? h('section', { class: 'card' }, h('h2', {}, 'Built-in sound effects'),
-      h('p', { class: 'muted small' }, 'Always available, no setup. Use them in the Generate tab, for example [sfx:ding] or [sfx:whoosh over].'),
-      h('div', { class: 'row', style: 'gap:6px' }, effectNames().map((n) => h('button', { type: 'button', class: 'chip-btn', onclick: () => copy(`[sfx:${n}]`) }, n)))) : null,
+      h('p', { class: 'muted small' }, 'Always available, no setup. Press \u25B6 to hear one; click the name to copy its tag, for example [sfx:ding] or [sfx:whoosh over].'),
+      h('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap' }, effectNames().map((n) => h('span', { class: 'row', style: 'gap:2px;flex-wrap:nowrap' },
+        h('button', { type: 'button', class: 'icon-btn', style: 'min-width:32px;height:30px;padding:0 8px;font-size:12px', title: `Play ${n}`, 'aria-label': `Play ${n}`, onclick: () => playBuiltin(n).catch((err) => toast(err.message, 'error')) }, '\u25B6'),
+        h('button', { type: 'button', class: 'chip-btn', title: 'Copy the tag', onclick: () => copy(`[sfx:${n}]`) }, n))))) : null,
     only === 'sfx' ? section('Sound effects', 'sfx', 'Short sounds from your cloud folder. A file called "Big Ding.mp3" becomes [sfx:big-ding], and overrides nothing: built-ins win a name clash.') : null,
     only === 'music' ? section('Music', 'music', 'Beds to play under a clip: [music:name vol=0.2] fades the music in before the first word and out after the last. Files up to about 5 MB.') : null,
     only === 'intro' ? section('Intros', 'intro', 'A clip played before the voice: [intro:name]. Choose one in the Studio under Background, intro and outro.') : null,

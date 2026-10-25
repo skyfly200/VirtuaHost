@@ -7,7 +7,7 @@ import { contextFor, renderTemplate } from "../drop-template.js";
 import { getPersona } from "../persona-store.js";
 import { getStation } from "../station-profile-store.js";
 import { deleteScript, getScript, listScripts, newScriptId, saveScript, SCRIPT_ID } from "../script-store.js";
-import { draftScript } from "../script-draft.js";
+import { DraftFormatError, draftScript } from "../script-draft.js";
 import { effectNames, sfxHelp } from "../sfx-mix.js";
 import { sanitizeCast, sanitizeScript, type Script } from "../scripts.js";
 import type { Persona } from "../personas.js";
@@ -108,7 +108,7 @@ async function draft(req: Request, who: Principal): Promise<Response> {
         { provider, textModel, station, personas: personas.map, template });
       return Response.json({ text: out.text, filledIn: out.text, raw: out.raw, lines: out.lines, ...(out.copied.length ? { copiedExample: out.copied } : {}), ...(out.dropped ? { droppedLines: out.dropped } : {}), provider, ...(textModel ? { textModel } : {}) });
     } catch (err) {
-      return Response.json({ error: `Script drafting failed: ${(err as Error).message}` }, { status: 502 });
+      return Response.json({ error: `Script drafting failed: ${(err as Error).message}`, ...(err instanceof DraftFormatError ? { reply: err.reply } : {}) }, { status: 502 });
     }
   });
 }

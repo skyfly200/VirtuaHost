@@ -1,14 +1,12 @@
-// The speakers of a script: a row per speaker with a name, an optional persona (which can suggest the name), a voice and a
-// role. A conversation needs two named speakers, up to `max`; a single-voice script has exactly one row. Names are checked as
-// they are typed because each one becomes the label in front of its lines ("Name: line"), so a colon or a clash would
-// misplace the speech. Messages follow the typing without redrawing the rows, so the field being typed in keeps its focus.
+// The speakers of a script: a row per speaker with who they are (Host, DJ or Guest: that becomes the label in front of their lines, "Host: line",
+// numbered when it repeats: "Guest 2"), an optional persona and an optional voice. A conversation needs two speakers, up to `max`; a single-voice
+// script has exactly one row. A name from an older script that is not one of the three stays selectable, so nothing is lost.
 import { h } from './kit.js';
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _.'-]{0,23}$/;
 const NAME_HELP = "Use 1 to 24 letters, numbers, spaces or _ . ' -, starting with a letter or number.";
 
-// A persona's first word, reduced to characters a speaker name may use ("Rocky Flats" -> "Rocky").
-const suggestName = (persona) => (persona.name || '').trim().split(/\s+/)[0].replace(/[^A-Za-z0-9 _.'-]/g, '').slice(0, 24);
+const ROLES = ['Host', 'DJ', 'Guest'];
 
 export function castEditor({ personas = [], cast = [], kind = 'conversation', max = 4, onchange = () => {} } = {}) {
   const personaIds = new Set(personas.map((p) => p.id));
@@ -23,7 +21,8 @@ export function castEditor({ personas = [], cast = [], kind = 'conversation', ma
   const countNote = h('div', { class: 'small bad', hidden: true });
   el.append(list, addArea, countNote);
 
-  const blank = () => ({ name: '', personaId: '', voice: '', role: '' });
+  // A new speaker is the first of Host, DJ, Guest not yet in the cast (then Guest 2, Guest 3...).
+  const blank = (from = rows) => ({ name: uniqueName(ROLES.find((r) => !from.some((x) => x.name.trim().toLowerCase() === r.toLowerCase())) || 'Guest', -1, from), personaId: '', voice: '', role: '' });
   // A persona id that no longer exists is dropped here, so get() never returns a dangling persona.
   const fromMember = (m = {}) => ({
     name: String(m.name ?? ''), personaId: personaIds.has(m.personaId) ? m.personaId : '',
@@ -34,9 +33,10 @@ export function castEditor({ personas = [], cast = [], kind = 'conversation', ma
   // A single voice keeps one speaker (the first named one); a conversation keeps 2 to `limit`, padding with blank rows.
   function normalise(members) {
     const all = members.map(fromMember);
-    if (mode === 'single') return [all.find((r) => r.name.trim()) || all[0] || blank()];
+    if (mode === 'single') return [all.find((r) => r.name.trim()) || { ...(all[0] || blank([])), name: all[0] && all[0].name.trim() ? all[0].name : 'Host' }];
     const next = all.slice(0, limit);
-    while (next.length < 2) next.push(blank());
+    next.forEach((r) => { if (!r.name.trim()) r.name = uniqueName('Guest', -1, next.filter((x) => x !== r)); });
+    while (next.length < 2) next.push(blank(next));
     return next;
   }
 
@@ -50,8 +50,8 @@ export function castEditor({ personas = [], cast = [], kind = 'conversation', ma
   }
 
   // A suggested name gets " 2", " 3"... when its first word is already used (ignoring case), keeping within 24 characters.
-  function uniqueName(base, self) {
-    const taken = new Set(rows.filter((_, j) => j !== self).map((r) => r.name.trim().toLowerCase()));
+  function uniqueName(base, self, from = rows) {
+    const taken = new Set(from.filter((_, j) => j !== self).map((r) => r.name.trim().toLowerCase()));
     let candidate = base;
     for (let n = 2; taken.has(candidate.toLowerCase()); n++) {
       const suffix = ` ${n}`;
@@ -72,23 +72,18 @@ export function castEditor({ personas = [], cast = [], kind = 'conversation', ma
   function draw(focus) {
     refs = [];
     list.replaceChildren(...rows.map((row, i) => {
-      const nameIn = h('input', {
-        type: 'text', value: row.name, 'aria-label': 'Speaker name', placeholder: 'Name', autocomplete: 'off',
-        oninput: (e) => { row.name = e.target.value; emit(); },
-      });
+      // Who they are. The current name is always an option (a numbered "Guest 2", or a name from an older script); picking Host, DJ or Guest numbers it if taken.
+      const roleSel = h('select', {
+        'aria-label': 'Speaker',
+        onchange: (e) => { row.name = uniqueName(e.target.value, i); draw(); emit(); },   // redrawn so a numbered name ("Host 2") is an option
+      }, ...(ROLES.includes(row.name) ? [] : [h('option', { value: row.name }, row.name)]), ...ROLES.map((r) => h('option', { value: r }, r)));
+      roleSel.value = row.name;
       const personaSel = h('select', {
         'aria-label': 'Persona',
-        onchange: (e) => {
-          row.personaId = e.target.value;
-          const p = personas.find((x) => x.id === row.personaId);
-          const base = p && !row.name.trim() ? suggestName(p) : '';
-          if (base) { row.name = uniqueName(base, i); nameIn.value = row.name; }
-          emit();
-        },
+        onchange: (e) => { row.personaId = e.target.value; emit(); },
       }, h('option', { value: '' }, 'No persona'), ...personas.map((p) => h('option', { value: p.id }, `${p.emoji || ''} ${p.name}`)));
       personaSel.value = row.personaId;
       const voiceIn = h('input', { type: 'text', value: row.voice, 'aria-label': 'Voice (optional)', placeholder: 'voice name (optional)', autocomplete: 'off', oninput: (e) => { row.voice = e.target.value; emit(); } });
-      const roleIn = h('input', { type: 'text', value: row.role, 'aria-label': 'Role', placeholder: 'role, e.g. host, skeptical caller', autocomplete: 'off', oninput: (e) => { row.role = e.target.value; emit(); } });
       const err = h('div', { class: 'small bad', hidden: true });
       refs.push({ err });
       const remove = mode === 'conversation' && i >= 2
@@ -96,7 +91,7 @@ export function castEditor({ personas = [], cast = [], kind = 'conversation', ma
         : null;
       // The grid is set inline so the fields stack on a phone even where the stylesheet is not loaded.
       return h('div', { class: 'cast-row' },
-        h('div', { class: 'cast-fields', style: 'display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))' }, nameIn, personaSel, voiceIn, roleIn),
+        h('div', { class: 'cast-fields', style: 'display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))' }, roleSel, personaSel, voiceIn),
         h('div', { class: 'cast-row-foot' }, err, remove));
     }));
 
@@ -105,7 +100,7 @@ export function castEditor({ personas = [], cast = [], kind = 'conversation', ma
       if (rows.length < limit) addArea.append(h('button', { type: 'button', class: 'secondary', onclick: () => { rows.push(blank()); draw('last'); emit(); } }, 'Add a speaker'));
       else addArea.append(h('span', { class: 'small muted' }, `At most ${limit} speakers`));
     }
-    if (focus === 'last') list.lastElementChild?.querySelector('input')?.focus();
+    if (focus === 'last') list.lastElementChild?.querySelector('select')?.focus();
     paint();
   }
 

@@ -127,6 +127,18 @@ describe("scripts API", () => {
     expect((await json<{ error: string }>(res)).error).toContain("upstream timeout");
   });
 
+  it("sends back what the writer said when it was not in the Name: line format", async () => {
+    vi.mocked(complete).mockResolvedValue("Here is a lovely poem about the night crew, with no speaker names at all.\n\nThe end.");
+    const res = await route("POST", "draft", { kind: "conversation", cast, topic: "x" });
+    expect(res.status).toBe(502);
+    const body = await json<{ error: string; reply: string }>(res);
+    expect(body.error).toContain("did not return a script");
+    expect(body.reply).toContain("lovely poem about the night crew");
+    // A model failure (not a bad reply) has nothing to show.
+    vi.mocked(complete).mockRejectedValue(new Error("upstream timeout"));
+    expect(await json(await route("POST", "draft", { kind: "conversation", cast, topic: "x" }))).not.toHaveProperty("reply");
+  });
+
   it("fills a saved script's placeholders for the station, and 404s an unknown script", async () => {
     const { script } = await json<{ script: { id: string } }>(await route("POST", undefined, { ...conversation, stationId: "default" }));
     const res = await route("POST", "filled", { scriptId: script.id });

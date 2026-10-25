@@ -9,7 +9,7 @@ import { apiKey, keySource } from "./credentials.js";
 import { writeDjLine, describeImage, synthesizeSpeech as geminiSpeech, DEFAULT_VOICE } from "./gemini.js";
 import * as openrouter from "./openrouter.js";
 import { pcmToWav } from "./wav.js";
-import { elevenSpeech, isElevenModel } from "./elevenlabs.js";
+import { elevenSpeech, isElevenModel, openRouterEleven } from "./elevenlabs.js";
 import { buildSystemPrompt, type DjFormat } from "./formats.js";
 
 export type ProviderName = "openrouter" | "gemini";
@@ -94,6 +94,11 @@ export interface Spoken {
 
 export async function speak(options: SpeakOptions): Promise<Spoken> {
   // An ElevenLabs model (voice clones) is spoken by ElevenLabs itself, whichever service writes the words.
+  // With no ElevenLabs key in scope, the same model is spoken through OpenRouter instead (preset voices only, no clones).
+  if (isElevenModel(options.speechModel?.id) && !apiKey("elevenlabs") && apiKey("openrouter")) {
+    const alt = openRouterEleven(options.speechModel!.id);
+    if (alt) options = { ...options, provider: "openrouter", speechModel: { id: alt }, voice: undefined };
+  }
   if (isElevenModel(options.speechModel?.id)) {
     const out = await elevenSpeech({ model: options.speechModel!.id, voice: options.voice, text: options.text });
     return { audio: out.audio, mimeType: "audio/mpeg", voice: out.voice, model: options.speechModel!.id };

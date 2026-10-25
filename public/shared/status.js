@@ -32,7 +32,13 @@ export function createStatus() {
       paintBusy();
     },
     ok(message) { stopTimer(); const took = started ? ((Date.now() - started) / 1000).toFixed(1) : ''; started = 0; clear(el, h('span', { class: 'tick', 'aria-hidden': 'true' }, '✓'), h('span', { class: 'status-text' }, message), took && Number(took) >= 1 ? h('span', { class: 'small muted' }, `${took}s`) : null); el.className = 'status ok'; },
-    fail(message) { stopTimer(); started = 0; clear(el, h('span', { class: 'cross', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'status-text' }, message)); el.className = 'status bad'; },
+    // `reply` (optional): what the AI sent back when it could not be used; shown in a drop-down under the message, to read and copy.
+    fail(message, reply) {
+      stopTimer(); started = 0;
+      clear(el, h('span', { class: 'cross', 'aria-hidden': 'true' }, '✕'), h('span', { class: 'status-text' }, message),
+        reply && reply.trim() ? h('details', { class: 'reply-details' }, h('summary', {}, `Show the full reply (${reply.length.toLocaleString()} characters)`), h('pre', {}, reply)) : null);
+      el.className = 'status bad';
+    },
     info(message) { stopTimer(); started = 0; clear(el, h('span', { class: 'status-text muted' }, message)); el.className = 'status'; },
     clear() { stopTimer(); started = 0; clear(el); el.className = 'status'; },
     get running() { return timer !== null; },

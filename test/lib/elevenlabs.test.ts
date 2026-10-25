@@ -98,3 +98,26 @@ describe("ElevenLabs estimates", () => {
     expect(multi.message).toMatch(/premium model/);
   });
 });
+
+describe("ElevenLabs through OpenRouter", () => {
+  it("sends OpenRouter's own elevenlabs/ models to OpenRouter, never to ElevenLabs", async () => {
+    fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+    await speak({ text: "hi", provider: "openrouter", speechModel: { id: "elevenlabs/eleven-v3" }, voice: "george" });
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/openrouter\.ai.*\/audio\/speech$/);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model: "elevenlabs/eleven-v3", voice: "george" });
+  });
+
+  it("speaks a direct ElevenLabs choice through OpenRouter while no ElevenLabs key is set", async () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "");
+    fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+    const out = await speak({ text: "hi", provider: "openrouter", speechModel: { id: "elevenlabs/eleven_v3" }, voice: "Rocky" });
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/openrouter\.ai/);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("elevenlabs/eleven-v3");
+    expect(out.model).toBe("elevenlabs/eleven-v3");
+  });
+
+  it("does not list the direct ElevenLabs models without a key", () => {
+    vi.stubEnv("ELEVENLABS_API_KEY", "");
+    expect(speechModels().some((m) => m.id.startsWith("elevenlabs/"))).toBe(false);
+  });
+});

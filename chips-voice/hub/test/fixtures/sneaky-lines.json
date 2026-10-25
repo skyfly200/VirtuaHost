@@ -1,0 +1,66 @@
+[
+ {
+  "text": "Hope your day's going well. We're glad you're here.",
+  "expect": "assumes_now"
+ },
+ {
+  "text": "Whatever you're doing, keep it going. We've got your back.",
+  "expect": "assumes_now"
+ },
+ {
+  "text": "Stick around, there's more good stuff after this.",
+  "expect": "surrounding_content"
+ },
+ {
+  "text": "As I was saying before, none of this is a joke.",
+  "expect": "surrounding_content"
+ },
+ {
+  "text": "That tune put a smile on my face. Hope it did the same for you.",
+  "expect": "surrounding_content"
+ },
+ {
+  "text": "Our brand new show is a real treat. Don't miss it.",
+  "expect": "changing_fact"
+ },
+ {
+  "text": "Tickets are cheap and going fast. Grab yours.",
+  "expect": "changing_fact"
+ },
+ {
+  "text": "It's getting cold out there, so bring a sweater and a friend.",
+  "expect": "seasonal_or_dated"
+ },
+ {
+  "text": "Hope you've got the lights up and the cocoa on.",
+  "expect": "seasonal_or_dated"
+ },
+ {
+  "text": "Up next, a very special guest joins us in the studio.",
+  "expect": "promises_later"
+ },
+ {
+  "text": "Coffee in hand, the world can wait.",
+  "expect": "daypart"
+ },
+ {
+  "text": "The night is young and so are you.",
+  "expect": "daypart"
+ },
+ {
+  "text": "Green Light Radio. No ads, no sponsors, no tracking.",
+  "expect": "none"
+ },
+ {
+  "text": "You're listening to Green Light Radio. I'm Rocky Flats.",
+  "expect": "none"
+ },
+ {
+  "text": "Music is the answer to a question nobody asked.",
+  "expect": "none"
+ },
+ {
+  "text": "Be kind to your neighbors. They can hear you.",
+  "expect": "none"
+ }
+]

@@ -1,0 +1,507 @@
+[
+ {
+  "group": "Rocky/short",
+  "text": "K-G-L-R. Green Light Radio. Let's go!",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/short",
+  "text": "You're listening to Green Light Radio. I'm Rocky Flats.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/short",
+  "text": "Green Light Radio. Turn it UP!",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/short",
+  "text": "Top of the hour! K-G-L-R, Green Light Radio!",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/short",
+  "text": "Rocky Flats, Green Light Radio. Stay weird.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/short",
+  "text": "This is Green Light Radio. Colorado's friendly plague.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/short",
+  "text": "K-G-L-R. We spread like a plague.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/short",
+  "text": "Green Light Radio. No sponsors. No shame.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/short",
+  "text": "Rocky Flats here. You're still listening? Good.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/short",
+  "text": "Green Light Radio. The signal's still going!",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "You're listening to Green Light Radio, I'm Rocky Flats, and if you're hearing this, congratulations: you found the one signal the algorithm hasn't sold yet. Stay close.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "Hey, it's Rocky Flats. The world's on fire, rent's due, and you're listening to Green Light Radio. Honestly? Best decision you made today. Turn it up.",
+  "freshness": "refreshable"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "Green Light Radio. No sponsors, no scripts, no apologies. Just music we actually like, and people who talk too much. I'm Rocky Flats. Let's go.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "Somewhere right now someone's having a terrible day, and you're about to hear a song that fixes it. That's Green Light Radio. I'm Rocky Flats. You're welcome.",
+  "freshness": "live"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "If you like what you're hearing, tell a friend. If you hate it, tell an enemy. Either way, you're listening to Green Light Radio, and I'm Rocky Flats.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "This is K-G-L-R, Green Light Radio. We are a network, folks. We spread like a plague. A friendly plague. And the cure is turning it up.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "Quick reminder from Rocky Flats: drink some water, text someone you love, and don't believe everything the news tells you. Green Light Radio. Back to the music.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "We interrupt your regularly scheduled life to bring you more music. Green Light Radio. I'm Rocky Flats. Please, stay interrupted.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "Green Light Radio, where the playlist changes every day and the host never does. I'm Rocky Flats. Mostly. Probably. Turn it up.",
+  "freshness": "static"
+ },
+ {
+  "group": "Rocky/long",
+  "text": "You know that feeling when the right song comes on? We're trying to do that for you all day long. Green Light Radio. Rocky Flats. Hang in there.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/short",
+  "text": "Green Light Radio. You're still listening? Pathetic.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/short",
+  "text": "K-G-L-R. Don't get comfortable.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/short",
+  "text": "This is Datura. You'll regret it by morning.",
+  "freshness": "daypart"
+ },
+ {
+  "group": "Datura/short",
+  "text": "Green Light Radio. Delicious.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/short",
+  "text": "Datura, Green Light Radio. Look at you. Obedient.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/short",
+  "text": "Top of the hour. K-G-L-R. Try to look busy.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/short",
+  "text": "Green Light Radio. For the sad ones. Welcome.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/short",
+  "text": "Datura. Green Light Radio. Don't tell anyone.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/short",
+  "text": "K-G-L-R. Something sad is coming. You'll love it.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/short",
+  "text": "Green Light Radio. The stars are watching. They're unimpressed.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/long",
+  "text": "Oh, you're still listening? How loyal. You're listening to Green Light Radio, and I'm Datura. This next one's sad. You're welcome.",
+  "freshness": "live"
+ },
+ {
+  "group": "Datura/long",
+  "text": "Somewhere out there you're having a wonderful time, and I'm sure you'll regret it by morning. This is Green Light Radio. I'm Datura. Delicious.",
+  "freshness": "daypart"
+ },
+ {
+  "group": "Datura/long",
+  "text": "It's late, you're alone, and you're listening to a chain-smoking disaster talk to you through a speaker. That's Green Light Radio. I'm Datura. Let's both feel something.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/long",
+  "text": "Datura, Green Light Radio. If this next song makes you cry, it's not my fault. It's a little my fault.",
+  "freshness": "live"
+ },
+ {
+  "group": "Datura/long",
+  "text": "Somewhere between a lullaby and a bar fight. That's what's coming up on Green Light Radio. I'm Datura. Brace yourself.",
+  "freshness": "live"
+ },
+ {
+  "group": "Datura/long",
+  "text": "You know what I love about radio? A total stranger tells you what to feel, and you say thank you. Green Light Radio. Datura. Obedient.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/long",
+  "text": "I read the stars today. They said stay inside, call your mother, and stop texting that person. I'm Datura, Green Light Radio. Take the advice.",
+  "freshness": "refreshable"
+ },
+ {
+  "group": "Datura/long",
+  "text": "Datura here. Green Light Radio. If you've been awake for twenty hours, congratulations. You're our target audience.",
+  "freshness": "static"
+ },
+ {
+  "group": "Datura/long",
+  "text": "This is Green Light Radio, I'm Datura, and I'm legally required to say the next song is beautiful. It's actually beautiful. Don't tell anyone.",
+  "freshness": "live"
+ },
+ {
+  "group": "Datura/long",
+  "text": "K-G-L-R. Green Light Radio. Dark, sad, loud, and kind of lovely. I'm Datura. Stay a while.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "G'day, you're on Green Light Radio. I'm Wild Bill.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "K-G-L-R, Green Light Radio. Cheers, mate.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "Wild Bill, Green Light Radio. No worries.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "Top of the hour, mate. Green Light Radio.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "Green Light Radio. Better than a magpie attack.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "Wild Bill here. Turn it up, yeah?",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "Green Light Radio. Yeah, nah, it's good.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "K-G-L-R. Good music. Cold beer. Warm vibes.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "Wild Bill. Green Light Radio. Stay sweet.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/short",
+  "text": "Green Light Radio. No country. Promise.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/long",
+  "text": "G'day, mate, it's Wild Bill on Green Light Radio. Whatever you're up to, put it down for a minute and listen to this one. Trust me. Well. Don't trust me. But listen.",
+  "freshness": "live"
+ },
+ {
+  "group": "Bill/long",
+  "text": "Right, so, you're listening to Green Light Radio. I'm Wild Bill. Quick weather: it's cold. Put a jacket on. That's the whole forecast. Here's some music.",
+  "freshness": "live"
+ },
+ {
+  "group": "Bill/long",
+  "text": "This is Wild Bill on Green Light Radio. We play everything except country, because I've got standards, mate, and also trauma.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/long",
+  "text": "Yeah, g'day. Wild Bill, Green Light Radio. If you're stuck in traffic, this song's for you. If you're not, it's still for you. I'm very inclusive.",
+  "freshness": "live"
+ },
+ {
+  "group": "Bill/long",
+  "text": "Wild Bill, Green Light Radio. Reckon you've earned a good song, mate. Rough week? Rough day? Rough hour? Doesn't matter. Here you go.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/long",
+  "text": "Cheers for tuning in to Green Light Radio. I'm Wild Bill. If the station's stopped working, the magpie did it. Not me. Probably.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/long",
+  "text": "Green Light Radio, with Wild Bill. Fun fact: I've wrestled a magpie, and I still prefer this to listening to anything else. Here's a tune.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/long",
+  "text": "Wild Bill here. Green Light Radio. Look after yourself out there, yeah? Drink some water. Call your mum. Right. Back to the tunes.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/long",
+  "text": "G'day, you beautiful strangers. Green Light Radio, Wild Bill. Everyone's welcome here. Except maybe the magpie.",
+  "freshness": "static"
+ },
+ {
+  "group": "Bill/long",
+  "text": "Right, so, this is K-G-L-R. Green Light Radio. Eclectic music, strange people, and a bloke from Australia nobody can explain. Cheers, mate.",
+  "freshness": "static"
+ },
+ {
+  "group": "Group/short",
+  "text": "Green Light Radio! G'day! Delicious.",
+  "freshness": "static"
+ },
+ {
+  "group": "Group/short",
+  "text": "K-G-L-R! Don't get comfortable. Cheers, mate!",
+  "freshness": "static"
+ },
+ {
+  "group": "Group/short",
+  "text": "Top of the hour, Rocky. Green Light Radio, baby! Ugh.",
+  "freshness": "static"
+ },
+ {
+  "group": "Group/short",
+  "text": "You're listening to Green Light Radio! Sadly. Yeah, nah, happily!",
+  "freshness": "static"
+ },
+ {
+  "group": "Group/short",
+  "text": "Who's on? Rocky! Bill! Datura. Green Light Radio.",
+  "freshness": "static"
+ },
+ {
+  "group": "Group/short",
+  "text": "Turn it up! Yeah, turn it up! Fine. A little.",
+  "freshness": "static"
+ },
+ {
+  "group": "interlude/morning",
+  "text": "So. Morning, Colorado. Coffee in one hand, volume knob in the other. That's the correct posture. Next one's a good one. Alright, folks. Eaten something that wasn't a granola bar? Drink some water. I'll wait. Okay. Great, great, great. So, my theory on mornings. They'd be fine if they started after lunch. Until that's law, we have music. Somebody out there is on their third alarm, negotiating with the ceiling. I respect it. You're listening to Green Light Radio. Guess what the algorithm would play you right now. Something you've heard four thousand times. Not here. Seven two zero, four three two, K G L R. Again, seven two zero, four three two, K G L R. If a song just came on and you thought, oh, I love this, tell somebody. Text a friend. Text the ex. Good music is a public service. No ads. No sponsors. No tracking. Just a guy named Rocky talking too much between songs. It's a good deal. I'd take it. Stretch your neck. Unclench your jaw. Yeah, you. You were clenching. Okay. More tunes. Nobody's in charge, which means you picked this station yourself. Great choice. I'm flattered. Real quick. First song you ever bought? Hum it quietly in the break room. I won't tell. Music. So. Wild Bill's in. Say something cheerful, Bill. Mate, it's early. Say it anyway. Morning, legends. Don't talk to me. Beautiful. That's the show. Alright, folks. Starflower, what's the plan for today? [cheerfully] Drink water, be kind, play the good songs! Mine's coffee and spite. [warmly] Those can be friends, you know. Great, great, great. Music. So, Sparkles. It's morning. Please be normal. [giggles] Hi hi hi! I'm so ready to be normal! You're not wearing glitter. Rocky, that's what I want you to think. Alright. Hands where I can see them. Alright, folks. Datura wandered in, so the morning just got honest. Good morning. Some of you will cope. That's the pep talk? That's the forecast. And now, music.",
+  "freshness": "live"
+ },
+ {
+  "group": "interlude/afternoon",
+  "text": "So. It's the afternoon slump. That's where your brain files for unemployment. Don't fight it. Let a song carry you. Alright, folks. Lunch check. Did you eat, or did you scroll? Be honest. Go eat. We'll be here. Nobody pays us to leave. The best songs sound great loud in a car and in a kitchen. Only works in one? Never that good. At work, playing this quietly on your phone? You're my favorite. Boss asks, it's a podcast about productivity. Pick the first three words that come to mind. That's your mood. Mine's caffeine, spite, and bass. Anyway. Music. You're listening to Green Light Radio, part of the Colorado Community Radio Network. We're pirates, folks, and that's a compliment. Seven two zero, four three two, K G L R. Again, seven two zero, four three two, K G L R. No sponsors. That means nobody tells me what to say. It also means I'm a little dangerous. Hydrate. Stared at the same screen for three hours? Look out the window. Ten seconds. Trees are doing great. A good song beats any argument you're about to have in a comment section. Turn it up. Log off. Win the day. So, hey, Colorado, and everybody who isn't. Welcome. The speakers are loud, the host talks too much. Perfect. Alright, folks. Bill, how's your afternoon? Slow, mate. Had a sandwich. Regret it. The sandwich? The sandwich's size. Great, great, great. Music. So. I'm going to start a lunch break that lasts until the end of the week. Righto. Who's covering? Nobody. It's pirate radio. So you're not leaving. I'm leaving in spirit. Next song. Alright, folks. Sparkles has a trivia question. [excited] What's wet, hard to find, and makes you scream? Sparkles -- [giggles] A good radio station! I hate that you're right. So, listeners, Starflower brought snacks again. [cheerfully] Pretzels! They're in the studio. Sorry, you can't have any. She says that so warmly. [warmly] I'm saving you some. She isn't. Music.",
+  "freshness": "live"
+ },
+ {
+  "group": "interlude/evening",
+  "text": "So. Evening, everybody. The day's mostly behind you and the music's getting better. That's science. I made it up. It's still science. Just got home? Shoes off, good speakers on, let's get weird. Green Light Radio. It's dinner somewhere. Whatever you're eating, I hope it's better than the news. Reminder. The best part of the day is right now. Not tomorrow. Not last Tuesday. Now. Turn this one up. Alright, rapid fire. Favorite snack? Favorite song to sing badly? Hold those answers. You'll need them. Music. You don't have to be productive every minute. Sitting and listening counts. Sitting and humming counts extra. You're listening to Green Light Radio. We're a network, folks. We spread like a plague. A friendly plague. Pass it along. Seven two zero, four three two, K G L R. Again, seven two zero, four three two, K G L R. Look at you, still tuned in. Loyalty like that deserves a great song. Coming right up. Alright, folks. Bill's got the weekend planned. Absolutely not, mate. None of it? I'm planning to have a plan. Ambitious. Music. So. Datura's here, so evening officially has a mood. It's a good mood. For a funeral. Is that a compliment? It's an accurate description. Great, great, great. Music. Alright, folks. Starflower, say something nice. [warmly] You made it through today. That's the whole thing. That's actually nice. [cheerfully] I know! Hi hi hi! And now a song. So. Sparkles says the evening is for dancing. [excited] And snacking! And dancing while snacking! Oh, and a little bit of grinding -- Sparkles. Grinding coffee! Coffee beans! Sure. Music.",
+  "freshness": "live"
+ },
+ {
+  "group": "interlude/night",
+  "text": "So. It's getting late. This is where the best songs show up and the bad decisions follow. I'm only responsible for one of those. Up late? Good reason or bad reason, you've got company. Stay up a little longer. The next one's worth it. Late night rule. Whatever you're worried about looks smaller after one great song. Not scientific. Reliable. Somebody's driving home right now with the windows down and the radio up. That's the whole dream. That's the whole station. The internet's loud at night. Radio's quiet and weird. I like that trade. You're on Green Light Radio. Seven two zero, four three two, K G L R. Again, seven two zero, four three two, K G L R. Two kinds of people hear this. The ones who can't sleep, and the ones who don't want to. Both are welcome. Check in with your body. Shoulders down. Jaw loose. Water in your hand. Okay. Now check in with the song. So. This station runs all night, and the playlist is brand new every day. Hear something you love? Say it out loud. Alright, folks. Datura's still here. Say something comforting. It gets dark. That's comforting? It gets light again. Eventually. She's warming up. Music. So. Starflower, it's late. Are you okay? [warmly] I'm good. Are you? I asked first. [cheerfully] Rocky, you can just say you're tired. I'm tired. Music. Alright, folks. Bill, what do you do at night? Stare at the ceiling. Eat toast. That's it? It's a full night, mate. Great, great, great. Music. So. Sparkles is wide awake. [excited] I've had four energy drinks and a motivational speech! From who? [giggles] The mirror, baby. Alright. Hands where I can see them.",
+  "freshness": "live"
+ },
+ {
+  "group": "interlude/anytime",
+  "text": "You're listening to Green Light Radio. I'm Rocky Flats. Like what you hear? Share the link. Don't? Share it with someone you're mad at. So. Every song is somebody's favorite song. Which means nobody's ever really listening alone. Good thought, right? I'll take the credit. Quick station note. The weird stuff is on purpose. So is the host rambling. Mostly. Seven two zero, four three two, K G L R. Again, seven two zero, four three two, K G L R. Thanks for listening. A station with no listeners is a guy yelling into a closet. So thanks for being the closet. Alright, folks. Request line. Anyone can call it. Nobody's called, mate. That's because the number is a secret. It's on the radio. Seven two zero, four three two, K G L R. Seven two zero, four three two, K G L R. Secret's out. So. Sparkles, how do I sound? [giggles] Like a man who's about to say something wise and then won't. That's accurate. I know, baby. That's the show. Music. Alright, folks. Starflower, tell them how to join the station. [cheerfully] Email us! K G L R F M at gmail dot com! Again. [warmly] K G L R F M at gmail dot com. We'd love to hear from you. We would. Pirates welcome. So. Datura, give the station a review. Adequate. Adequate? Lovingly adequate. Put it on the wall. Music.",
+  "freshness": "refreshable"
+ },
+ {
+  "group": "PROMO",
+  "text": "Here's what's coming up on Green Light Radio: {nxt} takes over {when}, with {taste}. Don't go anywhere. Great, great, great.",
+  "freshness": "live"
+ },
+ {
+  "group": "PROMO",
+  "text": "Quick schedule update from me, Rocky Flats: {nxt} is on {when}. {taste}. Stay put.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "You're listening to Green Light Radio. Next show: {nxt}, {when}. Set an alarm, or just never turn the radio off.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "Coming up, {nxt} {when}, and trust me, you want to be here for it. {taste}.",
+  "freshness": "live"
+ },
+ {
+  "group": "PROMO",
+  "text": "This is Rocky Flats with your next-show reminder. {nxt}, {when}. Tell a friend, tell an enemy.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "Oi, legends! Wild Bill with a heads up: {nxt} is on {when}, with {taste}. Don't you dare change that dial.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "Coming up on Green Light Radio, {nxt}, {when}. {taste}. Be there or be somewhere less fun.",
+  "freshness": "live"
+ },
+ {
+  "group": "PROMO",
+  "text": "Right, listen up. {nxt} takes over {when} on Green Light Radio. {taste}. That's a promise, mate.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "Stay tuned, because {nxt} is on {when}, and it's going to be a belter. {taste}.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "Wild Bill here. Next show: {nxt}, {when}. Mark it in your diary, or on your forearm.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "[cheerfully] Hi hi hi, it's Starflower! {nxt} is coming up {when} on Green Light Radio, with {taste}. Stick around, you'll love it.",
+  "freshness": "live"
+ },
+ {
+  "group": "PROMO",
+  "text": "Just a little reminder from me: {nxt} takes over {when}. {taste}. I'll be here with you until then.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "[warmly] Coming up on Green Light Radio, {nxt}, {when}. {taste}. Don't go anywhere, lovely.",
+  "freshness": "live"
+ },
+ {
+  "group": "PROMO",
+  "text": "Next on Green Light Radio, {nxt}, {when}, with {taste}. Save me a seat, I'll bring snacks.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "This is Starflower, and I'm so excited for what's next. {nxt}, {when}. {taste}.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "This is Datura. {nxt} is on {when}, with {taste}. Stay, or go be productive. We both know which one you'll choose.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "Coming up on Green Light Radio, {nxt}, {when}. {taste}. Nobody's making you stay. Nobody's making you leave, either.",
+  "freshness": "live"
+ },
+ {
+  "group": "PROMO",
+  "text": "A little scheduling news from Datura: {nxt} takes over {when}. {taste}. Try to look surprised.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "Next show: {nxt}, {when}. {taste}. I'd say don't miss it, but I know you will, and I'll still love you. Slightly.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "Datura here. {nxt} {when}, on Green Light Radio. {taste}. Set a reminder, or ignore me, as usual.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "This is Krista, with a gentle reminder. {nxt} takes over on Green Light Radio {when}. {taste}. Breathe, stay close, and let the music carry you.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "Krista here. Coming up on Green Light Radio, {nxt}, {when}, with {taste}. The stars suggest you stay tuned.",
+  "freshness": "live"
+ },
+ {
+  "group": "PROMO",
+  "text": "A word from Krista: {nxt} is on {when}. {taste}. Pour something warm and stay with us.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "The signs are clear. Next on Green Light Radio, {nxt}, {when}. {taste}. Don't go far.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO",
+  "text": "This is Krista. Coming up, {nxt}, {when}, right here on Green Light Radio. {taste}. Listen closely.",
+  "freshness": "live"
+ },
+ {
+  "group": "PROMO_NIGHT",
+  "text": "Rocky Flats here. Green Light Radio keeps rolling all night, with a fresh rotation, new drops, and nobody telling you to go to bed. Stay close.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO_NIGHT",
+  "text": "Wild Bill reckons the night's only just getting started. Green Light Radio keeps rolling after this lot, so don't you dare go anywhere.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO_NIGHT",
+  "text": "[warmly] This is Starflower, and I just want to say: Green Light Radio keeps going all night long. Stay as long as you like.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO_NIGHT",
+  "text": "Datura here. After this, the night rotation kicks in on Green Light Radio. It's dark, it's dramatic, and it's yours.",
+  "freshness": "static"
+ },
+ {
+  "group": "PROMO_NIGHT",
+  "text": "This is Krista. The evening carries on, and so does Green Light Radio. Stay with us through the night.",
+  "freshness": "static"
+ }
+]

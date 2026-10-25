@@ -176,7 +176,7 @@ export async function mountPersonas(root, api, { admin = false } = {}) {
         const { persona } = await api.post('/personas/generate', { description: describe.value.trim() });
         ui.current = { ...blank(), ...persona, id: c.id, timeLines: { ...(persona.timeLines || {}) } };
         paintEditor(); toast('Drafted. Edit anything, then save.', 'info');
-      } catch (err) { draftStatus.fail(err.message); draftButton.disabled = false; }
+      } catch (err) { draftStatus.fail(err.message, err.reply); draftButton.disabled = false; }
     } }, 'Draft with AI');
 
     const save = h('button', { class: 'primary', type: 'button', disabled: locked, onclick: async () => {
