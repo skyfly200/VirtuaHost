@@ -10,10 +10,15 @@ import { apiKey } from "./credentials.js";
 // NOT VERIFIED against the live service (it could not be reached while this was written): GET /v1/voices, and
 // POST /v1/text-to-speech/{voice_id} with { text, model_id } returning MP3, follow ElevenLabs' public API documentation.
 export const ELEVEN_PREFIX = "elevenlabs/";
-export const isElevenModel = (id: string | undefined): boolean => Boolean(id && id.startsWith(ELEVEN_PREFIX));
+export const ELEVEN_MODELS = ["eleven_flash_v2_5", "eleven_turbo_v2_5", "eleven_multilingual_v2", "eleven_v3"];
+// OpenRouter lists its own ElevenLabs models under the same "elevenlabs/" prefix, but with hyphens ("elevenlabs/eleven-v3"). Only the
+// underscore ids above go to ElevenLabs directly (they need a key); the hyphenated ones are ordinary OpenRouter speech models.
+export const isElevenModel = (id: string | undefined): boolean => Boolean(id && id.startsWith(ELEVEN_PREFIX) && ELEVEN_MODELS.includes(id.slice(ELEVEN_PREFIX.length)));
+// The same model on OpenRouter, used for a direct ElevenLabs choice while no ElevenLabs key is in scope.
+const ON_OPENROUTER: Record<string, string> = { eleven_flash_v2_5: "eleven-flash-v2.5", eleven_turbo_v2_5: "eleven-turbo-v2.5", eleven_multilingual_v2: "eleven-multilingual-v2", eleven_v3: "eleven-v3" };
+export const openRouterEleven = (id: string): string | undefined => { const m = ON_OPENROUTER[id.slice(ELEVEN_PREFIX.length)]; return m ? `${ELEVEN_PREFIX}${m}` : undefined; };
 export const elevenConfigured = (): boolean => Boolean(apiKey("elevenlabs"));
 
-export const ELEVEN_MODELS = ["eleven_flash_v2_5", "eleven_turbo_v2_5", "eleven_multilingual_v2", "eleven_v3"];
 const BASE = () => (process.env.ELEVENLABS_BASE_URL || "https://api.elevenlabs.io").replace(/\/+$/, "");
 const VOICE_ID = /^[A-Za-z0-9]{16,40}$/;
 

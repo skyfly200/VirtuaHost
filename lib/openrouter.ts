@@ -16,7 +16,7 @@
 // through to the caller so a wrong voice or model name is visible.
 
 import { apiKey, currentScope, keySource } from "./credentials.js";
-import { ELEVEN_MODELS, ELEVEN_PREFIX, listVoices } from "./elevenlabs.js";
+import { ELEVEN_MODELS, ELEVEN_PREFIX, isElevenModel, listVoices } from "./elevenlabs.js";
 
 import { cuesFor } from "./cues.js";
 import { RETIRED_MODELS } from "./model-health.js";
@@ -126,9 +126,9 @@ export async function discoverSpeechModels(): Promise<SpeechModel[]> {
 // The configured list plus whatever OpenRouter reports; configured entries keep their own default voice.
 // ElevenLabs entries list the voices on the account (clones first), so the voice box can suggest them by name.
 async function withElevenVoices(models: SpeechModel[]): Promise<SpeechModel[]> {
-  if (!models.some((m) => m.id.startsWith(ELEVEN_PREFIX))) return models;
+  if (!models.some((m) => isElevenModel(m.id))) return models;
   const names = (await listVoices()).map((v) => v.name);
-  return models.map((m) => (m.id.startsWith(ELEVEN_PREFIX) && names.length ? { ...m, voices: names } : m));
+  return models.map((m) => (isElevenModel(m.id) && names.length ? { ...m, voices: names } : m));
 }
 
 export async function allSpeechModels(): Promise<SpeechModel[]> {
@@ -142,7 +142,7 @@ async function allSpeechModelsUnlimited(): Promise<SpeechModel[]> {
   // With no list of your own (OPENROUTER_SPEECH_MODELS), the built-in models OpenRouter does not list are left out.
   const builtInOnly = list(process.env.OPENROUTER_SPEECH_MODELS).length === 0;
   const pinned = process.env.OPENROUTER_SPEECH_MODEL?.trim();
-  const kept = builtInOnly && extra.length ? configuredList.filter((m) => m.id === pinned || m.id.startsWith(ELEVEN_PREFIX) || extra.some((x) => x.id === m.id)) : configuredList;
+  const kept = builtInOnly && extra.length ? configuredList.filter((m) => m.id === pinned || isElevenModel(m.id) || extra.some((x) => x.id === m.id)) : configuredList;
   const merged = kept.map((m) => {
     const live = extra.find((x) => x.id === m.id);
     return live?.voices ? { ...m, voices: live.voices } : m;
