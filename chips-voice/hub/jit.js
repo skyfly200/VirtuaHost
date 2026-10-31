@@ -95,6 +95,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     if (kind === 'event-reminder' && !constraints.event) throw new HubError('an event-reminder slot needs constraints.event { name, startsAt }');
     return {
       id: existing ? existing.id : id(5), stationId: station.id, kind, startsAt, leadSeconds: Math.round(lead),
+      ...(input.precedingSeconds !== undefined || (existing && existing.precedingSeconds !== undefined) ? { precedingSeconds: Math.round(Math.min(3600, Math.max(0, Number(input.precedingSeconds !== undefined ? input.precedingSeconds : existing.precedingSeconds) || 0))) } : {}),
       personaId: text(input.personaId !== undefined ? input.personaId : existing && existing.personaId, 80), fallbackClipId: text(input.fallbackClipId !== undefined ? input.fallbackClipId : existing && existing.fallbackClipId, 120),
       ...(script ? { script } : {}), constraints, songNeutral: input.songNeutral !== undefined ? input.songNeutral === true : !!(existing && existing.songNeutral), enabled: input.enabled !== undefined ? input.enabled !== false : existing ? existing.enabled !== false : true,
       source: existing ? existing.source : text(input.source, 20) === 'schedule' ? 'schedule' : 'manual', ref: existing ? existing.ref : text(input.ref, 80), createdAt: existing ? existing.createdAt : now(),
@@ -285,7 +286,9 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
   async function runPipeline(slotLike, station, item, opts) {
     const s = settings(); const sj = jitOf(station);
     const margin = s.safetyMarginSeconds * 1000;
-    const deadline = slotLike.startsAt - margin;
+    // Swap deadline: the moment the item before the slot starts playing (the agent refuses a swap onto the immediately-next item).
+    // Without a known preceding duration, it falls back to the old slot start minus the safety margin.
+    const deadline = slotLike.precedingSeconds !== undefined ? slotLike.startsAt - slotLike.precedingSeconds * 1000 : slotLike.startsAt - margin;
     const atMs = slotLike.startsAt;
     const policy = (slotLike.constraints && slotLike.constraints.languagePolicy) || s.personaPolicies[slotLike.personaId] || s.languagePolicy;
     const { prompt, whenPhrase: when } = buildPrompt(slotLike, station, now());

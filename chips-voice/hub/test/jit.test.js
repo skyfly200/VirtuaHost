@@ -329,6 +329,24 @@ test('nothing is generated before the lead window opens, and a slot that is too 
   t.close(); late.close();
 });
 
+  test('the swap deadline is the start of the preceding item: a slot past its deadline falls back, and the default lead is 300 s', async () => {
+    const t = await boot();
+    try {
+      const st = await t.addStation();
+      await t.enable(st.id);
+      const slot = await t.slot(st.id, { startsAt: new Date(t.clock.t + 10 * 60000).toISOString(), leadSeconds: undefined, precedingSeconds: 240 });
+
+      assert.strictEqual(slot.leadSeconds, 300);
+      assert.strictEqual(slot.precedingSeconds, 240);
+      t.clock.t += 6 * 60000;                                                     // 4 min before the slot: past the swap deadline (slot start - 240 s)
+      await t.hub.jit.tick();
+      const [i] = await items(t);
+      assert.strictEqual(i.state, 'fallback');
+      assert.match(i.reason, /ran out of time/);
+      assert.strictEqual(t.site.calls.length, 0);
+    } finally { t.close(); }
+  });
+
 // ------------------------------------------------------------------ fail open
 test('fail open: every kind of provider failure ends with a reason and no queue entry', async () => {
   const cases = [
