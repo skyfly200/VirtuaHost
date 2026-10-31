@@ -438,6 +438,16 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
   // ---------- review: approve / reject ----------
   const who = (by) => ({ by: text(by && by.by, 60) || 'unknown', via: text(by && by.via, 20) || 'control', note: text(by && by.note, 300) });
   function findItem(itemId) { const it = J().items.find((i) => i.id === itemId); if (!it) throw new HubError('no such item', 404); return it; }
+  // A person approves a clip that was held for review: it can be reused again.
+  function clearClipReview(clipKey, by) {
+    const clip = J().clips[clipKey];
+    if (!clip) throw new HubError('no such clip', 404);
+    clip.needsReview = false;
+    audit({ who: who(by).by, action: 'clip.approve', target: clipKey, result: 'ok' });
+    store.save();
+    return { key: clipKey, needsReview: false };
+  }
+
   function approve(itemId, by) {
     const item = findItem(itemId); const w = who(by);
     if (item.approval.state === 'rejected') throw new HubError('that item was rejected', 409);
@@ -641,7 +651,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     return { estimate: est, item: itemView(item) };
   }
 
-  return { KINDS, tick, status, estimate, processSlot, addSlot, updateSlot, removeSlot, syncSlots, listSlots: (stationId) => J().slots.filter((s) => !stationId || s.stationId === stationId).map(slotView), approve, reject, queueFor, audioFor, ack, broadcast, updateSettings, setKill, setStationJit, listItems, getItem, itemAudio, runNow, alerts, settings: settingsView, jitView, whenPhrase };
+  return { KINDS, tick, status, estimate, processSlot, clearClipReview, addSlot, updateSlot, removeSlot, syncSlots, listSlots: (stationId) => J().slots.filter((s) => !stationId || s.stationId === stationId).map(slotView), approve, reject, queueFor, audioFor, ack, broadcast, updateSettings, setKill, setStationJit, listItems, getItem, itemAudio, runNow, alerts, settings: settingsView, jitView, whenPhrase };
 }
 
 module.exports = { createJit, whenPhrase, KINDS };
