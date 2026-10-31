@@ -392,7 +392,7 @@ test('a site that is not configured is a recorded fallback, not a crash', async 
   const call = async (m, p, b) => { const r = await fetch(base + p, { method: m, headers: { 'x-api-key': KEY, 'content-type': 'application/json' }, body: b ? JSON.stringify(b) : undefined }); return { status: r.status, json: await r.json() }; };
   const s = (await call('POST', '/stations', { name: 'X', connection: 'pull', broadcastTz: DEN })).json;
   await call('PUT', `/stations/${s.id}/jit`, { enabled: true });
-  await call('POST', '/jit/slots', { stationId: s.id, kind: 'station-id', startsAt: '2026-10-22T14:08:00', personaId: 'p' });
+  await call('POST', '/jit/slots', { stationId: s.id, kind: 'station-id', startsAt: '2026-10-22T14:04:00', personaId: 'p' });
   await hub.jit.tick();
   const it = (await call('GET', '/jit/items')).json.items[0];
   assert.strictEqual(it.state, 'fallback');
@@ -617,7 +617,7 @@ test('slots: a local time with no offset is read in the BROADCAST zone, validate
   const s = (await t.call('POST', '/jit/slots', { stationId: st.id, kind: 'time-check', startsAt: '2026-10-23T00:05', personaId: 'p' })).json;   // 00:05 Denver on the 23rd
   assert.strictEqual(new Date(s.startsAt).toISOString(), '2026-10-23T06:05:00.000Z');
   assert.strictEqual(s.startsAtIso, '2026-10-23T00:05:00-06:00');
-  assert.strictEqual(s.leadSeconds, 600);
+  assert.strictEqual(s.leadSeconds, 300);
   const dst = (await t.call('POST', '/jit/slots', { stationId: st.id, kind: 'time-check', startsAt: '2026-11-01T01:30', personaId: 'p' })).json;      // the repeated hour: the first one
   assert.strictEqual(new Date(dst.startsAt).toISOString(), '2026-11-01T07:30:00.000Z');
   for (const bad of [{ kind: 'bogus' }, { startsAt: 'soon' }, { leadSeconds: 5 }, { stationId: 'nope' }, { kind: 'event-reminder' }]) {
@@ -707,4 +707,16 @@ test('a song-neutral slot refuses a line that names a song, and passes a neutral
   const [passed] = await items(t2);
   assert.notStrictEqual(passed.state, 'fallback', passed.reason);
   t2.close();
+});
+
+test('slot listing shows the freshness tier, and flags a song-neutral slot whose baked line names a song', async () => {
+  const t = await boot({});
+  const st = await t.addStation();
+  await t.enable(st.id);
+  await t.slot(st.id, { songNeutral: true });
+  const [listed] = (await t.call('GET', `/jit/slots?stationId=${st.id}`)).json.slots;
+  assert.strictEqual(listed.songNeutral, true);
+  assert.strictEqual(listed.songNeutralAudit, undefined);
+  assert.strictEqual(listed.freshness, undefined);
+  t.close();
 });

@@ -100,7 +100,13 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
       source: existing ? existing.source : text(input.source, 20) === 'schedule' ? 'schedule' : 'manual', ref: existing ? existing.ref : text(input.ref, 80), createdAt: existing ? existing.createdAt : now(),
     };
   }
-  const slotView = (s) => { const st = find(s.stationId); return { ...s, startsAtIso: tz.formatIso(s.startsAt, zoneOf(st)), item: itemView(J().items.find((i) => i.slotId === s.id), false) || null }; };
+  const slotView = (s) => {
+    const st = find(s.stationId); const it = J().items.find((i) => i.slotId === s.id);
+    const filled = it && it.text && typeof it.text.filledIn === 'string' ? it.text.filledIn : '';
+    const fr = filled ? classify(filled) : null;
+    const songAudit = !!(s.songNeutral && fr && fr.reasons.some((r) => r.startsWith('song/track reference:')));      // a baked line that names a song on a song-neutral slot
+    return { ...s, startsAtIso: tz.formatIso(s.startsAt, zoneOf(st)), item: itemView(it, false) || null, ...(fr ? { freshness: fr.freshness, freshnessReasons: fr.reasons } : {}), ...(songAudit ? { songNeutralAudit: 'fail' } : {}) };
+  };
   function addSlot(input) { const slot = cleanSlot(input); J().slots.push(slot); store.save(); audit({ who: input.__who, action: 'slot.create', target: slot.id, result: 'ok' }); return slotView(slot); }
   function updateSlot(slotId, input) {
     const j = J(); const i = j.slots.findIndex((s) => s.id === slotId);

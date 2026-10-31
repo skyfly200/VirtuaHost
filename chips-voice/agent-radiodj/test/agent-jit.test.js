@@ -505,4 +505,5 @@ test('a dynamic slot with no leadSeconds leads by 300 s plus the preceding item 
   assert.strictEqual(day.items[1].dynamic.leadSeconds, 500);
   assert.strictEqual(day.items[2].dynamic.leadSeconds, 90);
   assert.strictEqual(day.items[3].dynamic.leadSeconds, 300);
+  t.close();
 });
