@@ -683,3 +683,28 @@ test('settings and station JIT switches survive a restart of the hub (same store
   assert.deepStrictEqual([second.jit.jitView(t.store.data.stations[0]).shadow, second.jit.jitView(t.store.data.stations[0]).enabled], [false, true]);
   second.stop(); t.close();
 });
+
+test('a song-neutral slot refuses a line that names a song, and passes a neutral station ID', async () => {
+  const site = fakeSite({ text: () => 'Coming up next, we have a song by the Beatles, that was great.' });
+  const t = await boot({ site });
+  const st = await t.addStation();
+  await t.enable(st.id);
+  const slot = await t.slot(st.id, { songNeutral: true });
+  assert.strictEqual(slot.songNeutral, true);
+  await t.hub.jit.tick();
+  const [refused] = await items(t);
+  assert.strictEqual(refused.state, 'fallback');
+  assert.match(refused.reason, /song-on-neutral-slot|names a song/);
+  assert.strictEqual(site.speeches().length, 0);
+  t.close();
+
+  const ok = fakeSite({ text: () => 'You are listening to Green Light Radio, in Denver, Colorado.' });
+  const t2 = await boot({ site: ok });
+  const st2 = await t2.addStation();
+  await t2.enable(st2.id);
+  await t2.slot(st2.id, { songNeutral: true });
+  await t2.hub.jit.tick();
+  const [passed] = await items(t2);
+  assert.notStrictEqual(passed.state, 'fallback', passed.reason);
+  t2.close();
+});
