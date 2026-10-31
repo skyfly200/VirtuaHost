@@ -52,7 +52,7 @@ function createSchedule({ dir = '', broadcastTz, now = Date.now }) {
       const item = { index, kind, startsAt: startsAt === null ? null : tz.formatIso(startsAt, broadcastTz), ...(raw.artist ? { artist: String(raw.artist) } : {}), ...(raw.title ? { title: String(raw.title) } : {}), ...(Number.isFinite(raw.durationSeconds) ? { durationSeconds: raw.durationSeconds } : {}) };
       if (kind === 'dynamic-slot') {
         const d = raw.dynamic && typeof raw.dynamic === 'object' ? raw.dynamic : {};
-        item.dynamic = { slotKind: SLOT_KINDS.includes(d.slotKind) ? d.slotKind : 'station-id', ...(d.personaId ? { personaId: String(d.personaId) } : {}), leadSeconds: Number.isFinite(d.leadSeconds) ? d.leadSeconds : 600, ...(d.fallbackClipId ? { fallbackClipId: String(d.fallbackClipId) } : {}), ...(d.constraints && typeof d.constraints === 'object' ? { constraints: d.constraints } : {}) };
+        item.dynamic = { slotKind: SLOT_KINDS.includes(d.slotKind) ? d.slotKind : 'station-id', ...(d.personaId ? { personaId: String(d.personaId) } : {}), leadSeconds: Number.isFinite(d.leadSeconds) ? d.leadSeconds : 300 + (index > 0 && plan.items[index - 1] && Number.isFinite(plan.items[index - 1].durationSeconds) ? plan.items[index - 1].durationSeconds : 0), ...(d.fallbackClipId ? { fallbackClipId: String(d.fallbackClipId) } : {}), ...(d.constraints && typeof d.constraints === 'object' ? { constraints: d.constraints } : {}) };
       }
       return [item];
     });
