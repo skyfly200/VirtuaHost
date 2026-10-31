@@ -103,7 +103,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
   const slotView = (s) => {
     const st = find(s.stationId); const it = J().items.find((i) => i.slotId === s.id);
     const filled = it && it.text && typeof it.text.filledIn === 'string' ? it.text.filledIn : '';
-    const fr = filled ? classify(filled) : null;
+    const fr = it && it.freshness ? it.freshness : (filled ? classify(filled) : null);
     const songAudit = !!(s.songNeutral && fr && fr.reasons.some((r) => r.startsWith('song/track reference:')));      // a baked line that names a song on a song-neutral slot
     return { ...s, startsAtIso: tz.formatIso(s.startsAt, zoneOf(st)), item: itemView(it, false) || null, ...(fr ? { freshness: fr.freshness, freshnessReasons: fr.reasons } : {}), ...(songAudit ? { songNeutralAudit: 'fail' } : {}) };
   };
@@ -324,7 +324,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
       verdict = validateText(spokenOf(written.filledIn, !!slotLike.script), ctxFor(written));
       if (verdict.ok && slotLike.songNeutral && classify(written.filledIn).reasons.some((r) => r.startsWith('song/track reference:')))
         verdict = { ok: false, problems: [{ code: 'song-on-neutral-slot', message: 'The line names a song, so a song-neutral slot cannot use it.' }] };
-      item.text = { filledIn: written.filledIn, raw: written.raw }; item.textModel = written.textModel; item.chars = written.filledIn.length; item.validation = verdict;
+      item.text = { filledIn: written.filledIn, raw: written.raw }; item.freshness = classify(written.filledIn); item.textModel = written.textModel; item.chars = written.filledIn.length; item.validation = verdict;
       item.estimate = estimate({ stationId: station.id, chars: item.chars, slot: slotLike });
       log(item, 'validate', verdict.ok, verdict.ok ? '' : verdict.problems.map((p) => p.code).join(', '));
       if (verdict.ok) break;
