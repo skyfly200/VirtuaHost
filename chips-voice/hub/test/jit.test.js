@@ -360,7 +360,9 @@ test('a clip held for review is not reused; once cleared, the same words are reu
   await t.slot(st.id, { startsAt: new Date(t.clock.t + 12 * 60000).toISOString(), leadSeconds: 900 });
   await t.hub.jit.tick();
   assert.strictEqual(t.site.speeches().length, 2);                                 // not reused while held
-  t.store.data.jit.clips[ck].needsReview = false;                                  // approved
+  t.hub.jit.clearClipReview(ck, { by: 'reviewer' });                               // approved by a person
+  assert.strictEqual(t.store.data.jit.clips[ck].needsReview, false);
+  assert.throws(() => t.hub.jit.clearClipReview('no-such-clip', { by: 'reviewer' }), /no such clip/);
   await t.slot(st.id, { startsAt: new Date(t.clock.t + 14 * 60000).toISOString(), leadSeconds: 900 });
   await t.hub.jit.tick();
   assert.strictEqual(t.site.speeches().length, 2);
