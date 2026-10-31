@@ -8,7 +8,7 @@
 //       { "startsAt": "2026-10-22T19:00:00-06:00",  or  "time": "19:00:00" (the station's clock),
 //         "kind": "song|drop|interlude|segment|host-break|dynamic-slot",
 //         "artist": "...", "title": "...", "durationSeconds": 215,
-//         "dynamic": { "slotKind": "time-check|weather|event-reminder|host-break|station-id|promo", "personaId": "...", "leadSeconds": 600,
+//         "dynamic": { "slotKind": "time-check|weather|event-reminder|host-break|station-id|promo", "personaId": "...", "leadSeconds": 300,
 //                      "fallbackClipId": "evergreen-time-1", "constraints": { } } }       // only on kind "dynamic-slot"
 //     ] }
 //

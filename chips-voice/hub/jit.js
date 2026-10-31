@@ -324,7 +324,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
       verdict = validateText(spokenOf(written.filledIn, !!slotLike.script), ctxFor(written));
       if (verdict.ok && slotLike.songNeutral && classify(written.filledIn).reasons.some((r) => r.startsWith('song/track reference:')))
         verdict = { ok: false, problems: [{ code: 'song-on-neutral-slot', message: 'The line names a song, so a song-neutral slot cannot use it.' }] };
-      item.text = { filledIn: written.filledIn, raw: written.raw }; item.freshness = classify(written.filledIn); item.textModel = written.textModel; item.chars = written.filledIn.length; item.validation = verdict;
+      item.text = { filledIn: written.filledIn, raw: written.raw }; item.freshness = { ...classify(written.filledIn), needsReview: false }; item.textModel = written.textModel; item.chars = written.filledIn.length; item.validation = verdict;
       item.estimate = estimate({ stationId: station.id, chars: item.chars, slot: slotLike });
       log(item, 'validate', verdict.ok, verdict.ok ? '' : verdict.problems.map((p) => p.code).join(', '));
       if (verdict.ok) break;
