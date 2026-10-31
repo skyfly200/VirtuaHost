@@ -347,6 +347,26 @@ test('nothing is generated before the lead window opens, and a slot that is too 
     } finally { t.close(); }
   });
 
+test('a clip held for review is not reused; once cleared, the same words are reused with no second speech call', async () => {
+  const t = await boot();
+  const st = await t.addStation();
+  await t.enable(st.id);
+  t.site.state.text = () => 'Eight oh four on Green Light Radio.';
+  await t.slot(st.id);
+  await t.hub.jit.tick();
+  assert.strictEqual(t.site.speeches().length, 1);
+  const ck = Object.keys(t.store.data.jit.clips)[0];
+  t.store.data.jit.clips[ck].needsReview = true;                                   // held until a person approves it
+  await t.slot(st.id, { startsAt: new Date(t.clock.t + 12 * 60000).toISOString(), leadSeconds: 900 });
+  await t.hub.jit.tick();
+  assert.strictEqual(t.site.speeches().length, 2);                                 // not reused while held
+  t.store.data.jit.clips[ck].needsReview = false;                                  // approved
+  await t.slot(st.id, { startsAt: new Date(t.clock.t + 14 * 60000).toISOString(), leadSeconds: 900 });
+  await t.hub.jit.tick();
+  assert.strictEqual(t.site.speeches().length, 2);
+  t.close();
+});
+
 // ------------------------------------------------------------------ fail open
 test('fail open: every kind of provider failure ends with a reason and no queue entry', async () => {
   const cases = [

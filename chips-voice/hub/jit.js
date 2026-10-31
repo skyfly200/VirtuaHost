@@ -340,6 +340,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     const ck = contentKey(written.filledIn, slotLike);
     let clip = j.clips[ck];
     if (clip && !audio.has(clip.audioHash)) clip = null;
+    if (clip && clip.needsReview) clip = null;  // held until a person approves the line; never reused while held
     if (!clip) {
       const over = capCheck(station, item.chars);
       if (over) return finish(item, 'fallback', over);
@@ -353,7 +354,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
       if (!mime) return finish(item, 'fallback', 'the audio is not a recognised format (mp3, wav or ogg)');
       const hash = sha256(buf);
       audio.put(hash, buf, mime);
-      clip = { audioHash: hash, bytes: buf.length, mime, chars: item.chars, createdAt: now(), uses: 0, speechModel: (r.json && r.json.speechModel) || '' };
+      clip = { audioHash: hash, bytes: buf.length, mime, chars: item.chars, createdAt: now(), uses: 0, speechModel: (r.json && r.json.speechModel) || '', freshness: item.freshness && item.freshness.freshness, needsReview: !!(item.freshness && item.freshness.needsReview) };
       j.clips[ck] = clip;
       const u = usageFor(station); u.chars += item.chars; u.requests += 1;
       item.cacheHit = false;
