@@ -395,21 +395,29 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     }
   }
 
+  // Slots whose lead time has come and that have no item yet, for stations with just-in-time switched on. tick() works them one after
+  // another; a serverless runner calls this and hands each one to its own background run instead.
+  function dueSlots() {
+    const j = J(); const t = now(); const out = [];
+    for (const slot of j.slots) {
+      if (slot.enabled === false) continue;
+      if (t < slot.startsAt - slot.leadSeconds * 1000) continue;
+      if (j.items.some((i) => i.slotId === slot.id)) continue;
+      const station = find(slot.stationId);
+      if (!station || !jitOf(station).enabled) continue;
+      out.push(slot);
+    }
+    return out;
+  }
+
   let ticking = false;
   async function tick() {
     if (ticking) return { skipped: true };
     ticking = true;
     try {
-      const j = J(); const t = now(); let worked = 0;
+      let worked = 0;
       sweepQueue();
-      for (const slot of [...j.slots]) {
-        if (slot.enabled === false) continue;
-        if (t < slot.startsAt - slot.leadSeconds * 1000) continue;
-        if (j.items.some((i) => i.slotId === slot.id)) continue;
-        const station = find(slot.stationId);
-        if (!station || !jitOf(station).enabled) continue;
-        await processSlot(slot); worked += 1;
-      }
+      for (const slot of dueSlots()) { await processSlot(slot); worked += 1; }
       gc();
       return { worked };
     } finally { ticking = false; }
@@ -651,7 +659,7 @@ function createJit({ store, audio, now = Date.now, fetchImpl = globalThis.fetch,
     return { estimate: est, item: itemView(item) };
   }
 
-  return { KINDS, tick, status, estimate, processSlot, clearClipReview, addSlot, updateSlot, removeSlot, syncSlots, listSlots: (stationId) => J().slots.filter((s) => !stationId || s.stationId === stationId).map(slotView), approve, reject, queueFor, audioFor, ack, broadcast, updateSettings, setKill, setStationJit, listItems, getItem, itemAudio, runNow, alerts, settings: settingsView, jitView, whenPhrase };
+  return { KINDS, tick, dueSlots, sweepQueue, gc, status, estimate, processSlot, clearClipReview, addSlot, updateSlot, removeSlot, syncSlots, listSlots: (stationId) => J().slots.filter((s) => !stationId || s.stationId === stationId).map(slotView), approve, reject, queueFor, audioFor, ack, broadcast, updateSettings, setKill, setStationJit, listItems, getItem, itemAudio, runNow, alerts, settings: settingsView, jitView, whenPhrase };
 }
 
 module.exports = { createJit, whenPhrase, KINDS };
