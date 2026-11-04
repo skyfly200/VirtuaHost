@@ -66,6 +66,11 @@ describe("model configuration", () => {
     vi.stubEnv("OPENROUTER_VOICE", "alloy");
     expect(voiceFor({ id: "m", voice: "Kore" }, "Puck")).toBe("Puck");
     expect(voiceFor({ id: "m", voice: "Kore" })).toBe("Kore");
+    // a voice from another model's family is dropped instead of being sent and rejected
+    expect(voiceFor({ id: "hexgrad/kokoro-82m", voice: "af_heart" }, "Puck")).toBe("af_heart");
+    expect(voiceFor({ id: "hexgrad/kokoro-82m", voice: "af_heart" }, "am_adam")).toBe("am_adam");
+    expect(voiceFor({ id: "x-ai/grok", voice: "eve", voices: ["eve", "ara"] }, "Puck")).toBe("eve");
+    expect(voiceFor({ id: "x-ai/grok", voices: ["eve", "ara"] }, "ARA")).toBe("ARA");
     expect(voiceFor({ id: "m" })).toBe("alloy");
     vi.stubEnv("OPENROUTER_VOICE", "");
     expect(voiceFor({ id: "m" })).toBeUndefined();
