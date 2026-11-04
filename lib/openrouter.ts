@@ -93,8 +93,19 @@ export const defaultSpeechModel = (): SpeechModel => {
   return speechModels().find((m) => m.id === def) ?? speechModels()[0];
 };
 
+// A voice picked for one model (say Gemini's "Puck") must not be sent to another: providers answer 400/404 with no detail. When the model's
+// voices are known (OpenRouter's `supported_voices`) or follow a fixed naming scheme (Kokoro: "af_heart"), a voice that does not fit is dropped
+// and the model's own default is used. Models whose voices are unknown still get the requested voice as before.
+const KOKORO_VOICE = /^[a-z]{2}_[a-z0-9]+$/;
+function voiceFits(model: SpeechModel, voice: string): boolean {
+  if (model.voices?.length) return model.voices.some((v) => v.toLowerCase() === voice.toLowerCase());
+  if (model.id.startsWith("hexgrad/kokoro")) return KOKORO_VOICE.test(voice);
+  return true;
+}
+
 export function voiceFor(model: SpeechModel, requested?: string): string | undefined {
-  return requested?.trim() || model.voice || process.env.OPENROUTER_VOICE?.trim() || model.voices?.[0] || undefined;
+  const wanted = requested?.trim();
+  return (wanted && voiceFits(model, wanted) ? wanted : undefined) || model.voice || process.env.OPENROUTER_VOICE?.trim() || model.voices?.[0] || undefined;
 }
 
 // Speech models OpenRouter itself lists (GET /models?output_modalities=speech), cached for a few minutes. Best effort: the
