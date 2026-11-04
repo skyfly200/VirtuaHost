@@ -5,6 +5,7 @@
 import { isReservedVariable, VARIABLE_NAME } from "./drop-template.js";
 import { validTimeZone } from "./schedule.js";
 import { stateCode } from "./places.js";
+import { sanitizeContext, type StationContext } from "./station-context.js";
 import { ANTENNAS, ENVIRONMENTS, type Transmitter } from "./propagation.js";
 
 export type ConnectionKind = "none" | "chips-voice" | "radiodj" | "icecast";
@@ -62,6 +63,8 @@ export interface Station {
   autoplay?: boolean;
   preempt?: boolean;
   notes?: string;
+  /** What the writer should know about the place: an about text and the key roads (lib/station-context.ts). Added to every AI writing prompt. */
+  context?: StationContext;
   /** What this station will connect to, once it has a server. Nothing here is a secret and nothing needs to be running. */
   connection: { kind: ConnectionKind; hubStationId?: string; note?: string };
   builtin?: boolean;
@@ -169,6 +172,7 @@ export function sanitizeStation(raw: unknown): { station: Omit<Station, "id"> } 
       ...modelList("textModels", r.textModels), ...modelList("speechModels", r.speechModels),
       ...(typeof r.autoplay === "boolean" ? { autoplay: r.autoplay } : {}), ...(typeof r.preempt === "boolean" ? { preempt: r.preempt } : {}),
       ...opt("notes", text(r.notes, 1000)),
+      ...(sanitizeContext(r.context) ? { context: sanitizeContext(r.context) } : {}),
       connection: { kind, ...opt("hubStationId", text(conn.hubStationId, 60)), ...opt("note", text(conn.note, 200)) },
     },
   };

@@ -1,4 +1,6 @@
 // Runs the schedules that are due. Called once a minute by netlify/functions/scheduler.mts (and by "Run now" in the UI).
+import { liveFor, liveHelp, evalCondition } from "./live-inputs.js";
+import { writerStation } from "./station-context.js";
 import { activeProvider, writeScript } from "./ai.js";
 import { findFormat } from "./formats.js";
 import { makeClip } from "./make-clip.js";
@@ -81,7 +83,7 @@ async function runScheduleScoped(s: Schedule): Promise<string> {
       if (!provider) throw new Error("no AI provider is configured");
       if (provider === "openrouter") textModel = (resolveTextModel(undefined, [persona?.textModel, station?.defaultTextModel]) as { model: string }).model;
       const format = s.content.format ? findFormat(s.content.format) : undefined;
-      text = (await writeScript({ prompt: s.content.prompt, provider, textModel, tone: s.tone || persona?.tone, format, persona: persona?.instructions, placeholders: promptHelp(tctx), ...(s.content.sfx ? { effects: sfxHelp(await effectNames()) } : {}), ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) })).text;
+      text = (await writeScript({ prompt: s.content.prompt, provider, textModel, tone: s.tone || persona?.tone, format, persona: persona?.instructions, placeholders: [promptHelp(tctx), s.content.live ? liveHelp(await liveFor(station), station?.tempUnit) : ""].filter(Boolean).join(" "), ...(s.content.sfx ? { effects: sfxHelp(await effectNames()) } : {}), ...(station ? { station: writerStation(station)! } : {}) })).text;
       mode = "ai";
     } else {
       text = s.content.text;
@@ -108,6 +110,18 @@ function advance(s: Schedule, now: number, result: string): Schedule {
   return done;
 }
 
+// For a conditional schedule: null when it should run now, otherwise why not. Fails closed (unknown = not met); a dry run reports what would have run.
+async function checkGate(s: Schedule, now: number): Promise<string | null> {
+  if (!s.gate) return null;
+  const station = s.stationId ? await getStation(s.stationId) : null;
+  const live = await liveFor(station, now);
+  const { met, reason } = evalCondition(s.gate.condition, live, station?.tempUnit);
+  if (!met) return `not run: condition not met (${reason})`;
+  if (s.lastFiredAt && now - Date.parse(s.lastFiredAt) < s.gate.cooldownMinutes * 60_000) return `not run: condition met (${reason}) but within the ${s.gate.cooldownMinutes}-minute cooldown`;
+  if (s.gate.dryRun) { log.info("dry run: conditional schedule would run", { scheduleId: s.id, name: s.name, reason }); return `dry run: would have run (${reason})`; }
+  return null;
+}
+
 export async function runDueSchedules(now = Date.now()): Promise<{ ran: number; skipped: number }> {
   let ran = 0;
   let skipped = 0;
@@ -126,13 +140,20 @@ export async function runDueSchedules(now = Date.now()): Promise<{ ran: number; 
       continue;
     }
     let result: string;
+    let fired = true;
     try {
-      result = await runSchedule(s);
+      const gated = await checkGate(s, now);
+      if (gated) { result = gated; fired = false; } else result = await runSchedule(s);
     } catch (err) {
       result = `error: ${(err as Error).message}`;
       log.error("schedule run failed", { scheduleId: s.id, name: s.name, err });
     }
-    await saveSchedule(advance({ ...s, runs: s.runs + 1 }, now, result));
+    if (!fired) {                                                              // a gate held it back: not a run, just a check
+      await saveSchedule(advance(s, now, result));
+      skipped += 1;
+      continue;
+    }
+    await saveSchedule(advance({ ...s, runs: s.runs + 1, ...(s.gate && !result.startsWith("error") ? { lastFiredAt: new Date(now).toISOString() } : {}) }, now, result));
     ran += 1;
   }
   return { ran, skipped };

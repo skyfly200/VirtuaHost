@@ -1,3 +1,5 @@
+import { liveFor, liveHelp } from "../live-inputs.js";
+import { writerStation } from "../station-context.js";
 import { randomUUID } from "node:crypto";
 import { activeProvider, writeScript, speak, NO_PROVIDER_MESSAGE } from "../ai.js";
 import { ensureListed, resolveTextModel, pickSpeechModel, speechModels, defaultSpeechModel, discoverSpeechModels, type SpeechModel } from "../openrouter.js";
@@ -128,6 +130,7 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   const tctx = contextFor({ station, persona, targetSeconds, ...(hearAt ? { now: hearAt } : {}) });
 
   // `sfx: true` lets the writer drop in sound effect tags (they are mixed in when the voice returns WAV, otherwise removed).
+  const liveBlock = body.live === true && mode === "ai" ? liveHelp(await liveFor(station), station?.tempUnit) : "";
   const effects = body.sfx === true && mode === "ai" ? sfxHelp(await effectNames()) : undefined;
 
   let scriptText: string;
@@ -135,7 +138,7 @@ async function generate(req: Request, who: Principal): Promise<Response> {
   const examples = persona ? exampleLines(persona.instructions, persona.templates) : [];
   let copied: string | undefined;
   try {
-    const write = (prompt: string) => writeScript({ prompt, provider, textModel, tone, format, persona: persona?.instructions, explicit: body.explicit === true, placeholders: promptHelp(tctx), targetSeconds, ...(effects ? { effects } : {}), ...(station ? { station: { name: station.name, tagline: station.tagline } } : {}) });
+    const write = (prompt: string) => writeScript({ prompt, provider, textModel, tone, format, persona: persona?.instructions, explicit: body.explicit === true, placeholders: [promptHelp(tctx), liveBlock].filter(Boolean).join(" "), targetSeconds, ...(effects ? { effects } : {}), ...(station ? { station: writerStation(station)! } : {}) });
     if (mode === "ai") {
       let out = await write(input);
       copied = copiedExample(out.text, examples);

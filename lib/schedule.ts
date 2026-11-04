@@ -3,6 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { sanitizeInfo, type ClipInfo } from "./clip-info.js";
 import { sanitizeAudio, type AudioChoice } from "./sfx-mix.js";
+import { sanitizeGate, type Gate } from "./live-inputs.js";
 
 export type When =
   | { type: "once"; at: string }
@@ -11,7 +12,7 @@ export type When =
 
 export type Content =
   | { kind: "text"; text: string; audio?: AudioChoice }
-  | { kind: "ai"; prompt: string; format?: string; sfx?: boolean; audio?: AudioChoice }
+  | { kind: "ai"; prompt: string; format?: string; sfx?: boolean; /** Give the writer the live weather, alerts and road risk (lib/live-inputs.ts). */ live?: boolean; audio?: AudioChoice }
   | { kind: "clip"; clipId: string }
   /** A saved script (lib/scripts.ts). `fresh`: the AI writes a new version from its topic and cast on every run; otherwise its saved text is said, placeholders filled in fresh. */
   | { kind: "script"; scriptId: string; fresh?: boolean };
@@ -39,6 +40,10 @@ export interface Schedule {
   stationId?: string;
   /** Never run after this instant (ISO 8601): an event promo stops when the event is over. Also the expiry of the clips it makes. */
   until?: string;
+  /** Only run when this holds (checked each time the schedule is due; with an interval that is the check cadence). Starts as a dry run. */
+  gate?: Gate;
+  /** The last time it actually made a clip (for the gate's cooldown). */
+  lastFiredAt?: string;
   /** Metadata for the clips it makes (kind, event, ...). */
   info?: ClipInfo;
   runs: number;
@@ -139,7 +144,7 @@ export function sanitizeContent(raw: unknown): Content {
     const prompt = str(c.prompt, 2000);
     if (!prompt) throw new Error("Enter a brief for the AI");
     const format = str(c.format, 40);
-    return { kind: "ai", prompt, ...(format ? { format } : {}), ...(c.sfx === true ? { sfx: true } : {}), ...(sanitizeAudio(c.audio) ? { audio: sanitizeAudio(c.audio) } : {}) };
+    return { kind: "ai", prompt, ...(format ? { format } : {}), ...(c.sfx === true ? { sfx: true } : {}), ...(c.live === true ? { live: true } : {}), ...(sanitizeAudio(c.audio) ? { audio: sanitizeAudio(c.audio) } : {}) };
   }
   if (c.kind === "clip") {
     const clipId = str(c.clipId, 64);
@@ -174,6 +179,7 @@ export function buildSchedule(raw: unknown, now = Date.now()): Schedule {
     count: clamp(Math.floor(Number(r.count)) || 0, 0, 10000), runs: 0,
     ...(Number.isFinite(untilMs) ? { until: new Date(untilMs).toISOString() } : {}),
     ...(r.info ? { info: sanitizeInfo(r.info) } : {}),
+    ...(r.gate ? { gate: sanitizeGate(r.gate) } : {}),
     ...(str(r.stationId, 60) ? { stationId: str(r.stationId, 60) } : {}),
     nextAt: new Date(first).toISOString(), createdAt: new Date(now).toISOString(),
   };
@@ -186,6 +192,8 @@ export function applySchedulePatch(s: Schedule, patch: unknown, now = Date.now()
   if (typeof p.name === "string" && p.name.trim()) next.name = p.name.trim().slice(0, 80);
   if (typeof p.preempt === "boolean") next.preempt = p.preempt;
   if (p.send === "air" || p.send === "library" || p.send === "none") next.send = p.send;
+  if (p.gate === null) delete next.gate;
+  else if (p.gate) next.gate = sanitizeGate(p.gate);
   if (typeof p.enabled === "boolean") {
     next.enabled = p.enabled;
     // Switching one back on starts from the next slot, never from the past.
