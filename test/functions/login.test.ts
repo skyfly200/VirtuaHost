@@ -71,10 +71,10 @@ describe("GET /api/login", () => {
   it("reports which sign-in methods exist, and nothing secret", async () => {
     vi.stubEnv("ACCESS_KEY", "k".repeat(20));
     const res = await handleLogin(new Request("http://localhost/api/login"));
-    expect(await res.json()).toEqual({ passwordLogin: true, accessKey: true, disabled: false });
+    expect(await res.json()).toEqual({ passwordLogin: true, accessKey: true, providers: [], disabled: false });
     vi.stubEnv("SESSION_SECRET", "");
     vi.stubEnv("ACCESS_KEY", "");
-    expect(await (await handleLogin(new Request("http://localhost/api/login"))).json()).toEqual({ passwordLogin: false, accessKey: false, disabled: false });
+    expect(await (await handleLogin(new Request("http://localhost/api/login"))).json()).toEqual({ passwordLogin: false, accessKey: false, providers: [], disabled: false });
   });
 });
 

@@ -71,12 +71,16 @@ async function showLogin() {
       }
     } }, userBox, keyBox, toggle, error, go);
 
+    const ssoNames = { google: 'Google', github: 'GitHub' };
+    const sso = (methods.providers || []).length ? h('div', { class: 'stack' },
+      h('p', { class: 'small muted' }, 'Or use a login you linked in Account settings:'),
+      (methods.providers || []).map((p) => h('a', { class: 'button', href: `/api/oauth/${p}/start` }, `Sign in with ${ssoNames[p]}`))) : null;
     clear(app, h('div', { class: 'login' },
       h('h1', {}, brand(34)),
       h('p', { class: 'muted' }, 'Sign in to make clips and run the station.'),
       setup
         ? h('p', { class: 'bad', role: 'alert' }, 'This site has no sign-in set up yet. Set SESSION_SECRET and an admin in LOGIN_USERS (or set ACCESS_KEY) in the site settings, then redeploy. See docs/NETLIFY.md.')
-        : form));
+        : [form, sso]));
   });
 }
 
@@ -272,7 +276,20 @@ function offCard(tab) {
 }
 
 // ---------- start ----------
+// Google/GitHub send the browser back to /#sso=<token> (signed in), /#account-linked=<provider> or /#sso-error=<why>.
+const SSO_ERRORS = { unlinked: 'That Google/GitHub account is not linked to anyone yet. Sign in with your password, then link it in Account settings.', taken: 'That account is already linked to another person here.', expired: 'The sign-in took too long. Try again.', provider: 'Google/GitHub did not accept the sign-in.', account: 'Your account could not be found.' };
+function takeRedirectResult() {
+  const m = /^#(sso|sso-error|account-linked)=(.+)$/.exec(location.hash);
+  if (!m) return null;
+  history.replaceState(null, '', location.pathname + location.search);
+  if (m[1] === 'sso') { setSession(m[2]); return null; }
+  if (m[1] === 'account-linked') { try { sessionStorage.setItem('tab', 'account'); } catch { /* storage blocked */ } return { ok: `Linked ${m[2]}` }; }
+  return { error: SSO_ERRORS[m[2]] || 'Sign-in failed.' };
+}
+
 async function start() {
+  const notice = takeRedirectResult();
+  if (notice) setTimeout(() => toast(notice.ok || notice.error, notice.ok ? 'info' : 'error'), 300);
   let credential = getSession();
   let options = null;
   if (credential) {
