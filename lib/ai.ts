@@ -47,11 +47,11 @@ export interface WriteOptions {
   /** About how long the line should run when spoken. */
   targetSeconds?: number;
   /** The station the line is for (its name and tagline go into the prompt); defaults to STATION_NAME. */
-  station?: { name: string; tagline?: string };
+  station?: { name: string; tagline?: string; brief?: string };
 }
 
 export async function writeScript(options: WriteOptions): Promise<{ text: string; model: string }> {
-  const system = buildSystemPrompt({ station: options.station?.name || process.env.STATION_NAME || "the station", tagline: options.station?.tagline, tone: options.tone, format: options.format, persona: options.persona, explicit: options.explicit, placeholders: options.placeholders, targetSeconds: options.targetSeconds, effects: options.effects });
+  const system = buildSystemPrompt({ station: options.station?.name || process.env.STATION_NAME || "the station", tagline: options.station?.tagline, brief: options.station?.brief, tone: options.tone, format: options.format, persona: options.persona, explicit: options.explicit, placeholders: options.placeholders, targetSeconds: options.targetSeconds, effects: options.effects });
   if (options.provider === "openrouter") {
     const model = options.textModel ?? openrouter.defaultTextModel();
     return { text: await openrouter.chat({ model, system, prompt: options.prompt }), model };

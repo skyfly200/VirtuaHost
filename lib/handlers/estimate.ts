@@ -1,3 +1,4 @@
+import { stationBrief } from "../station-context.js";
 import { authorize, canView, type Principal } from "../auth.js";
 import { activeProvider } from "../ai.js";
 import { buildSystemPrompt, cleanTone, findFormat } from "../formats.js";
@@ -49,7 +50,7 @@ async function estimate(req: Request, who: Principal): Promise<Response> {
     case "write": {
       const m = textModel();
       if ("error" in m) return Response.json({ error: m.error }, { status: 400 });
-      const system = buildSystemPrompt({ station: station?.name || process.env.STATION_NAME || "the station", tagline: station?.tagline, tone: cleanTone(body.tone), format: findFormat(str(body.format, 40)), persona: seen?.instructions, explicit: body.explicit === true, targetSeconds: typeof body.seconds === "number" ? body.seconds : undefined, placeholders: promptHelp(contextFor({ station, persona: seen, targetSeconds: typeof body.seconds === "number" ? body.seconds : undefined })) });
+      const system = buildSystemPrompt({ station: station?.name || process.env.STATION_NAME || "the station", tagline: station?.tagline, brief: stationBrief(station), tone: cleanTone(body.tone), format: findFormat(str(body.format, 40)), persona: seen?.instructions, explicit: body.explicit === true, targetSeconds: typeof body.seconds === "number" ? body.seconds : undefined, placeholders: promptHelp(contextFor({ station, persona: seen, targetSeconds: typeof body.seconds === "number" ? body.seconds : undefined })) });
       return Response.json({ estimate: await withContent(await estimateText({ kind: "write", model: m.model, inputChars: str(body.prompt, 4000).length, systemChars: system.length, maxOut: WRITE_MAX_TOKENS, expectedOut: 250 }), body.explicit === true) });
     }
     case "speak": {

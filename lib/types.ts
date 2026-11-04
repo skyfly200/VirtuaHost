@@ -18,6 +18,8 @@ export interface GenerateRequest {
   explicit?: boolean;
   /** mode "ai": let the writer add [sfx:name] sound effect tags. */
   sfx?: boolean;
+  /** mode "ai": give the writer the live weather, NWS alerts and road ice/snow risk for the station (lib/live-inputs.ts). */
+  live?: boolean;
   /** A background bed, intro and outro from the sound library, by name: { bed, bedVol, intro, outro }. */
   audio?: { bed?: string; bedVol?: number; intro?: string; outro?: string };
   /** A voice the chosen model understands. */

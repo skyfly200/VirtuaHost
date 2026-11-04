@@ -57,6 +57,7 @@ export async function mountSchedules(root, api) {
     clear(listBox, schedules.length ? schedules.map((s) => h('div', { class: 'clip' },
       h('div', { class: 'row small muted' }, h('span', { class: 'chip' }, s.enabled ? 'on' : 'off'), h('span', { class: 'chip' }, s.send === 'air' ? 'goes on air' : s.send === 'library' ? 'station library' : 'saved only'),
         s.stationId ? h('span', { class: 'chip' }, (allStations().find((x) => x.id === s.stationId) || { name: s.stationId }).name) : null,
+        s.gate ? h('span', { class: 'chip', title: 'Only runs when its condition is true' }, s.gate.dryRun ? 'conditional (dry run)' : 'conditional') : null,
         s.until ? h('span', { class: 'chip', title: s.until }, `ends ${at(s.until)}`) : null, s.info && s.info.kind ? h('span', { class: 'chip' }, s.info.kind) : null),
       h('strong', {}, s.name),
       h('p', { class: 'small' }, `${whenText(s.when)} · ${contentText(s.content, scripts)}`),
@@ -69,7 +70,7 @@ export async function mountSchedules(root, api) {
   }
 
   // ---------- the form ----------
-  const f = { name: '', kind: 'text', text: '', prompt: '', clipId: clips[0] ? clips[0].id : '', scriptId: scripts[0] ? scripts[0].id : '', fresh: false, sfx: false, audio: {}, type: 'daily', onceAt: '', everyN: 1, unit: 'hours', time: '07:30', days: [], tz: (currentStation() && currentStation().tz) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', personaId: (currentStation() && currentStation().defaultPersonaId) || '', send: queueOn ? 'air' : 'none', preempt: false, fx: (currentStation() && currentStation().defaultFx) || '', until: '', count: 0 };
+  const f = { name: '', kind: 'text', text: '', prompt: '', clipId: clips[0] ? clips[0].id : '', scriptId: scripts[0] ? scripts[0].id : '', fresh: false, sfx: false, live: false, gate: false, gKind: 'road-risk', gRoad: '', gMin: 'watch', gEvents: '', gSeverity: 'Moderate', gOp: 'below', gTemp: 32, gCool: 180, gDry: true, audio: {}, type: 'daily', onceAt: '', everyN: 1, unit: 'hours', time: '07:30', days: [], tz: (currentStation() && currentStation().tz) || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', personaId: (currentStation() && currentStation().defaultPersonaId) || '', send: queueOn ? 'air' : 'none', preempt: false, fx: (currentStation() && currentStation().defaultFx) || '', until: '', count: 0 };
 
   // A prefill from another tab: choose its kind and fields, then say where it came from.
   let prefill = '';
@@ -82,6 +83,21 @@ export async function mountSchedules(root, api) {
   }
 
   const formBox = h('section', { class: 'card' });
+  const gateBody = () => ({ cooldownMinutes: f.gCool, dryRun: f.gDry, condition: f.gKind === 'road-risk' ? { kind: 'road-risk', min: f.gMin, ...(f.gRoad ? { road: f.gRoad } : {}) } : f.gKind === 'alert' ? { kind: 'alert', events: f.gEvents, minSeverity: f.gSeverity } : f.gKind === 'temp' ? { kind: 'temp', op: f.gOp, value: f.gTemp } : { kind: 'precip' } });
+  function gatePart() {
+    const stn = currentStation();
+    const roads = (stn && stn.context && stn.context.roads) || [];
+    const box = h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: f.gate, onchange: (e) => { f.gate = e.target.checked; paintForm(); } }), 'Only run when a condition is true (conditional drop)');
+    if (!f.gate) return h('div', { class: 'stack' }, box);
+    return h('div', { class: 'stack' }, box,
+      h('p', { class: 'muted small' }, 'Checked each time this schedule comes due, so "Every so often" sets how often to look. Road risk is estimated from the weather at the road (freezing plus precipitation or snow), not from a road sensor. If the weather or alerts cannot be read, nothing runs.'),
+      select('Run when', 'gKind', [['road-risk', 'Ice or snow is likely on a road'], ['alert', 'A National Weather Service alert is active'], ['temp', 'The temperature crosses a line'], ['precip', 'It is raining or snowing']], paintForm),
+      f.gKind === 'road-risk' ? h('div', { class: 'grid cols' }, select('Road', 'gRoad', [['', 'Any listed road'], ...roads.map((r) => [r.name, r.name])]), select('At least', 'gMin', [['watch', 'Watch (near freezing and wet)'], ['high', 'High (freezing and wet, snow, freezing rain)']])) : null,
+      f.gKind === 'alert' ? h('div', { class: 'grid cols' }, field('Alert types, comma separated (empty = any)', 'gEvents', { placeholder: 'Winter Storm Warning, High Wind' }), select('At least', 'gSeverity', [['Minor', 'Minor'], ['Moderate', 'Moderate'], ['Severe', 'Severe'], ['Extreme', 'Extreme']])) : null,
+      f.gKind === 'temp' ? h('div', { class: 'grid cols' }, select('Temperature is', 'gOp', [['below', 'at or below'], ['above', 'at or above']]), field('Degrees (station unit)', 'gTemp', { type: 'number' })) : null,
+      h('div', { class: 'grid cols' }, field('At least this many minutes between runs', 'gCool', { type: 'number', min: 0 }),
+        h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: f.gDry, onchange: (e) => { f.gDry = e.target.checked; } }), 'Dry run first: only note when it would have run')));
+  }
   function paintForm() {
     const field = (label, key, props = {}) => h('label', { class: 'field' }, label, h('input', { ...props, value: f[key], oninput: (e) => { f[key] = props.type === 'number' ? Number(e.target.value) : e.target.value; } }));
     const select = (label, key, pairs, after) => h('label', { class: 'field' }, label, h('select', { onchange: (e) => { f[key] = e.target.value; if (after) after(); } }, pairs.map(([v, t]) => h('option', { value: v, selected: String(v) === String(f[key]) }, t))));
@@ -129,7 +145,8 @@ export async function mountSchedules(root, api) {
     } else if (f.kind === 'ai') {
       const box = textBox('prompt', { placeholder: 'a friendly top-of-the-hour station ID' });
       content = h('div', { class: 'stack' }, h('label', { class: 'field' }, 'Brief for the AI (it writes a fresh line each time)', box), weatherTools(box, 'prompt'),
-        h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: f.sfx, onchange: (e) => { f.sfx = e.target.checked; } }), 'AI may add sound effects (mixed in when the voice returns WAV)'), audioPart());
+        h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: f.sfx, onchange: (e) => { f.sfx = e.target.checked; } }), 'AI may add sound effects (mixed in when the voice returns WAV)'),
+        h('label', { class: 'row small' }, h('input', { type: 'checkbox', checked: f.live, onchange: (e) => { f.live = e.target.checked; } }), 'Give the AI the current weather, alerts and road risk'), audioPart());
     } else if (f.kind === 'script') {
       content = scriptPicker();
     } else {
@@ -149,9 +166,9 @@ export async function mountSchedules(root, api) {
         const minutes = f.unit === 'days' ? f.everyN * 1440 : f.unit === 'hours' ? f.everyN * 60 : f.everyN;
         const whenBody = f.type === 'once' ? { type: 'once', at: f.onceAt ? new Date(f.onceAt).toISOString() : '' }
           : f.type === 'interval' ? { type: 'interval', everyMinutes: minutes, startAt: new Date().toISOString() } : { type: 'daily', time: f.time, days: f.days, tz: f.tz };
-        const contentBody = f.kind === 'text' ? { kind: 'text', text: f.text, ...(Object.keys(f.audio || {}).length ? { audio: f.audio } : {}) } : f.kind === 'ai' ? { kind: 'ai', prompt: f.prompt, ...(f.sfx ? { sfx: true } : {}), ...(Object.keys(f.audio || {}).length ? { audio: f.audio } : {}) }
+        const contentBody = f.kind === 'text' ? { kind: 'text', text: f.text, ...(Object.keys(f.audio || {}).length ? { audio: f.audio } : {}) } : f.kind === 'ai' ? { kind: 'ai', prompt: f.prompt, ...(f.sfx ? { sfx: true } : {}), ...(f.live ? { live: true } : {}), ...(Object.keys(f.audio || {}).length ? { audio: f.audio } : {}) }
           : f.kind === 'script' ? { kind: 'script', scriptId: f.scriptId, fresh: Boolean(f.fresh && hasTopic(scripts.find((s) => s.id === f.scriptId))) } : { kind: 'clip', clipId: f.clipId };
-        await api.post('/schedules', { name: f.name, when: whenBody, content: contentBody, personaId: f.personaId, send: f.send, preempt: f.preempt, fx: f.fx, count: f.count, stationId: stationId() || undefined, ...(f.until ? { until: new Date(f.until).toISOString() } : {}) });
+        await api.post('/schedules', { name: f.name, when: whenBody, content: contentBody, personaId: f.personaId, send: f.send, preempt: f.preempt, fx: f.fx, count: f.count, stationId: stationId() || undefined, ...(f.gate ? { gate: gateBody() } : {}), ...(f.until ? { until: new Date(f.until).toISOString() } : {}) });
         toast('Schedule created.', 'info'); await reload();
       } catch (err) { toast(err.message, 'error'); } finally { submit.disabled = false; }
     } }, 'Create schedule');
@@ -168,6 +185,7 @@ export async function mountSchedules(root, api) {
           fxPresets.length ? select('Audio treatment', 'fx', [['', 'None'], ...fxPresets.map((x) => [x, x])]) : null),
         h('div', { class: 'grid cols' }, field('Stop after (optional)', 'until', { type: 'datetime-local' }), field('Or after this many runs (0 = no limit)', 'count', { type: 'number', min: 0 }),
           h('label', { class: 'row' }, h('input', { type: 'checkbox', checked: f.preempt, onchange: (e) => { f.preempt = e.target.checked; } }), 'May cut in over a live DJ')),
+        gatePart(),
         h('p', { class: 'muted small' }, 'An end date also makes every clip it creates expire then, so nothing plays after the event.')),
       h('div', { class: 'row' }, submit));
   }
