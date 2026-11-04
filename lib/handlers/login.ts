@@ -1,3 +1,4 @@
+import { configuredProviders } from "../oauth.js";
 import { accessKeyConfigured } from "../auth.js";
 import { checkPassword, issueToken, loginConfigured } from "../session.js";
 import { getUser, saveUser } from "../user-store.js";
@@ -14,7 +15,7 @@ const clientIp = (req: Request) =>
 // DELETE is not needed: tokens are stateless, so signing out just forgets the token.
 export async function handleLogin(req: Request): Promise<Response> {
   if (req.method === "GET") {
-    return Response.json({ passwordLogin: loginConfigured(), accessKey: accessKeyConfigured(), disabled: process.env.AUTH_DISABLED === "true" });
+    return Response.json({ passwordLogin: loginConfigured(), accessKey: accessKeyConfigured(), providers: configuredProviders(), disabled: process.env.AUTH_DISABLED === "true" });
   }
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });

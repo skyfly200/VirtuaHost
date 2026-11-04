@@ -41,3 +41,9 @@ Every person can save their own OpenRouter, Gemini or ElevenLabs key (the card a
 ## Moving to a database later
 
 Everything that reads or writes users is in `lib/user-store.ts`; usage counters are in `lib/quota.ts`. Replace those two files' storage calls (for example with Turso or D1 over HTTP) and nothing else changes.
+
+## Email and linked Google / GitHub logins
+
+Account settings has a separate card for each concern: email, sign-in methods, password, and one key card each for OpenRouter, Google (Gemini) and ElevenLabs.
+- **Email** (`PATCH /api/users/me { email, currentPassword }`, `""` removes it): unique across accounts, stored in `profiles/<name>.json` of the `auth` Blobs store (`lib/profile-store.ts`), so bootstrap admins from `LOGIN_USERS` can have one too.
+- **Linked logins** (`lib/oauth.ts`, `lib/handlers/oauth.ts`, `/api/oauth/:provider/{start,callback}`): set `GOOGLE_CLIENT_ID/SECRET` and/or `GITHUB_CLIENT_ID/SECRET` (redirect URI `https://<site>/api/oauth/<provider>/callback`). A person links a login while signed in; "Sign in with Google/GitHub" then signs in that account. These logins never create accounts, and one Google/GitHub identity belongs to one account. Not verified against live Google or GitHub.

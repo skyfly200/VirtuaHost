@@ -2,6 +2,8 @@ import { authorize } from "../auth.js";
 import { createLogger } from "../log.js";
 import { hashPassword, verifyPassword } from "../passwords.js";
 import { aiUsage, effectiveQuota, sanitizeQuota } from "../quota.js";
+import { configuredProviders } from "../oauth.js";
+import { getProfile, saveProfile, usernameForEmail, validEmail } from "../profile-store.js";
 import { findAccount, parseUsers } from "../session.js";
 import { deleteUser, getUser, listUsers, MIN_PASSWORD_LENGTH, normalizeUsername, publicUser, saveUser, USERNAME, type Role, type User } from "../user-store.js";
 
@@ -20,7 +22,7 @@ const roleOf = (v: unknown): Role | null => (v === "admin" || v === "user" ? v :
 
 // Admin: GET /api/users (list), POST /api/users { username, password, role?, quota? }, PATCH /api/users/:name { password?, role?, disabled?, quota? },
 //        DELETE /api/users/:name.
-// Anyone signed in: GET /api/users/me (who am I, my limits and usage), PATCH /api/users/me { currentPassword, newPassword }.
+// Anyone signed in: GET /api/users/me (who am I, my limits and usage), PATCH /api/users/me { currentPassword, newPassword } (password) or { currentPassword, email } (email; "" removes it), kept as separate requests.
 // People in LOGIN_USERS are bootstrap admins: listed, but not editable here.
 export async function handleUsers(req: Request, name: string | undefined): Promise<Response> {
   if (name === "me") return handleMe(req);
@@ -105,14 +107,30 @@ async function handleMe(req: Request): Promise<Response> {
   if (req.method === "GET") {
     const user = who.via === "login" ? await getUser(who.username) : null;
     const limits = who.role === "admin" ? {} : effectiveQuota(user?.quota);
-    return Response.json({ username: who.username, role: who.role, quota: limits, usage: who.role === "admin" ? null : await aiUsage(who.username).catch(() => null) });
+    const profile = who.via === "login" ? await getProfile(who.username).catch(() => null) : null;
+    return Response.json({
+      username: who.username, role: who.role, quota: limits, usage: who.role === "admin" ? null : await aiUsage(who.username).catch(() => null),
+      email: profile?.email ?? null, identities: profile?.identities ?? {}, providers: configuredProviders(),
+    });
   }
   if (req.method === "PATCH") {
-    if (who.via !== "login") return Response.json({ error: "Sign in with a username to change a password" }, { status: 400 });
+    if (who.via !== "login") return Response.json({ error: "Sign in with a username to change your account" }, { status: 400 });
     const body = await json(req);
+    const account = await findAccount(who.username);
+    if (body && "email" in body) {
+      // Changing the email is its own request (it does not touch the password) and asks for the current password.
+      if (!account || typeof body.currentPassword !== "string" || !verifyPassword(body.currentPassword, account.passwordHash)) return Response.json({ error: "Your current password is wrong" }, { status: 403 });
+      const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      if (email && !validEmail(email)) return Response.json({ error: "That does not look like an email address" }, { status: 400 });
+      if (email) { const other = await usernameForEmail(email); if (other && other !== who.username) return Response.json({ error: "That email is already used by another account" }, { status: 409 }); }
+      const profile = await getProfile(who.username);
+      if (email) profile.email = email; else delete profile.email;
+      await saveProfile(who.username, profile);
+      log.info("email changed", { username: who.username, cleared: !email });
+      return Response.json({ ok: true, email: email || null });
+    }
     const pw = badPassword(body?.newPassword);
     if (pw) return Response.json({ error: pw }, { status: 400 });
-    const account = await findAccount(who.username);
     if (!account || account.source !== "database") return Response.json({ error: "This account comes from LOGIN_USERS; change it in the site's environment settings" }, { status: 409 });
     if (typeof body?.currentPassword !== "string" || !verifyPassword(body.currentPassword, account.passwordHash)) return Response.json({ error: "Your current password is wrong" }, { status: 403 });
     const user = await getUser(who.username);

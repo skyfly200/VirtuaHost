@@ -90,8 +90,11 @@ export async function mountUsers(root, api) {
   paintList();
 }
 
-// A small "your account" card for the top of the page: role, usage against limits, and change password.
-export function accountCard(api, me, { open = false } = {}) {
+// ---------- account settings: one card for each concern, so changing one never touches another ----------
+const PROVIDER_NAMES = { google: 'Google', github: 'GitHub' };
+const real = (me) => !(me.username === 'api-key' || me.username === 'local');
+
+function usageCard(me) {
   const usage = me.usage || { daily: 0, monthly: 0 };
   const q = me.quota || {};
   const lines = me.role === 'admin' ? ['No limits.'] : [
@@ -100,19 +103,65 @@ export function accountCard(api, me, { open = false } = {}) {
     q.maxClips !== undefined ? `Up to ${q.maxClips} saved clips` : null,
     q.maxSchedules !== undefined ? `Up to ${q.maxSchedules} schedules` : null,
   ].filter(Boolean);
+  return h('section', { class: 'card' }, h('h3', {}, `${me.username} (${me.role})`), h('p', { class: 'small muted' }, lines.length ? lines.join(' · ') : 'No limits set for you.'));
+}
+
+function emailCard(api, me, refresh) {
+  const email = h('input', { type: 'email', autocomplete: 'email', 'aria-label': 'Email', value: me.email || '', placeholder: 'you@example.com' });
+  const pw = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Current password' });
+  return h('form', { class: 'card', onsubmit: async (e) => {
+    e.preventDefault();
+    try { await patch(api, '/users/me', { email: email.value, currentPassword: pw.value }); pw.value = ''; toast('Email saved', 'info'); await refresh(); } catch (err) { toast(err.message, 'error'); }
+  } },
+  h('h3', {}, 'Email'),
+  h('p', { class: 'small muted' }, 'Kept on your account. Leave it empty and save to remove it. Your current password confirms the change.'),
+  h('div', { class: 'grid cols' }, h('label', { class: 'field' }, 'Email address', email), h('label', { class: 'field' }, 'Current password', pw), h('button', { type: 'submit' }, 'Save email')));
+}
+
+function signInCard(api, me, refresh) {
+  const available = me.providers || [];
+  const rows = Object.keys(PROVIDER_NAMES).map((p) => {
+    const linked = (me.identities || {})[p];
+    return h('div', { class: 'row' },
+      h('span', {}, linked ? `${PROVIDER_NAMES[p]}: ${linked.label}` : `${PROVIDER_NAMES[p]}: not linked`),
+      linked
+        ? h('button', { type: 'button', class: 'link danger', onclick: async () => { if (!confirm(`Unlink ${PROVIDER_NAMES[p]}? You can still sign in with your password.`)) return; try { await api.del(`/oauth/${p}`); await refresh(); } catch (err) { toast(err.message, 'error'); } } }, 'Unlink')
+        : h('button', { type: 'button', disabled: !available.includes(p), title: available.includes(p) ? '' : `${PROVIDER_NAMES[p]} sign-in is not set up on this site`, onclick: async () => {
+          try { const { url } = await api.post(`/oauth/${p}/start`, {}); location.href = url; } catch (err) { toast(err.message, 'error'); }
+        } }, `Link ${PROVIDER_NAMES[p]}`));
+  });
+  return h('section', { class: 'card' },
+    h('h3', {}, 'Sign-in methods'),
+    h('p', { class: 'small muted' }, 'Link a Google or GitHub login to this account to sign in with it. A linked login signs in this account only; one Google or GitHub account can belong to one person here.'),
+    rows);
+}
+
+function passwordCard(api) {
   const current = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Current password' });
   const next = h('input', { type: 'password', autocomplete: 'new-password', 'aria-label': 'New password' });
-  return h('details', { class: 'card', open },
-    h('summary', {}, `${me.username} (${me.role})`),
-    h('p', { class: 'small muted' }, lines.length ? lines.join(' · ') : 'No limits set for you.'),
-    me.username === 'api-key' || me.username === 'local' ? null : keyBox(api),
-    me.username === 'api-key' || me.username === 'local' ? null : h('form', { class: 'grid cols', onsubmit: async (e) => {
-      e.preventDefault();
-      try { await patch(api, '/users/me', { currentPassword: current.value, newPassword: next.value }); current.value = ''; next.value = ''; toast('Password changed', 'info'); } catch (err) { toast(err.message, 'error'); }
-    } }, h('label', { class: 'field' }, 'Current password', current), h('label', { class: 'field' }, 'New password (10+ characters)', next), h('button', { type: 'submit' }, 'Change password')));
+  return h('form', { class: 'card', onsubmit: async (e) => {
+    e.preventDefault();
+    try { await patch(api, '/users/me', { currentPassword: current.value, newPassword: next.value }); current.value = ''; next.value = ''; toast('Password changed', 'info'); } catch (err) { toast(err.message, 'error'); }
+  } },
+  h('h3', {}, 'Password'),
+  h('div', { class: 'grid cols' }, h('label', { class: 'field' }, 'Current password', current), h('label', { class: 'field' }, 'New password (10+ characters)', next), h('button', { type: 'submit' }, 'Change password')));
 }
 
 // The account page: reached from the user menu at the top right.
 export function mountAccount(root, api, me) {
-  root.replaceChildren(h('h2', {}, 'Account settings'), accountCard(api, me, { open: true }));
+  const body = h('div', { class: 'stack' });
+  root.replaceChildren(h('h2', {}, 'Account settings'), body);
+  const paint = (who) => {
+    const keys = real(who) ? ['openrouter', 'gemini', 'elevenlabs'].map((p) => h('section', { class: 'card' }, keyBox(api, { provider: p }))) : [];
+    clear(body,
+      usageCard(who),
+      real(who) ? emailCard(api, who, refresh) : null,
+      real(who) ? signInCard(api, who, refresh) : null,
+      real(who) ? passwordCard(api) : null,
+      keys.length ? h('h3', {}, 'AI keys') : null,
+      keys);
+  };
+  async function refresh() { try { me = { ...me, ...(await api.get('/users/me')) }; } catch { /* keep what we had */ } paint(me); }
+  paint(me);
+  refresh();
 }
