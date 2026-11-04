@@ -9,7 +9,7 @@ import { handleHubPull } from "../../lib/handlers/hub-pull.js";
 
 // The hub's tables in an in-process Postgres (PGlite), made from the real migration files.
 const pg = new PGlite();
-const db: HubDb = { query: async (text, params = []) => ({ rows: (await pg.query(text, params as any[])).rows as any[] }) }; // eslint-disable-line @typescript-eslint/no-explicit-any
+const db: HubDb = { query: async (text, params = []) => ({ rows: (await pg.query(text, params as any[])).rows as any[] }), batch: (stmts) => pg.transaction(async (tx) => { for (const x of stmts) await tx.query(x.text, x.params as any[]); }) }; // eslint-disable-line @typescript-eslint/no-explicit-any
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const KEY = "pull-key-for-denver-station";
 const NOW = Date.UTC(2026, 9, 22, 23, 0, 0);

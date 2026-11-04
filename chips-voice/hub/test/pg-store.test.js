@@ -33,7 +33,7 @@ async function boot(db) {
 
 test('migrations run once and are recorded', async () => {
   const db = shared;
-  assert.deepStrictEqual(await migrate(db), ['001_init.sql']);
+  assert.deepStrictEqual(await migrate(db), ['001_init.sql', '002_locks.sql']);
   assert.deepStrictEqual(await migrate(db), []);
 });
 
@@ -55,6 +55,8 @@ test('the hub comes back after a restart with its stations, playlists, slots and
   assert.strictEqual((await b.call('GET', '/playlists')).json.playlists.some((p) => p.name === 'Late Night'), true);
   assert.deepStrictEqual((await b.call('GET', '/jit/slots')).json.slots.map((s) => s.id), [slot.id]);
   assert.strictEqual(b.store.data.jit.settings.dailyCharCap, 1234);
+  const keys = (await shared.query('select key from hub_state order by key')).rows.map((r) => r.key);
+  assert.ok(keys.includes('jit.settings') && !keys.includes('jit'), keys.join());      // the pieces of jit are separate rows
   assert.ok(b.store.data.audit.length >= 3);                 // audit entries have no id of their own
   b.close();
 });

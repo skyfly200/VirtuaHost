@@ -18,3 +18,9 @@ export async function acquireLock(db: HubDb, name: string, owner: string, ttlMs:
 export async function releaseLock(db: HubDb, name: string, owner: string): Promise<void> {
   await db.query("delete from hub_locks where name = $1 and owner = $2", [name, owner]);
 }
+
+/** Names of unexpired locks that start with `prefix`. */
+export async function heldLocks(db: HubDb, prefix: string): Promise<string[]> {
+  const { rows } = await db.query("select name from hub_locks where expires_at > now() and left(name, $2::int) = $1", [prefix, prefix.length]);
+  return rows.map((r) => String(r.name));
+}

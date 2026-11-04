@@ -1,10 +1,11 @@
 import { neon } from "@neondatabase/serverless";
 
-// The hub's database (Neon Postgres, DATABASE_URL). The tables are in chips-voice/hub/migrations/. Everything the site does with them is
-// one statement per call (conditional UPDATE ... RETURNING and similar), so this only needs query(): there are no multi-step transactions
-// to hold open across serverless calls.
+// The hub's database (Neon Postgres, DATABASE_URL). The tables are in chips-voice/hub/migrations/. The pull-station calls are one statement
+// each (conditional UPDATE ... RETURNING and similar), so they only need query(). The just-in-time runs save their changes with batch(),
+// several statements as one transaction (Neon's HTTP transaction: nothing is held open between calls).
 export interface HubDb {
   query(text: string, params?: unknown[]): Promise<{ rows: Record<string, any>[] }>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  batch(statements: { text: string; params: unknown[] }[]): Promise<void>;
 }
 
 let override: HubDb | null = null;
@@ -29,6 +30,9 @@ export function hubDb(): HubDb | null {
     query: async (text, params = []) => {
       const out = (await sql.query(text, params)) as unknown;
       return { rows: (Array.isArray(out) ? out : (out as { rows: Record<string, unknown>[] }).rows) as Record<string, unknown>[] };
+    },
+    batch: async (statements) => {
+      if (statements.length) await sql.transaction((txn) => statements.map((s) => txn.query(s.text, s.params)));
     },
   };
   cached = { url, db };
