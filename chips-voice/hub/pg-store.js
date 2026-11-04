@@ -22,6 +22,10 @@ const COLLECTIONS = [
   { path: ['alerts', 'log'], kind: 'array', table: 'hub_alert_log' },
 ];
 
+// Objects whose parts are stored as separate hub_state rows (jit.settings, jit.usage ...), so a writer that only changed one does not rewrite the rest.
+const SPLIT = new Set(['jit', 'alerts']);
+const isPlain = (v) => v && typeof v === 'object' && !Array.isArray(v);
+
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const sha = (s) => crypto.createHash('sha1').update(s).digest('hex');
 
@@ -58,7 +62,9 @@ function createPgStore(db, defaults = { stations: [], playlists: {}, jobs: [] },
     const rest = clone(data);
     for (const col of COLLECTIONS) delAt(rest, col.path);
     const out = new Map();
-    for (const [k, v] of Object.entries(rest)) out.set(k, JSON.stringify(v));
+    for (const [k, v] of Object.entries(rest)) {
+      if (SPLIT.has(k) && isPlain(v)) { for (const [sk, sv] of Object.entries(v)) out.set(`${k}.${sk}`, JSON.stringify(sv)); } else out.set(k, JSON.stringify(v));
+    }
     return out;
   }
 
@@ -74,9 +80,14 @@ function createPgStore(db, defaults = { stations: [], playlists: {}, jobs: [] },
     }
     const { rows: st } = await db.query('select key, doc from hub_state');
     for (const r of st) {
-      const mine = data[r.key];
-      data[r.key] = mine && typeof mine === 'object' && !Array.isArray(mine) && r.doc && typeof r.doc === 'object' ? { ...mine, ...r.doc } : r.doc;   // keep the collections already placed inside jit/alerts
       persistedState.set(r.key, JSON.stringify(r.doc));
+      const dot = r.key.indexOf('.');
+      if (dot > 0 && SPLIT.has(r.key.slice(0, dot))) {
+        const top = r.key.slice(0, dot);
+        if (!isPlain(data[top])) data[top] = {};
+        data[top][r.key.slice(dot + 1)] = r.doc;
+      } else if (isPlain(data[r.key]) && isPlain(r.doc)) data[r.key] = { ...data[r.key], ...r.doc };   // keep the collections already placed inside it
+      else data[r.key] = r.doc;
     }
     // A collection with no rows is an empty one, as long as the object it sits in exists (the hub reads data.jit.slots without checking).
     for (const col of COLLECTIONS) {
