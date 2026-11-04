@@ -43,3 +43,18 @@ export function zoneWarnings(o: { machineTz?: string; broadcastTz?: string; pcOf
   }
   return out;
 }
+
+/** "2026-10-22 17:05:30" as the clock in `tz` shows it at an instant. */
+export function formatLocal(ms: number, tz: string): string {
+  const f = new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
+  const p: Record<string, number> = {};
+  for (const x of f.formatToParts(new Date(ms))) if (x.type !== "literal") p[x.type] = Number(x.value);
+  return `${p.year}-${pad(p.month)}-${pad(p.day)} ${pad(p.hour % 24)}:${pad(p.minute)}:${pad(p.second)}`;
+}
+
+/** The same with the zone's offset: "2026-10-22T17:05:30-06:00" (the hub's tz.js formatIso). */
+export function formatIso(ms: number, tz: string): string {
+  const off = offsetMinutes(ms, tz);
+  const a = Math.abs(off);
+  return `${formatLocal(ms, tz).replace(" ", "T")}${off < 0 ? "-" : "+"}${pad(Math.floor(a / 60))}:${pad(a % 60)}`;
+}
